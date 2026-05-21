@@ -1,0 +1,41 @@
+name: Maven Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: maven
+
+      - name: Build all modules and generate core coverage
+        run: mvn --batch-mode clean verify -Dskip.example.tests=true
+
+      - name: Upload jpostman-core coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: jpostman-core/target/site/jacoco/jacoco.xml
+          flags: jpostman-core
+          name: jpostman-core
+          fail_ci_if_error: false

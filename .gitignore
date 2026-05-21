@@ -1,0 +1,9 @@
+target/
+.classpath
+.project
+.settings/
+*.iml
+.idea/
+.DS_Store
+test-output/
+jpostman-examples/src/test/resources/hello_world.png

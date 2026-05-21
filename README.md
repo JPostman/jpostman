@@ -1,0 +1,529 @@
+# JPostman
+
+![Java](https://img.shields.io/badge/Java-11%2B-orange)
+[![Build](https://github.com/JPostman/jpostman/actions/workflows/build.yml/badge.svg)](https://github.com/JPostman/jpostman/actions/workflows/build.yml)
+![Maven](https://img.shields.io/badge/Maven-3.x-blue)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.jpostman/jpostman-core)](https://central.sonatype.com/artifact/io.github.jpostman/jpostman-core)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/JPostman/jpostman)
+![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)
+![License](https://img.shields.io/github/license/JPostman/jpostman)
+
+<a href="https://central.sonatype.com/artifact/io.github.jpostman/jpostman-core"><img src="logo.png" width="100" alt="JPostman logo"></a>
+
+**JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
+
+Instead of copying request URLs, headers, authentication, query parameters, and request bodies into Java code, JPostman keeps Postman as the source of truth. Export the collection and environment, load them in Java, override only what your test needs, resolve Postman-style templates, and execute the final request with the executor you prefer.
+
+---
+
+## Modules
+
+This repository is one GitHub project with multiple Maven modules:
+
+```text
+jpostman/
+├── pom.xml                    # parent Maven build
+├── jpostman-core/             # framework-neutral parser, model, templates, and ApiResponse
+├── jpostman-httpclient/       # optional Java 11 HttpClient executor
+├── jpostman-restassured/      # optional REST Assured executor adapter
+├── jpostman-playwright/       # optional Playwright APIRequestContext executor adapter
+├── jpostman-unirest/          # optional Unirest executor adapter
+└── jpostman-examples/         # sample TestNG tests; not published to Maven Central
+```
+
+`jpostman-core` has no dependency on REST Assured, Playwright, or Unirest. Each executor is published as a separate artifact so users install only the client they need.
+
+---
+
+## Installation
+
+Use the core module when you want to parse Postman exports, build requests, resolve variables, and use the framework-neutral API.
+
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-core</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+Add one optional executor when you want JPostman to execute requests for you.
+
+### Java 11 HttpClient executor
+
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-httpclient</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
+### REST Assured executor
+
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-restassured</artifactId>
+    <version>1.0.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+### Playwright executor
+
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-playwright</artifactId>
+    <version>1.0.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+### Unirest executor
+
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-unirest</artifactId>
+    <version>1.0.0</version>
+    <scope>test</scope>
+</dependency>
+```
+
+---
+
+## Exporting from Postman
+
+Export your Postman collection and environment, then place them under your test resources:
+
+```text
+src/test/resources/DummyJSON.postman_collection.json
+src/test/resources/DummyJSON.postman_environment.json
+```
+
+### Export Collection
+
+![Postman collection export](collections.png)
+
+### Export Environment
+
+![Postman environment export](environments.png)
+
+---
+
+## Basic Usage
+
+```java
+Collection collection = Collection.load(
+        getClass().getClassLoader().getResourceAsStream("DummyJSON.postman_collection.json"));
+
+Environment environment = Environment.load(
+        getClass().getClassLoader().getResourceAsStream("DummyJSON.postman_environment.json"));
+
+Request template = collection.getRequest("Login user and get tokens");
+Request request = template.builder().build(environment);
+```
+
+`build(environment)` resolves remaining `{{variable}}` templates using enabled environment values.
+
+---
+
+## Execute with Java HttpClient
+
+```java
+import io.jpostman.ApiResponse;
+import io.jpostman.executor.HttpClientExecutor;
+
+ApiResponse response = HttpClientExecutor.execute(request);
+
+int status = response.statusCode();
+String token = response.path("accessToken");
+```
+
+For a shared cookie/session flow:
+
+```java
+HttpClientExecutor executor = HttpClientExecutor.create();
+
+ApiResponse login = executor.setRequest(loginRequest).response();
+ApiResponse user = executor.setRequest(userRequest).response();
+```
+
+---
+
+## Execute with REST Assured
+
+Use JPostman's framework-neutral response:
+
+```java
+import io.jpostman.ApiResponse;
+import io.jpostman.restassured.RestAssuredExecutor;
+
+ApiResponse response = RestAssuredExecutor
+        .apply(request)
+        .auth()
+        .oauth2(token)
+        .response();
+```
+
+Or keep the native REST Assured style:
+
+```java
+import static io.restassured.RestAssured.given;
+import io.jpostman.restassured.RestAssuredExecutor;
+
+Response response = RestAssuredExecutor.execute(request, given())
+        .then()
+        .statusCode(200)
+        .extract()
+        .response();
+```
+
+---
+
+## Execute with Playwright
+
+```java
+import io.jpostman.ApiResponse;
+import io.jpostman.playwright.PlaywrightExecutor;
+
+try (PlaywrightExecutor executor = new PlaywrightExecutor()) {
+    ApiResponse response = executor.execute(request);
+}
+```
+
+---
+
+## Supported Postman Request Parts
+
+JPostman parses and applies common Postman request components:
+
+- Collection folders and requests
+- URLs and enabled URL query parameters
+- Enabled headers
+- Auth parameters
+- Raw JSON bodies
+- Raw text, XML, and template bodies
+- Environment variables
+- Postman-style template replacement such as `{{base_url}}`, `{{username}}`, `{{password}}`, and `{{accessToken}}`
+
+Disabled Postman headers, query parameters, and environment variables are preserved internally but skipped during normal execution and variable resolution.
+
+---
+
+## Fluent Request Overrides
+
+Override only the values needed for a test:
+
+```java
+Request request = template.builder()
+        .url(u -> u.set("text", "Hello World"))
+        .headers(h -> h.add("X-Test", "123"))
+        .auth(a -> a.set("token", "my-token"))
+        .body(b -> b.set("username", "emilys"))
+        .build(environment);
+```
+
+Use `add(...)` to create or overwrite a value. Use `set(...)` when the key must already exist in the Postman export.
+
+Nested style is also supported:
+
+```java
+Request request = template.builder()
+        .url()
+            .set("text", "Hello World")
+        .end()
+        .build(environment);
+```
+
+---
+
+## Body Handling
+
+### JSON body field mutation
+
+Use `body().set(...)` and `body().add(...)` for top-level JSON object fields.
+
+Postman raw JSON body:
+
+```json
+{
+    "username": "{{username}}",
+    "password": "{{password}}"
+}
+```
+
+Builder:
+
+```java
+Request request = template.builder()
+        .body()
+            .set("username", "emilys")
+            .add("age", 21)
+        .build(environment);
+```
+
+Final body:
+
+```json
+{
+    "username": "emilys",
+    "password": "resolved-from-environment",
+    "age": 21
+}
+```
+
+### Deferred JSON body mutation
+
+JPostman can queue `body().set(...)` and `body().add(...)` when the raw body is not valid JSON yet because of an unquoted template token.
+
+Postman raw body:
+
+```json
+{
+    "username": {{TOKEN}},
+    "password": "{{password}}"
+}
+```
+
+Builder:
+
+```java
+Request request = template.builder()
+        .body()
+            .set("password", "emilyspass")
+            .add("age", 21)
+            .json("TOKEN", "emilys")
+        .build();
+```
+
+Final body:
+
+```json
+{
+    "username": "emilys",
+    "password": "emilyspass",
+    "age": 21
+}
+```
+
+If the body never becomes a JSON object, `add(...)` or `set(...)` throws an error explaining that a JSON object body is required.
+
+### Raw text and XML body templates
+
+For raw text or XML bodies, use template resolution instead of JSON field mutation.
+
+```xml
+<id>{{USER_ID}}</id>
+```
+
+```java
+Environment environment = new Environment("Test Env")
+        .builder()
+        .add("USER_ID", "42")
+        .end();
+
+Request request = template.builder().build(environment);
+```
+
+Resolved body:
+
+```xml
+<id>42</id>
+```
+
+`body().set(...)` means “update a JSON object field,” not “replace any template variable.”
+
+---
+
+## Local Template Values with `map(...)` and `json(...)`
+
+Local request-part values are resolved before `build(environment)`, so they have higher priority than environment values. Tokens not provided locally remain available for final environment resolution.
+
+Use `map(...)` for normal template replacement:
+
+```java
+Request request = template.builder()
+        .url()
+            .set("q", "find")
+            .map("TOKEN", "login")
+        .build(environment);
+```
+
+For JSON bodies, use `map(...)` when the placeholder is already inside quotes:
+
+```json
+{
+    "age": "{{age}}"
+}
+```
+
+```java
+Request request = template.builder()
+        .body()
+            .map("age", 25)
+        .build();
+```
+
+Final body:
+
+```json
+{
+    "age": "25"
+}
+```
+
+Use `json(...)` when a raw JSON body has unquoted template placeholders and string values must become JSON-safe strings:
+
+```json
+{
+    "username": {{username}},
+    "age": {{age}},
+    "active": {{active}}
+}
+```
+
+```java
+Request request = template.builder()
+        .body()
+            .json("username", "emmy", "age", 25, "active", true)
+        .build();
+```
+
+Final body:
+
+```json
+{
+    "username": "emmy",
+    "age": 25,
+    "active": true
+}
+```
+
+Rule of thumb:
+
+```json
+"username": "{{username}}"
+```
+
+Use `map(...)`.
+
+```json
+"username": {{username}}
+```
+
+Use `json(...)`.
+
+---
+
+## Reusable Variable Helpers
+
+Use `Params.asMap(...)` and `Params.asJson(...)` when you want reusable local variables without Java's `Map.of(...)` entry limit.
+
+```java
+Map<String, Object> params = Params.asMap("key", "value");
+Map<String, Object> jsonParams = Params.asJson("username", "emmy", "age", 25);
+```
+
+Use `Params.asList(...)` for mutable list values and `Params.copy(...)` to merge maps. Later maps override duplicate keys and `null` maps are ignored.
+
+```java
+Map<String, Object> merged = Params.copy(defaults, overrides);
+List<String> roles = Params.asList("admin", "tester");
+```
+
+---
+
+## Enabled vs Raw Parameter Values
+
+Most request builders use enabled values only. Disabled Postman entries are preserved, but skipped during normal request preparation.
+
+Use `get(...)` when you want the active value only:
+
+```java
+String token = environment.get("accessToken");
+```
+
+Use `raw(...)` when you want the stored value even if the entry is disabled:
+
+```java
+String token = environment.raw("accessToken");
+```
+
+---
+
+## Build
+
+Build all modules:
+
+```bash
+mvn clean verify
+```
+
+The examples module compiles but skips live example test execution by default. To run the examples explicitly:
+
+```bash
+mvn -pl jpostman-examples test -Dskip.example.tests=false
+```
+
+Generated library artifacts:
+
+```text
+jpostman-core/target/jpostman-core-1.0.0.jar
+jpostman-httpclient/target/jpostman-httpclient-1.0.0.jar
+jpostman-restassured/target/jpostman-restassured-1.0.0.jar
+jpostman-playwright/target/jpostman-playwright-1.0.0.jar
+jpostman-unirest/target/jpostman-unirest-1.0.0.jar
+```
+
+---
+
+## CI, Coverage, and Release
+
+The build workflow runs the full multi-module Maven build:
+
+```bash
+mvn --batch-mode clean verify -Dskip.example.tests=true
+```
+
+Only `jpostman-core` currently owns unit tests and a JaCoCo report, so Codecov is intentionally uploaded from:
+
+```text
+jpostman-core/target/site/jacoco/jacoco.xml
+```
+
+The release workflow runs on version tags matching `v*.*.*`, signs artifacts, and publishes the parent POM plus core/executor modules to Maven Central. `jpostman-examples` is excluded from publishing.
+
+---
+
+## Troubleshooting
+
+### `Body builder add/set requires a JSON object body`
+
+This means `body().add(...)` or `body().set(...)` was used on a body that did not become a JSON object. For XML/text, use environment or part-level template resolution instead of JSON field mutation.
+
+### `Body key not found: 'KEY'`
+
+This means `body().set("KEY", value)` was used, but the resolved JSON body did not contain that field. Use `add(...)` if you want to create a new field.
+
+### `URL query parameter not found: 'KEY'`
+
+This means `url().set("KEY", value)` was used, but the query parameter does not exist in the Postman URL/query list. Use `url().add(...)` if you want to create a new query parameter.
+
+### Unknown template variables become empty
+
+Final request-level resolution uses Handlebars behavior. If a template variable is missing from the supplied map or environment, it renders as an empty value.
+
+---
+
+## Recommended Usage
+
+- Keep request definitions in Postman.
+- Use `build(environment)` for request-wide `{{KEY}}` resolution.
+- Use `.url(...)`, `.headers(...)`, `.auth(...)`, and `.body(...)` for targeted overrides.
+- Use `.map(...)` for normal local token replacement.
+- Use `.json(...)` for unquoted raw JSON placeholders that need JSON-safe string values.
+- Use `.get(key)` for enabled values and `.raw(key)` when disabled values should also be readable.
+- Choose exactly one optional executor module for your test framework.
