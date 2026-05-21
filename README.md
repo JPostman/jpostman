@@ -3,7 +3,7 @@
 ![Java](https://img.shields.io/badge/Java-11%2B-orange)
 [![Build](https://github.com/JPostman/jpostman/actions/workflows/build.yml/badge.svg)](https://github.com/JPostman/jpostman/actions/workflows/build.yml)
 ![Maven](https://img.shields.io/badge/Maven-3.x-blue)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.jpostman/jpostman-core)](https://central.sonatype.com/artifact/io.github.jpostman/jpostman-core)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.jpostman/jpostman-core)](https://central.sonatype.com/namespace/io.github.jpostman)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/JPostman/jpostman)
 ![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)
 ![License](https://img.shields.io/github/license/JPostman/jpostman)
