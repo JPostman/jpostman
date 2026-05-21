@@ -28,8 +28,13 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: GPG_PASSPHRASE
 
-      - name: Build, test, sign, and publish core plus executors
-        run: mvn --batch-mode clean deploy -Dskip.example.tests=true -Dgpg.skip=false -Dcentral.skipPublishing=false
+      - name: Publish parent, core, and executors to Maven Central
+        run: >
+          mvn --batch-mode clean deploy
+          -DskipTests
+          -Dgpg.skip=false
+          -DskipPublishing=false
+          -pl .,jpostman-core,jpostman-httpclient,jpostman-restassured,jpostman-playwright,jpostman-unirest
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
