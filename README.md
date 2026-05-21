@@ -1,12 +1,12 @@
 # JPostman
 
-![Java](https://img.shields.io/badge/Java-11%2B-orange)
+[![Java](https://img.shields.io/badge/Java-11%2B-orange)](https://www.oracle.com/java/technologies/javase/jdk11-archive-downloads.html)
 [![Build](https://github.com/JPostman/jpostman/actions/workflows/build.yml/badge.svg)](https://github.com/JPostman/jpostman/actions/workflows/build.yml)
-![Maven](https://img.shields.io/badge/Maven-3.x-blue)
+[![Maven](https://img.shields.io/badge/Maven-3.x-blue)](https://repo1.maven.org/maven2/io/github/jpostman/)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.jpostman/jpostman-core)](https://central.sonatype.com/namespace/io.github.jpostman)
-![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/JPostman/jpostman)
-![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)
-![License](https://img.shields.io/github/license/JPostman/jpostman)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/JPostman/jpostman)](https://github.com/JPostman/jpostman/releases)
+[![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)](https://app.codecov.io/gh/JPostman/jpostman)
+[![License](https://img.shields.io/github/license/JPostman/jpostman)](https://raw.githubusercontent.com/JPostman/jpostman/refs/heads/main/LICENSE)
 
 <a href="https://repo1.maven.org/maven2/io/github/jpostman/"><img src="logo.png" width="100" alt="JPostman logo"></a>
 
