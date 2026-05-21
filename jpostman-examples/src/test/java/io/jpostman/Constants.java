@@ -17,6 +17,6 @@ public class Constants {
 	public static final String COLLECTION_FILE = "DummyJSON.postman_collection.json";
 	public static final String ENVIRONMENT_FILE = "DummyJSON.postman_environment.json";
 
-	public static final InputStream COLLECTION = TestCoverage.class.getClassLoader().getResourceAsStream(COLLECTION_FILE);
-	public static final InputStream ENVIRONMENT = TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE);
+	public static final InputStream COLLECTION = Constants.class.getClassLoader().getResourceAsStream(COLLECTION_FILE);
+	public static final InputStream ENVIRONMENT = Constants.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE);
 }

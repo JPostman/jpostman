@@ -36,10 +36,10 @@ public class TestRestAssured {
 	@BeforeClass
 	public void load() throws Exception {
 		// Load exported Postman collection from classpath resources.
-		col = Collection.load(TestCoverage.class.getClassLoader().getResourceAsStream(COLLECTION_FILE));
+		col = Collection.load(Constants.class.getClassLoader().getResourceAsStream(COLLECTION_FILE));
 
 		// Load exported Postman environment from classpath resources.
-		env = Environment.load(TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
+		env = Environment.load(Constants.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
 
 		// Cache Product folder for product-related API tests.
 		folder = col.getFolder(PRODUCT_FOLDER);
