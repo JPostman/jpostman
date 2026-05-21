@@ -8,7 +8,7 @@
 ![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)
 ![License](https://img.shields.io/github/license/JPostman/jpostman)
 
-<a href="https://central.sonatype.com/artifact/io.github.jpostman/jpostman-core"><img src="logo.png" width="100" alt="JPostman logo"></a>
+<a href="https://repo1.maven.org/maven2/io/github/jpostman/"><img src="logo.png" width="100" alt="JPostman logo"></a>
 
 **JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
 
@@ -451,50 +451,6 @@ Use `raw(...)` when you want the stored value even if the entry is disabled:
 ```java
 String token = environment.raw("accessToken");
 ```
-
----
-
-## Build
-
-Build all modules:
-
-```bash
-mvn clean verify
-```
-
-The examples module compiles but skips live example test execution by default. To run the examples explicitly:
-
-```bash
-mvn -pl jpostman-examples test -Dskip.example.tests=false
-```
-
-Generated library artifacts:
-
-```text
-jpostman-core/target/jpostman-core-1.0.0.jar
-jpostman-httpclient/target/jpostman-httpclient-1.0.0.jar
-jpostman-restassured/target/jpostman-restassured-1.0.0.jar
-jpostman-playwright/target/jpostman-playwright-1.0.0.jar
-jpostman-unirest/target/jpostman-unirest-1.0.0.jar
-```
-
----
-
-## CI, Coverage, and Release
-
-The build workflow runs the full multi-module Maven build:
-
-```bash
-mvn --batch-mode clean verify -Dskip.example.tests=true
-```
-
-Only `jpostman-core` currently owns unit tests and a JaCoCo report, so Codecov is intentionally uploaded from:
-
-```text
-jpostman-core/target/site/jacoco/jacoco.xml
-```
-
-The release workflow runs on version tags matching `v*.*.*`, signs artifacts, and publishes the parent POM plus core/executor modules to Maven Central. `jpostman-examples` is excluded from publishing.
 
 ---
 
