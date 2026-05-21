@@ -276,7 +276,7 @@ public class Body {
 		return mode;
 	}
 
-	/** @return raw body text that will be sent by {@link Request#apply}. */
+	/** @return raw body text that will be sent with the request. */
 	public String getRaw() {
 		return raw;
 	}
