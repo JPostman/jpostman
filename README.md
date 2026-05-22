@@ -43,7 +43,7 @@ Use the core module when you want to parse Postman exports, build requests, reso
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-core</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -55,7 +55,7 @@ Add one optional executor when you want JPostman to execute requests for you.
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-httpclient</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -65,7 +65,7 @@ Add one optional executor when you want JPostman to execute requests for you.
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-restassured</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -76,7 +76,7 @@ Add one optional executor when you want JPostman to execute requests for you.
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-playwright</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -87,7 +87,7 @@ Add one optional executor when you want JPostman to execute requests for you.
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-unirest</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <scope>test</scope>
 </dependency>
 ```

@@ -7,3 +7,4 @@ target/
 .DS_Store
 test-output/
 jpostman-examples/src/test/resources/hello_world.png
+social.png

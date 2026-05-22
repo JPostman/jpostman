@@ -260,7 +260,8 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 		}
 
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)) {
+			if (name != null && !name.isBlank() && value != null && 
+					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
 				options.setHeader(name, value);
 			}
 		});

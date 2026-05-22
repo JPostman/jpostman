@@ -271,7 +271,8 @@ public final class RestAssuredExecutor implements ApiExecutor {
 		RequestSpecification spec = cookieFilter == null ? RestAssured.given() : RestAssured.given().filter(cookieFilter);
 
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)) {
+			if (name != null && !name.isBlank() && value != null && 
+					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
 				spec.header(name, value);
 			}
 		});

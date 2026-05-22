@@ -272,7 +272,8 @@ public final class UnirestExecutor implements ApiExecutor {
 	 */
 	private <T extends HttpRequest> T applyHeaders(T httpRequest, Request request) {
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)) {
+			if (name != null && !name.isBlank() && value != null && 
+					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
 				httpRequest.header(name, value);
 			}
 		});

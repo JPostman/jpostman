@@ -281,7 +281,8 @@ public class HttpClientExecutor implements ApiExecutor {
 	 */
 	private void applyRequestHeaders(Request request, HttpRequest.Builder builder) {
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)) {
+			if (name != null && !name.isBlank() && value != null && 
+					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
 				builder.header(name, value);
 			}
 		});
