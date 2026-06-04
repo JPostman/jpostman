@@ -103,13 +103,15 @@ src/test/resources/DummyJSON.postman_collection.json
 src/test/resources/DummyJSON.postman_environment.json
 ```
 
-### Export Collection
+### Export Postman Collection and Environment
 
-![Postman collection export](collections.png)
+Watch this short video showing how to export a Postman collection and environment:
 
-### Export Environment
+<a href="https://www.youtube.com/watch?v=UxFjeONEq60" target="_blank">
+  <img src="https://img.youtube.com/vi/UxFjeONEq60/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
+</a>
 
-![Postman environment export](environments.png)
+JPostmanApi: https://www.youtube.com/@JPostmanApi
 
 ---
 

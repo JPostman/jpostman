@@ -20,6 +20,7 @@
 		<module>jpostman-restassured</module>
 		<module>jpostman-playwright</module>
 		<module>jpostman-unirest</module>
+		<module>jpostman-vault</module>
 		<module>jpostman-examples</module>
 	</modules>
 

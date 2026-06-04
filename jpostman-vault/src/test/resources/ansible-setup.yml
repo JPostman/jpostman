@@ -1,0 +1,179 @@
+---
+- name: Set up JPostman local Vault test environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    vault_container_name: local-vault
+    ldap_container_name: local-openldap
+    docker_network_name: vault-test-net
+
+    vault_image: hashicorp/vault
+    ldap_image: osixia/openldap:1.5.0
+
+    vault_addr: http://127.0.0.1:8200
+    vault_root_token: root
+
+    ldap_organisation: JPostman
+    ldap_domain: jpostman.io
+    ldap_admin_password: adminpass
+    ldap_admin_dn: cn=admin,dc=jpostman,dc=io
+
+    # This playbook is stored directly under src/test/resources.
+    # The setup script and LDIF file are expected in the same folder.
+    resources_dir: "{{ playbook_dir }}"
+
+    # Optional GitHub Vault auth configuration.
+    github_org: "{{ lookup('env', 'GITHUB_ORG') | default('', true) }}"
+    github_user: "{{ lookup('env', 'GITHUB_USER') | default('', true) }}"
+    vault_github_token: "{{ lookup('env', 'VAULT_GITHUB_TOKEN') | default('', true) }}"
+
+  tasks:
+    - name: Verify Docker CLI is available
+      command: docker --version
+      changed_when: false
+
+    - name: Pull Vault image
+      command: "docker pull {{ vault_image }}"
+      changed_when: "'Downloaded newer image' in docker_pull_vault.stdout"
+      register: docker_pull_vault
+
+    - name: Pull OpenLDAP image
+      command: "docker pull {{ ldap_image }}"
+      changed_when: "'Downloaded newer image' in docker_pull_ldap.stdout"
+      register: docker_pull_ldap
+
+    - name: Check whether Vault container exists
+      command: "docker inspect {{ vault_container_name }}"
+      register: vault_container_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Start Vault dev container in background
+      command: >-
+        docker run -d
+        --cap-add=IPC_LOCK
+        -e VAULT_DEV_ROOT_TOKEN_ID={{ vault_root_token }}
+        -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+        -p 8200:8200
+        --name {{ vault_container_name }}
+        {{ vault_image }}
+      when: vault_container_inspect.rc != 0
+
+    - name: Check whether OpenLDAP container exists
+      command: "docker inspect {{ ldap_container_name }}"
+      register: ldap_container_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Start OpenLDAP container in background
+      command: >-
+        docker run -d
+        --name {{ ldap_container_name }}
+        -p 389:389
+        -e LDAP_ORGANISATION={{ ldap_organisation | quote }}
+        -e LDAP_DOMAIN={{ ldap_domain | quote }}
+        -e LDAP_ADMIN_PASSWORD={{ ldap_admin_password | quote }}
+        {{ ldap_image }}
+      when: ldap_container_inspect.rc != 0
+
+    - name: Create Docker network for Vault and LDAP
+      shell: "docker network create {{ docker_network_name }} >/dev/null 2>&1 || true"
+      changed_when: false
+
+    - name: Connect Vault container to Docker network
+      shell: "docker network connect {{ docker_network_name }} {{ vault_container_name }} >/dev/null 2>&1 || true"
+      changed_when: false
+
+    - name: Connect OpenLDAP container to Docker network
+      shell: "docker network connect {{ docker_network_name }} {{ ldap_container_name }} >/dev/null 2>&1 || true"
+      changed_when: false
+
+    - name: Wait for Vault to be ready
+      shell: >-
+        docker exec {{ vault_container_name }} sh -c
+        'export VAULT_ADDR={{ vault_addr }} && vault status >/dev/null'
+      register: vault_status
+      retries: 20
+      delay: 2
+      until: vault_status.rc == 0
+      changed_when: false
+
+    - name: Wait for OpenLDAP to accept ldapadd commands
+      shell: >-
+        docker exec {{ ldap_container_name }} ldapsearch
+        -x
+        -D "{{ ldap_admin_dn }}"
+        -w "{{ ldap_admin_password }}"
+        -b "dc=jpostman,dc=io"
+        >/dev/null 2>&1
+      register: ldap_status
+      retries: 20
+      delay: 2
+      until: ldap_status.rc == 0
+      changed_when: false
+
+    - name: Copy LDAP test user file into OpenLDAP container
+      command: "docker cp {{ resources_dir }}/testuser.ldif {{ ldap_container_name }}:/tmp/testuser.ldif"
+
+    - name: Import LDAP test user
+      shell: >-
+        docker exec {{ ldap_container_name }}
+        ldapadd -x
+        -D "{{ ldap_admin_dn }}"
+        -w "{{ ldap_admin_password }}"
+        -f /tmp/testuser.ldif
+        >/tmp/ldapadd.out 2>&1 || true
+      changed_when: false
+
+    - name: Normalize setup script line endings for Linux container
+      shell: "tr -d '\\r' < {{ resources_dir }}/setup-vault-local.sh > /tmp/setup-vault-local.ansible.sh"
+      changed_when: false
+
+    - name: Copy Vault setup script into Vault container
+      command: "docker cp /tmp/setup-vault-local.ansible.sh {{ vault_container_name }}:/tmp/setup-vault-local.sh"
+
+    - name: Run Vault setup script without GitHub auth
+      command: "docker exec -i --user root {{ vault_container_name }} sh /tmp/setup-vault-local.sh"
+      when: github_org | length == 0
+
+    - name: Run Vault setup script with GitHub org only
+      command: >-
+        docker exec -i --user root
+        -e GITHUB_ORG={{ github_org | quote }}
+        {{ vault_container_name }} sh /tmp/setup-vault-local.sh
+      when:
+        - github_org | length > 0
+        - github_user | length == 0
+
+    - name: Run Vault setup script with GitHub org and user mapping
+      command: >-
+        docker exec -i --user root
+        -e GITHUB_ORG={{ github_org | quote }}
+        -e GITHUB_USER={{ github_user | quote }}
+        {{ vault_container_name }} sh /tmp/setup-vault-local.sh
+      when:
+        - github_org | length > 0
+        - github_user | length > 0
+
+    - name: Copy generated vault-local.properties back to resources folder
+      command: >-
+        docker cp
+        {{ vault_container_name }}:/tmp/vault-local.generated.properties
+        {{ resources_dir }}/vault-local.properties
+
+    - name: Set VAULT_GITHUB_TOKEN in generated properties when provided
+      lineinfile:
+        path: "{{ resources_dir }}/vault-local.properties"
+        regexp: '^VAULT_GITHUB_TOKEN='
+        line: "VAULT_GITHUB_TOKEN={{ vault_github_token }}"
+      when: vault_github_token | length > 0
+
+    - name: Show completion message
+      debug:
+        msg:
+          - "Local Vault test environment is ready."
+          - "Generated file: {{ resources_dir }}/vault-local.properties"
+          - "GitHub PAT is not generated by Vault. If VAULT_GITHUB_TOKEN was provided to Ansible, it was written to vault-local.properties."
+          - "Run tests from the jpostman-vault module: mvn clean test -Dtest=VaultClientFactoryTest"
