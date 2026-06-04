@@ -28,6 +28,8 @@ jpostman/
 ├── jpostman-restassured/      # optional REST Assured executor adapter
 ├── jpostman-playwright/       # optional Playwright APIRequestContext executor adapter
 ├── jpostman-unirest/          # optional Unirest executor adapter
+├── jpostman-vault/            # Vault authentication and secret loading helpers
+├── jpostman-github/           # GitHub Actions variable and secret integration utilities
 └── jpostman-examples/         # sample TestNG tests; not published to Maven Central
 ```
 
