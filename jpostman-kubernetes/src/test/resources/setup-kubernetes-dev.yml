@@ -1,0 +1,208 @@
+---
+- name: Set up JPostman Kubernetes dev resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    kind_cluster_name: "{{ lookup('env', 'KIND_CLUSTER_NAME') | default('jpostman-dev', true) }}"
+    kube_namespace: "{{ lookup('env', 'KUBE_NAMESPACE') | default('jpostman-dev', true) }}"
+    kube_service_account_name: "{{ lookup('env', 'KUBE_SERVICE_ACCOUNT_NAME') | default('jpostman-test-runner', true) }}"
+    kube_role_name: "{{ lookup('env', 'KUBE_ROLE_NAME') | default('jpostman-kubernetes-test', true) }}"
+    kube_role_binding_name: "{{ lookup('env', 'KUBE_ROLE_BINDING_NAME') | default('jpostman-kubernetes-test-binding', true) }}"
+    kube_config_map_name: "{{ lookup('env', 'KUBE_CONFIG_MAP_NAME') | default('jpostman-test-config', true) }}"
+    kube_secret_name: "{{ lookup('env', 'KUBE_SECRET_NAME') | default('jpostman-test-secret', true) }}"
+    kube_pod_name: "{{ lookup('env', 'KUBE_POD_NAME') | default('jpostman-test-pod', true) }}"
+    kube_context_name: "kind-{{ kind_cluster_name }}"
+    generated_kubeconfig: "jpostman-kind-kubeconfig.yaml"
+    generated_properties: "kubernetes-local.properties"
+
+  tasks:
+    - name: Verify Docker is available
+      ansible.builtin.command: docker version
+      changed_when: false
+
+    - name: Verify kubectl is available
+      ansible.builtin.command: kubectl version --client=true
+      changed_when: false
+
+    - name: Verify kind is available
+      ansible.builtin.command: kind version
+      changed_when: false
+
+    - name: Check existing kind clusters
+      ansible.builtin.command: kind get clusters
+      register: kind_clusters
+      changed_when: false
+      failed_when: false
+
+    - name: Create kind Kubernetes cluster
+      ansible.builtin.command: "kind create cluster --name {{ kind_cluster_name }}"
+      when: kind_cluster_name not in kind_clusters.stdout_lines
+
+    - name: Wait for Kubernetes nodes to be ready
+      ansible.builtin.command: "kubectl --context {{ kube_context_name }} wait --for=condition=Ready nodes --all --timeout=180s"
+      changed_when: false
+
+    - name: Export kind kubeconfig for tests
+      ansible.builtin.command: "kind get kubeconfig --name {{ kind_cluster_name }}"
+      register: kind_kubeconfig
+      changed_when: false
+
+    - name: Write generated kubeconfig under test resources
+      ansible.builtin.copy:
+        dest: "{{ generated_kubeconfig }}"
+        content: "{{ kind_kubeconfig.stdout }}"
+        mode: "0600"
+
+    - name: Create namespace
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ kube_namespace }}"
+
+    - name: Create service account for JPostman tests
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: "{{ kube_service_account_name }}"
+            namespace: "{{ kube_namespace }}"
+
+    - name: Create RBAC role for ConfigMaps, Secrets, and Pods
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: "{{ kube_role_name }}"
+            namespace: "{{ kube_namespace }}"
+          rules:
+            - apiGroups: [""]
+              resources: ["configmaps", "secrets", "pods"]
+              verbs: ["get", "list", "create", "update", "patch", "delete"]
+
+    - name: Bind RBAC role to service account
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: "{{ kube_role_binding_name }}"
+            namespace: "{{ kube_namespace }}"
+          subjects:
+            - kind: ServiceAccount
+              name: "{{ kube_service_account_name }}"
+              namespace: "{{ kube_namespace }}"
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: "{{ kube_role_name }}"
+
+    - name: Create sample ConfigMap
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ kube_config_map_name }}"
+            namespace: "{{ kube_namespace }}"
+          data:
+            version: "1.0.1"
+            script: |
+              export KEY1=VALUE1
+              export KEY2=VALUE2
+
+    - name: Create sample Secret
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ kube_secret_name }}"
+            namespace: "{{ kube_namespace }}"
+          type: Opaque
+          stringData:
+            version: "1.0.1"
+            script: |
+              export KEY1=VALUE1
+              export KEY2=VALUE2
+
+    - name: Create test Pod with ConfigMap and Secret environment variables
+      kubernetes.core.k8s:
+        context: "{{ kube_context_name }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "{{ kube_pod_name }}"
+            namespace: "{{ kube_namespace }}"
+          spec:
+            serviceAccountName: "{{ kube_service_account_name }}"
+            restartPolicy: Never
+            containers:
+              - name: jpostman-test
+                image: busybox:1.36
+                command: ["sh", "-c", "env | sort && sleep 3600"]
+                env:
+                  - name: JPOSTMAN_CONFIG_VERSION
+                    valueFrom:
+                      configMapKeyRef:
+                        name: "{{ kube_config_map_name }}"
+                        key: version
+                  - name: JPOSTMAN_SECRET_VERSION
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ kube_secret_name }}"
+                        key: version
+                envFrom:
+                  - configMapRef:
+                      name: "{{ kube_config_map_name }}"
+                  - secretRef:
+                      name: "{{ kube_secret_name }}"
+
+    - name: Wait for test Pod to be ready
+      ansible.builtin.command: "kubectl --context {{ kube_context_name }} -n {{ kube_namespace }} wait --for=condition=Ready pod/{{ kube_pod_name }} --timeout=180s"
+      changed_when: false
+      failed_when: false
+
+    - name: Write kubernetes-local.properties under test resources
+      ansible.builtin.copy:
+        dest: "{{ generated_properties }}"
+        mode: "0644"
+        content: |
+          # Local Kubernetes integration test settings generated by Ansible.
+ 
+		  KUBECONFIG={{ generated_kubeconfig }}
+		  KUBE_CONFIG_MAP_NAME={{ kube_config_map_name }}
+		  KUBE_SECRET_NAME={{ kube_secret_name }}
+          KUBE_CONTEXT={{ kube_context_name }}
+          KUBE_NAMESPACE={{ kube_namespace }}
+          KUBE_POD_NAME={{ kube_pod_name }}
+          KUBE_SERVICE_ACCOUNT_NAME={{ kube_service_account_name }}
+
+    - name: Show next commands
+      ansible.builtin.debug:
+        msg:
+          - "JPostman Kubernetes dev environment is ready."
+          - "Run tests:"
+          - "mvn test -pl jpostman-kubernetes -DKUBECONFIG={{ generated_kubeconfig }} -DKUBE_NAMESPACE={{ kube_namespace }} -DKUBE_CONFIG_MAP_NAME={{ kube_config_map_name }} -DKUBE_SECRET_NAME={{ kube_secret_name }}"
+          - "Check pod env:"
+          - "kubectl --context {{ kube_context_name }} -n {{ kube_namespace }} logs {{ kube_pod_name }}"

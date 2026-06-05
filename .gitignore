@@ -15,3 +15,5 @@ test-output/
 jpostman-examples/src/test/resources/hello_world.png
 social.png
 jpostman-vault/src/test/resources/vault-local.properties
+jpostman-kubernetes/src/test/resources/jpostman-kind-kubeconfig.yaml
+jpostman-kubernetes/src/test/resources/kubernetes-local.properties

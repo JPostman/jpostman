@@ -21,6 +21,7 @@
 		<module>jpostman-playwright</module>
 		<module>jpostman-unirest</module>
 		<module>jpostman-github</module>
+		<module>jpostman-kubernetes</module>
 		<module>jpostman-vault</module>
 		<module>jpostman-examples</module>
 	</modules>
@@ -118,6 +119,11 @@
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-github</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>${project.groupId}</groupId>
+				<artifactId>jpostman-kubernetes</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

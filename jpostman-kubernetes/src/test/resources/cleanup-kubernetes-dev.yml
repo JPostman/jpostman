@@ -1,0 +1,14 @@
+---
+- name: Clean up JPostman Kubernetes dev cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    kind_cluster_name: "{{ lookup('env', 'KIND_CLUSTER_NAME') | default('jpostman-dev', true) }}"
+
+  tasks:
+    - name: Delete kind cluster
+      ansible.builtin.command: "kind delete cluster --name {{ kind_cluster_name }}"
+      changed_when: true

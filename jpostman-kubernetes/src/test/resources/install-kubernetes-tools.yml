@@ -1,0 +1,63 @@
+---
+- name: Install Docker, kubectl, and kind for JPostman Kubernetes dev setup
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    local_user: "{{ lookup('env', 'USER') }}"
+    kubectl_version: "{{ lookup('env', 'KUBECTL_VERSION') | default('v1.30.0', true) }}"
+    kind_version: "{{ lookup('env', 'KIND_VERSION') | default('v0.23.0', true) }}"
+
+  tasks:
+    - name: Install required OS packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+          - python3-kubernetes
+          - python3-yaml
+          - docker.io
+        state: present
+        update_cache: true
+
+    - name: Enable and start Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add current user to docker group
+      ansible.builtin.user:
+        name: "{{ local_user }}"
+        groups: docker
+        append: true
+      when: local_user is defined and local_user | length > 0
+
+    - name: Download kubectl
+      ansible.builtin.get_url:
+        url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: "0755"
+
+    - name: Download kind
+      ansible.builtin.get_url:
+        url: "https://kind.sigs.k8s.io/dl/{{ kind_version }}/kind-linux-amd64"
+        dest: /usr/local/bin/kind
+        mode: "0755"
+
+    - name: Show next step
+      ansible.builtin.debug:
+        msg:
+          - "Tools installed."
+          - "Restart your shell or WSL session if docker group membership changed."
+          - "Then verify:"
+          - "docker ps"
+          - "kubectl version --client=true"
+          - "kind version"
+          - "Then run:"
+          - "ansible-playbook -i localhost, -c local ansible/setup-kubernetes-dev.yml"
