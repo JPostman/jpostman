@@ -30,6 +30,7 @@ jpostman/
 ├── jpostman-unirest/          # optional Unirest executor adapter
 ├── jpostman-vault/            # Vault authentication and secret loading helpers
 ├── jpostman-github/           # GitHub Actions variable and secret integration utilities
+├── jpostman-kubernetes/       # Kubernetes ConfigMap and Secret loading helpers
 └── jpostman-examples/         # sample TestNG tests; not published to Maven Central
 ```
 
