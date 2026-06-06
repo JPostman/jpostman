@@ -8,7 +8,11 @@
 [![Coverage](https://codecov.io/gh/JPostman/jpostman/branch/main/graph/badge.svg?flag=jpostman-core)](https://app.codecov.io/gh/JPostman/jpostman)
 [![License](https://img.shields.io/github/license/JPostman/jpostman)](https://raw.githubusercontent.com/JPostman/jpostman/refs/heads/main/LICENSE)
 
-<a href="https://repo1.maven.org/maven2/io/github/jpostman/"><img src="logo.png" width="100" alt="JPostman logo"></a>
+<a href="https://www.youtube.com/@JPostmanApi"><img src="logo.png" width="100" alt="JPostman logo"></a>
+
+---
+
+[JPostman API Documentation](https://jpostman.github.io/jpostman/)
 
 **JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
 
@@ -20,21 +24,55 @@ Instead of copying request URLs, headers, authentication, query parameters, and 
 
 This repository is one GitHub project with multiple Maven modules:
 
-```text
-jpostman/
-├── pom.xml                    # parent Maven build
-├── jpostman-core/             # framework-neutral parser, model, templates, and ApiResponse
-├── jpostman-httpclient/       # optional Java 11 HttpClient executor
-├── jpostman-restassured/      # optional REST Assured executor adapter
-├── jpostman-playwright/       # optional Playwright APIRequestContext executor adapter
-├── jpostman-unirest/          # optional Unirest executor adapter
-├── jpostman-vault/            # Vault authentication and secret loading helpers
-├── jpostman-github/           # GitHub Actions variable and secret integration utilities
-├── jpostman-kubernetes/       # Kubernetes ConfigMap and Secret loading helpers
-└── jpostman-examples/         # sample TestNG tests; not published to Maven Central
-```
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-core/</code></a>
+  - Framework-neutral parser, model, templates, and <code>ApiResponse</code>
+</p>
 
-`jpostman-core` has no dependency on REST Assured, Playwright, or Unirest. Each executor is published as a separate artifact so users install only the client they need.
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-secure/</code></a>
+  - Secret-safe request and response helpers
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-httpclient/</code></a>
+  - Optional Java 11 HttpClient executor
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-restassured/</code></a>
+  - Optional REST Assured executor adapter
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-playwright/</code></a>
+  - Optional Playwright APIRequestContext executor adapter
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/unirest/UnirestExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-unirest/</code></a>
+  - Optional Unirest executor adapter
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/vault/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-vault/</code></a>
+  - Vault authentication and secret loading helpers
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/github/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-github/</code></a>
+  - GitHub Actions variable and secret integration utilities
+</p>
+
+<p>
+  <a href="https://jpostman.github.io/jpostman/io/jpostman/kubernetes/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-kubernetes/</code></a>
+  - Kubernetes ConfigMap and Secret loading helpers
+</p>
+
+<p>
+  <a href="https://github.com/JPostman/jpostman/tree/main/jpostman-examples/src/test/java/io/jpostman" target="_blank" rel="noopener noreferrer"><code>jpostman-examples/</code></a>
+  - Sample TestNG tests; not published to Maven Central
+</p>
 
 ---
 
