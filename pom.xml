@@ -20,6 +20,7 @@
 		<module>jpostman-restassured</module>
 		<module>jpostman-playwright</module>
 		<module>jpostman-unirest</module>
+		<module>jpostman-secure</module>
 		<module>jpostman-github</module>
 		<module>jpostman-kubernetes</module>
 		<module>jpostman-vault</module>
@@ -114,6 +115,11 @@
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-unirest</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>${project.groupId}</groupId>
+				<artifactId>jpostman-secure</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

@@ -38,7 +38,7 @@ jobs:
             -DskipTests \
             -Dgpg.skip=false \
             -Dcentral.skipPublishing=false \
-            -pl jpostman-kubernetes
+            -pl jpostman-secure
 
           # To publish all modules instead:
           # mvn --batch-mode clean deploy \
