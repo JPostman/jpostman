@@ -24,56 +24,18 @@ Instead of copying request URLs, headers, authentication, query parameters, and 
 
 This repository is one GitHub project with multiple Maven modules:
 
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-core/</code></a>
-  - Framework-neutral parser, model, templates, and <code>ApiResponse</code>
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-secure/</code></a>
-  - Secret-safe request and response helpers
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-httpclient/</code></a>
-  - Optional Java 11 HttpClient executor
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-restassured/</code></a>
-  - Optional REST Assured executor adapter
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-playwright/</code></a>
-  - Optional Playwright APIRequestContext executor adapter
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/unirest/UnirestExecutor.html" target="_blank" rel="noopener noreferrer"><code>jpostman-unirest/</code></a>
-  - Optional Unirest executor adapter
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/vault/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-vault/</code></a>
-  - Vault authentication and secret loading helpers
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/github/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-github/</code></a>
-  - GitHub Actions variable and secret integration utilities
-</p>
-
-<p>
-  <a href="https://jpostman.github.io/jpostman/io/jpostman/kubernetes/package-summary.html" target="_blank" rel="noopener noreferrer"><code>jpostman-kubernetes/</code></a>
-  - Kubernetes ConfigMap and Secret loading helpers
-</p>
-
-<p>
-  <a href="https://github.com/JPostman/jpostman/tree/main/jpostman-examples/src/test/java/io/jpostman" target="_blank" rel="noopener noreferrer"><code>jpostman-examples/</code></a>
-  - Sample TestNG tests; not published to Maven Central
-</p>
-
+|  |  |
+|---|---|
+| [`jpostman-core/`](https://jpostman.github.io/jpostman/io/jpostman/package-summary.html) | Framework-neutral parser, model, templates, and `ApiResponse` |
+| [`jpostman-secure/`](https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html) | Secret-safe request and response helpers |
+| [`jpostman-httpclient/`](https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html) | Optional Java 11 HttpClient executor |
+| [`jpostman-restassured/`](https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html) | Optional REST Assured executor adapter |
+| [`jpostman-playwright/`](https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html) | Optional Playwright APIRequestContext executor adapter |
+| [`jpostman-unirest/`](https://jpostman.github.io/jpostman/io/jpostman/unirest/UnirestExecutor.html) | Optional Unirest executor adapter |
+| [`jpostman-vault/`](https://jpostman.github.io/jpostman/io/jpostman/vault/package-summary.html) | Vault authentication and secret loading helpers |
+| [`jpostman-github/`](https://jpostman.github.io/jpostman/io/jpostman/github/package-summary.html) | GitHub Actions variable and secret integration utilities |
+| [`jpostman-kubernetes/`](https://jpostman.github.io/jpostman/io/jpostman/kubernetes/package-summary.html) | Kubernetes ConfigMap and Secret loading helpers |
+| [`jpostman-examples/`](https://github.com/JPostman/jpostman/tree/main/jpostman-examples/src/test/java/io/jpostman) | Sample TestNG tests; not published to Maven Central |
 ---
 
 ## Exporting from Postman
