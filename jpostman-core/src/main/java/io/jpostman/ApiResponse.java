@@ -72,6 +72,33 @@ public class ApiResponse {
 	}
 
 	/**
+	 * Checks whether a value exists in the JSON response body using a simple
+	 * dot/bracket path.
+	 *
+	 * <p>
+	 * This method returns {@code true} when the path resolves to a JSON element,
+	 * even if the value is JSON {@code null}. It returns {@code false} when the
+	 * body is not valid JSON or the path cannot be found.
+	 * </p>
+	 *
+	 * <p>
+	 * Examples:
+	 * </p>
+	 *
+	 * <pre>
+	 * boolean hasToken = response.exists("accessToken");
+	 * boolean hasProduct = response.exists("products[0]");
+	 * boolean hasTitle = response.exists("products[0].title");
+	 * </pre>
+	 *
+	 * @param path simple JSON path
+	 * @return {@code true} if the path exists
+	 */
+	public boolean exists(String path) {
+	    return Params.pathElement(parse(), path) != null;
+	}
+
+	/**
 	 * Reads a value from the JSON response body using a simple dot/bracket path.
 	 *
 	 * <p>

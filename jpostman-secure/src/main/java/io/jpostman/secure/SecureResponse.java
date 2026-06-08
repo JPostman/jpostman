@@ -18,6 +18,8 @@ public final class SecureResponse {
 
 	private static final Logger log = LoggerFactory.getLogger(SecureResponse.class);
 
+	private List<String> filters = List.of();
+
 	private final ApiResponse response;
 	private SecureValues secureValues = SecureValues.empty();
 	private RedactionPolicy redactionPolicy = RedactionPolicy.defaults();
@@ -94,6 +96,17 @@ public final class SecureResponse {
 		return this;
 	}
 
+	/**
+	 * Sets response filter rules.
+	 *
+	 * @param filters fields or JSON path rules to keep
+	 * @return this response
+	 */
+	public SecureResponse filters(List<String> filters) {
+		this.filters = filters == null ? List.of() : List.copyOf(filters);
+		return this;
+	}
+
 	/** @return HTTP status code. */
 	public int statusCode() {
 		return response.statusCode();
@@ -129,24 +142,79 @@ public final class SecureResponse {
 	}
 
 	/**
-	 * Reads a value from the JSON response body using a simple dot/bracket path.
+	 * Checks whether a value exists in the JSON response body.
 	 *
 	 * <p>
-	 * Examples:
+	 * This method supports simple dot/bracket paths and secure rule paths.
 	 * </p>
 	 *
 	 * <pre>
-	 * String token = response.path("accessToken");
-	 * Integer id = response.path("products[0].id");
-	 * String title = response.path("products[0].title");
+	 * response.exists("accessToken");
+	 * response.exists("products[0].id");
+	 * response.exists("/products/&#42;/reviews");
+	 * response.exists("/&#42;&#42;/reviews");
+	 * response.exists("regex:.*token.*");
+	 * response.exists("regex:/products/\\d+/reviews");
 	 * </pre>
 	 *
-	 * @param path simple JSON path
+	 * @param path simple JSON path, wildcard rule, or regex rule
+	 * @return {@code true} if the path or rule exists
+	 */
+	public boolean exists(String path) {
+		if (path == null || path.trim().isEmpty()) {
+			return false;
+		}
+
+		if (path.startsWith("/") || path.startsWith("regex:")) {
+			RedactionPolicy policy = RedactionPolicy.builder().protectRule(JsonPathRules.normalizeRule(path)).build();
+
+			return SecureText.exists(parse(), policy);
+		}
+
+		return Params.pathElement(parse(), path) != null;
+	}
+
+	/**
+	 * Reads a value from the JSON response body using a simple path.
+	 *
+	 * <p>
+	 * Supports normal dot/bracket syntax and slash-based exact path syntax.
+	 * </p>
+	 *
+	 * <pre>
+	 * String title = response.path("products[0].title");
+	 * String title = response.path("/products[0].title");
+	 * String title = response.path("/products[0]/title");
+	 * String title = response.path("/products/0/title");
+	 * </pre>
+	 *
+	 * @param path JSON path
 	 * @param <T>  expected return type
 	 * @return selected value converted to a Java value
 	 */
 	public <T> T path(String path) {
-		return Params.path(parse(), path);
+		return Params.path(parse(), JsonPathRules.toSimplePath(path));
+	}
+
+	/**
+	 * Reads all values from the JSON response body that match a path rule.
+	 *
+	 * <p>
+	 * Supports exact slash paths, wildcard paths, recursive wildcard paths, and
+	 * regex path rules.
+	 * </p>
+	 *
+	 * <pre>
+	 * List&lt;Integer&gt; ids = response.paths("/&#42;&#42;/id");
+	 * List&lt;String&gt; titles = response.paths("/products/&#42;/title");
+	 * </pre>
+	 *
+	 * @param rule JSON path rule
+	 * @param <T>  expected item type
+	 * @return matching values
+	 */
+	public <T> List<T> paths(String rule) {
+		return JsonPathRules.paths(parse(), rule);
 	}
 
 	/**
@@ -155,7 +223,8 @@ public final class SecureResponse {
 	 * <p>
 	 * JSON objects and arrays are returned as pretty-printed JSON. JSON string
 	 * primitives are returned as plain text without JSON quotes. If the response
-	 * body could not be parsed, the original raw body is returned.
+	 * body could not be parsed, the original raw body is returned. Sensitive values
+	 * are redacted.
 	 * </p>
 	 *
 	 * @return formatted response body text
@@ -165,7 +234,25 @@ public final class SecureResponse {
 	}
 
 	/**
-	 * Returns a readable response summary including status code, and body.
+	 * Returns the response body with configured filters applied.
+	 *
+	 * <p>
+	 * If no filters are configured, the full formatted response body is returned.
+	 * Sensitive values are redacted after filtering.
+	 * </p>
+	 *
+	 * @return filtered and redacted response body
+	 */
+	public String filtered() {
+		String body = response.pretty();
+		if (!filters.isEmpty()) {
+			body = SecureText.filter(body, filters);
+		}
+		return SecureText.redact(body, secureValues, redactionPolicy);
+	}
+
+	/**
+	 * Returns a readable response summary including status code and body.
 	 *
 	 * @return formatted response summary
 	 */
@@ -176,10 +263,27 @@ public final class SecureResponse {
 	/**
 	 * Returns a readable response summary including status code, headers, and body.
 	 *
+	 * <p>
+	 * If filters are configured, the log body includes only matching fields.
+	 * Sensitive values are redacted after filtering.
+	 * </p>
+	 *
+	 * @param all true to include response headers
 	 * @return formatted response summary
 	 */
 	public String log(boolean all) {
-		return SecureText.redact(response.log(all), secureValues, redactionPolicy);
+		StringBuilder sb = new StringBuilder();
+		sb.append(String.format("Status Code: %d\n", response.statusCode()));
+
+		if (all) {
+			response.getHeaders().entrySet().stream()
+					.map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
+					.forEach(sb::append);
+		}
+
+		sb.append(String.format("Body: %s\n", filtered()));
+
+		return sb.toString();
 	}
 
 	/** Logs this body at TRACE level. */

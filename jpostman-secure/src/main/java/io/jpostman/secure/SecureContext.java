@@ -5,10 +5,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import io.jpostman.ApiResponse;
 import io.jpostman.Environment;
+import io.jpostman.Params;
 import io.jpostman.Request;
 
 /**
@@ -24,6 +27,11 @@ public final class SecureContext {
 	private final SecureValues.Builder values = SecureValues.builder();
 
 	private RedactionPolicy redactionPolicy = RedactionPolicy.defaults();
+
+	private final List<String> filters = new ArrayList<>();
+
+	private SecureRequest request;
+	private SecureResponse response;
 
 	private SecureContext() {
 	}
@@ -79,6 +87,27 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Adds response fields that should be included in filtered output.
+	 *
+	 * <p>
+	 * Rules can be field names, wildcard JSON paths, or regex rules.
+	 * </p>
+	 *
+	 * <pre>
+	 * secure.filter("id", "title", "/reviews/&#42;/date", "/&#42;&#42;/rating");
+	 * </pre>
+	 *
+	 * @param rules filter rules
+	 * @return this context
+	 */
+	public SecureContext filter(String... rules) {
+		if (rules != null) {
+			filters.addAll(Params.asList(rules));
+		}
+		return this;
+	}
+
+	/**
 	 * Sets the redaction policy.
 	 *
 	 * @param redactionPolicy redaction policy
@@ -114,6 +143,24 @@ public final class SecureContext {
 	/**
 	 * Adds plain values used for request resolution.
 	 *
+	 * <p>
+	 * Values must be provided as key/value pairs.
+	 * </p>
+	 *
+	 * <pre>
+	 * secure.plain("username", "admin", "role", "tester");
+	 * </pre>
+	 *
+	 * @param values plain key/value pairs
+	 * @return this context
+	 */
+	public SecureContext plain(Object... values) {
+		return plain(Params.asMap(values));
+	}
+
+	/**
+	 * Adds plain values used for request resolution.
+	 *
 	 * @param values plain values
 	 * @return this context
 	 */
@@ -130,6 +177,24 @@ public final class SecureContext {
 	 */
 	public SecureContext plain(Environment values) {
 		return plain(values.getParams());
+	}
+
+	/**
+	 * Adds protected values used for request resolution.
+	 *
+	 * <p>
+	 * Values must be provided as key/value pairs.
+	 * </p>
+	 *
+	 * <pre>
+	 * secure.secret("username", "admin", "password", "secret");
+	 * </pre>
+	 *
+	 * @param values protected key/value pairs
+	 * @return this context
+	 */
+	public SecureContext secret(Object... values) {
+		return secret(Params.asMap(values));
 	}
 
 	/**
@@ -160,7 +225,8 @@ public final class SecureContext {
 	 * @return secure request
 	 */
 	public SecureRequest from(Request request) {
-		return SecureRequest.from(request).redactionPolicy(redactionPolicy).values(values.build());
+		this.response = null;
+		return this.request = SecureRequest.from(request).redactionPolicy(redactionPolicy).values(values.build());
 	}
 
 	/**
@@ -170,7 +236,8 @@ public final class SecureContext {
 	 * @return secure API response
 	 */
 	public SecureResponse from(ApiResponse response) {
-		return SecureResponse.from(response).redactionPolicy(redactionPolicy).values(values.build());
+		return this.response = SecureResponse.from(response).redactionPolicy(redactionPolicy).values(values.build())
+				.filters(filters);
 	}
 
 	/**
@@ -180,5 +247,37 @@ public final class SecureContext {
 	 */
 	public RedactionPolicy redactionPolicy() {
 		return redactionPolicy;
+	}
+
+	/**
+	 * Returns a secure log containing the latest wrapped request and response.
+	 *
+	 * @return request and response log
+	 */
+	public String log() {
+		return log(true);
+	}
+
+	/**
+	 * Returns a secure log containing the latest wrapped request and response.
+	 *
+	 * @param resolve true to show resolved review values; false to show original
+	 *                values
+	 * @return request and response log
+	 */
+	public String log(boolean resolve) {
+		StringBuilder sb = new StringBuilder();
+
+		if (request != null) {
+			sb.append("\n********** SecureRequest: **********\n");
+			sb.append(request.log(resolve));
+		}
+
+		if (response != null) {
+			sb.append("\n\n**********SecureResponse: **********\n");
+			sb.append(response.log(resolve));
+		}
+
+		return sb.toString();
 	}
 }

@@ -8,6 +8,7 @@ import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Authentication;
 import io.jpostman.Request;
+import io.jpostman.RequestProvider;
 import io.restassured.RestAssured;
 import io.restassured.filter.cookie.CookieFilter;
 import io.restassured.http.ContentType;
@@ -156,6 +157,16 @@ public final class RestAssuredExecutor implements ApiExecutor {
 	}
 
 	/**
+	 * Executes a request provided by a {@link RequestProvider}.
+	 *
+	 * @param requestProvider request provider
+	 * @return API response
+	 */
+	public static ApiResponse execute(RequestProvider requestProvider) {
+		return execute(requestProvider.build());
+	}
+
+	/**
 	 * Executes a request once using a default REST Assured specification and
 	 * returns a framework-neutral response.
 	 *
@@ -267,12 +278,14 @@ public final class RestAssuredExecutor implements ApiExecutor {
 	private RequestSpecification applyForResponse(Request request) {
 		// Build a fresh mutable specification for every execution so headers, body,
 		// and content type from one request do not leak into the next request. The
-		// shared CookieFilter is reapplied when this executor was created for session reuse.
-		RequestSpecification spec = cookieFilter == null ? RestAssured.given() : RestAssured.given().filter(cookieFilter);
+		// shared CookieFilter is reapplied when this executor was created for session
+		// reuse.
+		RequestSpecification spec = cookieFilter == null ? RestAssured.given()
+				: RestAssured.given().filter(cookieFilter);
 
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && 
-					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
+			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)
+					&& !runtimeHeaders.containsKey(name)) {
 				spec.header(name, value);
 			}
 		});
@@ -296,7 +309,6 @@ public final class RestAssuredExecutor implements ApiExecutor {
 
 		return spec;
 	}
-
 
 	private static boolean hasHeaderIgnoreCase(Map<String, String> headers, String headerName) {
 		return headers != null && headers.keySet().stream().anyMatch(headerName::equalsIgnoreCase);

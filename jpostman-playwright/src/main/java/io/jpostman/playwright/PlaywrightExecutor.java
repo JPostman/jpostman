@@ -14,6 +14,7 @@ import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Authentication;
 import io.jpostman.Request;
+import io.jpostman.RequestProvider;
 
 /**
  * This executor uses Playwright's API testing client only. It does not launch a
@@ -136,6 +137,16 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	 */
 	public static PlaywrightExecutor apply(Request request) {
 		return PlaywrightExecutor.create().setRequest(request);
+	}
+
+	/**
+	 * Executes a request provided by a {@link RequestProvider}.
+	 *
+	 * @param requestProvider request provider
+	 * @return API response
+	 */
+	public static ApiResponse execute(RequestProvider requestProvider) {
+	    return execute(requestProvider.build());
 	}
 
 	/**

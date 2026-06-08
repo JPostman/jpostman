@@ -8,17 +8,23 @@ import org.slf4j.LoggerFactory;
 
 import io.jpostman.Environment;
 import io.jpostman.Request;
+import io.jpostman.RequestProvider;
 
 /**
- * Secret-safe wrapper around a JPostman {@link Request}.
- *
+ * Provides a secure wrapper around a request.
  * <p>
- * The wrapper keeps real values in memory for request resolution. Normal print
- * and debug output stay safe because protected fields are redacted before they
- * are returned.
+ * This class can build two versions of the request:
+ * </p>
+ * <ul>
+ * <li>a resolved request for execution, containing the real secret values</li>
+ * <li>a redacted request for review, logging, or debugging</li>
+ * </ul>
+ * <p>
+ * Executors should execute the request returned by {@link #build()} and use
+ * {@link #review()} only for safe output.
  * </p>
  */
-public final class SecureRequest {
+public final class SecureRequest implements RequestProvider {
 
 	private static final Logger log = LoggerFactory.getLogger(SecureRequest.class);
 
@@ -148,7 +154,7 @@ public final class SecureRequest {
 	 *
 	 * @return key/value map using unmasked values
 	 */
-	private Map<String, String> resolveValues() {
+	private Map<String, ?> resolveValues() {
 		Map<String, String> result = new LinkedHashMap<>();
 		values.build().values().forEach((key, value) -> result.put(key, value.reveal()));
 		return result;
@@ -163,6 +169,7 @@ public final class SecureRequest {
 	 *
 	 * @return resolved request
 	 */
+	@Override
 	public Request build() {
 		Environment env = new Environment("jpostman-secure").builder().resolve(resolveValues()).end();
 		return request.builder().build(env);
@@ -173,8 +180,8 @@ public final class SecureRequest {
 	 *
 	 * @return safe debug output
 	 */
-	public String toDebugString() {
-		return toDebugString(false);
+	public String log() {
+		return log(true);
 	}
 
 	/**
@@ -183,11 +190,11 @@ public final class SecureRequest {
 	 * @param resolve true to resolve variables first
 	 * @return safe debug output
 	 */
-	public String toDebugString(boolean resolve) {
+	public String log(boolean resolve) {
 		if (resolve) {
-			return SecureText.redact(build().toDebugString(), values.build(), redactionPolicy);
+			return SecureText.redact(build().log(), values.build(), redactionPolicy);
 		}
-		return SecureText.redact(request.toDebugString(), redactionPolicy);
+		return SecureText.redact(request.log(), redactionPolicy);
 	}
 
 	/**
@@ -195,7 +202,7 @@ public final class SecureRequest {
 	 * body at TRACE level.
 	 */
 	public void print() {
-		print(false);
+		print(true);
 	}
 
 	/**
@@ -205,7 +212,7 @@ public final class SecureRequest {
 	 * @param resolve true to resolve variables first
 	 */
 	public void print(boolean resolve) {
-		log.trace(toDebugString(resolve));
+		log.trace(log(resolve));
 	}
 
 	/**

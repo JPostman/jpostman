@@ -11,11 +11,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Represents a single Postman request item parsed from a Collection v2.1
- * export. Use {@link #from(String, String, JsonObject)} to construct from raw
- * JSON.
+ * Represents an HTTP request.
+ * <p>
+ * A request contains the method, URL, headers, body, authentication, and other
+ * request data used by executors. It also implements {@link RequestProvider}
+ * so it can be passed directly to executors that accept request providers.
+ * </p>
  */
-public class Request {
+public final class Request implements RequestProvider {
 
 	private static final Logger log = LoggerFactory.getLogger(Request.class);
 
@@ -126,6 +129,11 @@ public class Request {
 	/** @return parsed request body. */
 	public Body getBody() {
 		return body;
+	}
+	
+	@Override
+	public Request build() {
+		return this;
 	}
 
 	/**
@@ -352,30 +360,25 @@ public class Request {
 			}
 
 			/**
-			 * Resolves this request part with local key/value pairs, then returns to the
-			 * parent request builder.
+			 * Builds this request after resolving variables from local key/value pairs.
 			 *
-			 * @param key   first key
-			 * @param value first value
-			 * @param rest  remaining alternating key/value pairs
+			 * @param values alternating key/value pairs
 			 * @return parent request builder
 			 */
-			public RequestBuilder map(String key, Object value, Object... rest) {
-				delegate.map(key, value, rest);
+			public RequestBuilder map(Object... values) {
+				delegate.map(values);
 				return RequestBuilder.this;
 			}
 
 			/**
-			 * Resolves this request part with local key/value pairs where String values are
-			 * JSON-stringified, then returns to the parent request builder.
+			 * Builds this request after resolving variables from local key/value pairs where
+			 * String values are JSON-stringified.
 			 *
-			 * @param key   first key
-			 * @param value first value
-			 * @param rest  remaining alternating key/value pairs
+			 * @param values alternating key/value pairs
 			 * @return parent request builder
 			 */
-			public RequestBuilder json(String key, Object value, Object... rest) {
-				delegate.json(key, value, rest);
+			public RequestBuilder json(Object... values) {
+				delegate.json(values);
 				return RequestBuilder.this;
 			}
 
@@ -403,11 +406,11 @@ public class Request {
 	 * body at TRACE level.
 	 */
 	public void print() {
-		log.trace(toDebugString());
+		log.trace(log());
 	}
 
 	/** Returns verbose diagnostic representation including details. */
-	public String toDebugString() {
+	public String log() {
 		StringBuilder sb = new StringBuilder();
 		sb.append(toString());
 		if (!description.isEmpty())

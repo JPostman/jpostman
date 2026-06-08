@@ -59,15 +59,25 @@ public class Environment {
 		});
 		return enabled;
 	}
-
+	
 	/**
 	 * Looks up parameter metadata by key.
 	 *
 	 * @param key parameter name
 	 * @return matching {@link Entry}, or {@code null} when absent
 	 */
-	public Entry getParam(String key) {
-		return params.get(key);
+	public Entry entry(String key) {
+	    return params.get(key);
+	}
+	
+	/**
+	 * Removes parameter metadata by key.
+	 *
+	 * @param key parameter name
+	 * @return removed {@link Entry}, or {@code null} when absent
+	 */
+	public Entry removeKey(String key) {
+	    return params.remove(key);
 	}
 
 	/**
@@ -77,8 +87,8 @@ public class Environment {
 	 * @return stored value, or {@code null} when absent
 	 */
 	public String raw(String key) {
-		Entry info = getParam(key);
-		return info != null ? info.value : null;
+		Entry entry = entry(key);
+		return entry != null ? entry.value : null;
 	}
 
 	/**
@@ -88,8 +98,8 @@ public class Environment {
 	 * @return value when present and enabled; otherwise {@code null}
 	 */
 	public String get(String key) {
-		Entry info = getParam(key);
-		return info != null && info.enabled ? info.value : null;
+		Entry entry = entry(key);
+		return entry != null && entry.enabled ? entry.value : null;
 	}
 
 	/**

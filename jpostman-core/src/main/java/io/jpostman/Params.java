@@ -117,25 +117,53 @@ public class Params<T> {
 	/**
 	 * Creates an ordered variable map from alternating key/value pairs.
 	 *
-	 * @param key   first variable name
-	 * @param value first variable value
-	 * @param rest  remaining key/value pairs
+	 * @param values alternating key/value pairs
 	 * @return ordered variable map
 	 */
-	public static Map<String, Object> asMap(String key, Object value, Object... rest) {
-		return toMap(false, key, value, rest);
+	public static Map<String, Object> asMap(Object... values) {
+		return toMap(false, values);
 	}
 
 	/**
 	 * Creates an ordered variable map and JSON-stringifies String values.
 	 *
-	 * @param key   first variable name
-	 * @param value first variable value
-	 * @param rest  remaining key/value pairs
+	 * @param values alternating key/value pairs
 	 * @return ordered JSON-ready variable map
 	 */
-	public static Map<String, Object> asJson(String key, Object value, Object... rest) {
-		return toMap(true, key, value, rest);
+	public static Map<String, Object> asJson(Object... values) {
+		return toMap(true, values);
+	}
+
+	/**
+	 * Converts alternating key/value pairs to an ordered map.
+	 *
+	 * @param json   whether to JSON-stringify String values
+	 * @param values alternating key/value pairs
+	 * @return ordered variable map
+	 */
+	private static Map<String, Object> toMap(boolean json, Object... values) {
+		if (values == null || values.length == 0) {
+			return Map.of();
+		}
+
+		if (values.length % 2 != 0) {
+			throw new IllegalArgumentException("Values must be provided as key/value pairs.");
+		}
+
+		Map<String, Object> result = new LinkedHashMap<>();
+
+		for (int i = 0; i < values.length; i += 2) {
+			Object rawKey = values[i];
+			Object rawValue = values[i + 1];
+
+			if (!(rawKey instanceof String)) {
+				throw new IllegalArgumentException("Key must be String. Found: " + rawKey);
+			}
+
+			result.put((String) rawKey, convertValue(rawValue, json));
+		}
+
+		return result;
 	}
 
 	/**
@@ -179,56 +207,22 @@ public class Params<T> {
 	 * Resolves variables using local key/value pairs, then produces the final
 	 * object.
 	 *
-	 * <p>
-	 * This is a convenience alias for {@code end(Map.of(...))} without the
-	 * {@code Map.of(...)} wrapper.
-	 * </p>
-	 *
-	 * @param key   first key
-	 * @param value first value
-	 * @param rest  remaining alternating key/value pairs
+	 * @param values alternating key/value pairs
 	 * @return final object
 	 */
-	public T map(String key, Object value, Object... rest) {
-		return end(toMap(false, key, value, rest));
+	public T map(Object... values) {
+		return end(toMap(false, values));
 	}
 
 	/**
 	 * Resolves variables using local key/value pairs where String values are
 	 * JSON-stringified, then produces the final object.
 	 *
-	 * <p>
-	 * Use this for raw JSON templates that need quoted string values, for example
-	 * {@code {"username":{{username}}}}.
-	 * </p>
-	 *
-	 * @param key   first key
-	 * @param value first value
-	 * @param rest  remaining alternating key/value pairs
+	 * @param values alternating key/value pairs
 	 * @return final object
 	 */
-	public T json(String key, Object value, Object... rest) {
-		return end(toMap(true, key, value, rest));
-	}
-
-	private static Map<String, Object> toMap(boolean stringifyStrings, String key, Object value, Object... rest) {
-		int restLength = rest == null ? 0 : rest.length;
-		if (restLength % 2 != 0) {
-			throw new IllegalArgumentException("Key/value arguments must be pairs.");
-		}
-
-		Map<String, Object> result = new LinkedHashMap<>();
-		result.put(key, convertValue(value, stringifyStrings));
-
-		for (int i = 0; i < restLength; i += 2) {
-			Object rawKey = rest[i];
-			Object rawValue = rest[i + 1];
-			if (!(rawKey instanceof String)) {
-				throw new IllegalArgumentException("Key must be String. Found: " + rawKey);
-			}
-			result.put((String) rawKey, convertValue(rawValue, stringifyStrings));
-		}
-		return result;
+	public T json(Object... values) {
+		return end(toMap(true, values));
 	}
 
 	private static Object convertValue(Object value, boolean stringifyStrings) {
@@ -412,8 +406,8 @@ public class Params<T> {
 	 *
 	 * @param root parsed JSON root
 	 * @param path simple JSON path
-	 * @return matching JSON element, or {@code null} when the path is not found or the
-	 *         selected value is JSON {@code null}
+	 * @return matching JSON element, or {@code null} when the path is not found or
+	 *         the selected value is JSON {@code null}
 	 */
 	public static JsonElement pathElement(JsonElement root, String path) {
 		if (root == null || root.isJsonNull())
@@ -459,70 +453,71 @@ public class Params<T> {
 				current = current.getAsJsonObject().get(segment);
 			}
 		}
-		return current.isJsonNull() ? null : current;
-	}
-
-/**
- * Stores one Postman parameter value together with its enabled/disabled state.
- *
- * <p>
- * Postman can keep disabled headers, query parameters, and environment
- * variables in the exported JSON. Keeping this metadata lets the parser
- * preserve the original collection structure while the public API can still
- * expose only enabled values for execution and variable substitution.
- * </p>
- */
-public static class Entry {
-
-	/** Raw parameter value. Disabled parameters keep their value here too. */
-	final String value;
-
-	/** Whether this parameter should participate in execution/resolution output. */
-	boolean enabled;
-
-	/**
-	 * Creates parameter metadata.
-	 *
-	 * @param value   parameter value; converted to an empty string when
-	 *                {@code null}
-	 * @param enabled true when the parameter should be active
-	 */
-	Entry(String value, boolean enabled) {
-		this.value = value;
-		this.enabled = enabled;
+		return current == null || current.isJsonNull() ? null : current;
 	}
 
 	/**
-	 * Returns the raw parameter value.
+	 * Stores one Postman parameter value together with its enabled/disabled state.
 	 *
-	 * @return parameter value, or an empty string when constructed with
-	 *         {@code null}
+	 * <p>
+	 * Postman can keep disabled headers, query parameters, and environment
+	 * variables in the exported JSON. Keeping this metadata lets the parser
+	 * preserve the original collection structure while the public API can still
+	 * expose only enabled values for execution and variable substitution.
+	 * </p>
 	 */
-	public String getValue() {
-		return value;
-	}
+	public static class Entry {
 
-	/**
-	 * Returns whether this parameter is enabled.
-	 *
-	 * @return {@code true} when enabled
-	 */
-	public boolean isEnabled() {
-		return enabled;
-	}
+		/** Raw parameter value. Disabled parameters keep their value here too. */
+		final String value;
 
-	/**
-	 * Enables or disables this parameter.
-	 *
-	 * @param enabled {@code true} to enable the parameter; {@code false} to disable
-	 *                it
-	 */
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
-	}
+		/** Whether this parameter should participate in execution/resolution output. */
+		boolean enabled;
 
-	@Override
-	public String toString() {
-		return String.format("value=%s, enabled=%b", value, enabled);
+		/**
+		 * Creates parameter metadata.
+		 *
+		 * @param value   parameter value; converted to an empty string when
+		 *                {@code null}
+		 * @param enabled true when the parameter should be active
+		 */
+		Entry(String value, boolean enabled) {
+			this.value = value;
+			this.enabled = enabled;
+		}
+
+		/**
+		 * Returns the raw parameter value.
+		 *
+		 * @return parameter value, or an empty string when constructed with
+		 *         {@code null}
+		 */
+		public String getValue() {
+			return value;
+		}
+
+		/**
+		 * Returns whether this parameter is enabled.
+		 *
+		 * @return {@code true} when enabled
+		 */
+		public boolean isEnabled() {
+			return enabled;
+		}
+
+		/**
+		 * Enables or disables this parameter.
+		 *
+		 * @param enabled {@code true} to enable the parameter; {@code false} to disable
+		 *                it
+		 */
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+		@Override
+		public String toString() {
+			return String.format("value=%s, enabled=%b", value, enabled);
+		}
 	}
-}}
+}

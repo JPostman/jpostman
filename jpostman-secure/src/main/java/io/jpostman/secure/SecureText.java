@@ -1,5 +1,7 @@
 package io.jpostman.secure;
 
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -7,6 +9,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
@@ -217,5 +220,225 @@ public final class SecureText {
 				redactJsonArrayPath(child.getAsJsonArray(), childPath, policy);
 			}
 		}
+	}
+
+	/**
+	 * Checks whether a JSON element contains a protected key or path.
+	 *
+	 * @param element JSON element to scan
+	 * @param policy  redaction policy
+	 * @return {@code true} when a protected key or path exists
+	 */
+	static boolean exists(JsonElement element, RedactionPolicy policy) {
+		return exists(element, "", policy);
+	}
+
+	private static boolean exists(JsonElement element, String path, RedactionPolicy policy) {
+		if (element == null || element.isJsonNull() || policy == null) {
+			return false;
+		}
+
+		if (policy.isProtectedPath(path)) {
+			return true;
+		}
+
+		if (element.isJsonObject()) {
+			JsonObject object = element.getAsJsonObject();
+
+			for (String key : object.keySet()) {
+				String childPath = path + "/" + key;
+
+				if (policy.isProtectedKey(key) || policy.isProtectedPath(childPath)) {
+					return true;
+				}
+
+				if (exists(object.get(key), childPath, policy)) {
+					return true;
+				}
+			}
+		}
+
+		if (element.isJsonArray()) {
+			JsonArray array = element.getAsJsonArray();
+
+			for (int i = 0; i < array.size(); i++) {
+				String childPath = path + "/" + i;
+
+				if (policy.isProtectedPath(childPath)) {
+					return true;
+				}
+
+				if (exists(array.get(i), childPath, policy)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Filters JSON text by keeping only fields that match the supplied rules.
+	 *
+	 * <p>
+	 * Rules can be simple field names or slash-based JSON path rules.
+	 * </p>
+	 *
+	 * <pre>
+	 * filter(json, List.of("id", "title", "/reviews/&#42;/date", "/&#42;&#42;/rating"));
+	 * </pre>
+	 *
+	 * @param text  source JSON text
+	 * @param rules fields or JSON path rules to keep
+	 * @return filtered JSON text, or the original text when no match is found
+	 */
+	public static String filter(String text, List<String> rules) {
+		if (text == null || text.isEmpty() || rules == null || rules.isEmpty()) {
+			return text == null ? "" : text;
+		}
+
+		try {
+			JsonElement source = JsonParser.parseString(text);
+			JsonElement filtered = filter(source, rules, "");
+
+			if (!hasContent(filtered)) {
+				return text;
+			}
+
+			return GSON.toJson(filtered);
+		} catch (RuntimeException e) {
+			return text;
+		}
+	}
+
+	/**
+	 * Filters a JSON element by keeping only matching fields.
+	 *
+	 * @param element source JSON element
+	 * @param rules   fields or JSON path rules to keep
+	 * @param path    current JSON path
+	 * @return filtered JSON element
+	 */
+	private static JsonElement filter(JsonElement element, List<String> rules, String path) {
+		if (element == null || element.isJsonNull()) {
+			return JsonNull.INSTANCE;
+		}
+
+		if (matchesFilter(null, path, rules)) {
+			return element;
+		}
+
+		if (element.isJsonObject()) {
+			return filterObject(element.getAsJsonObject(), rules, path);
+		}
+
+		if (element.isJsonArray()) {
+			return filterArray(element.getAsJsonArray(), rules, path);
+		}
+
+		return JsonNull.INSTANCE;
+	}
+
+	/**
+	 * Filters a JSON object by keeping matching fields and required parents.
+	 *
+	 * @param object source JSON object
+	 * @param rules  fields or JSON path rules to keep
+	 * @param path   current JSON path
+	 * @return filtered JSON object
+	 */
+	private static JsonObject filterObject(JsonObject object, List<String> rules, String path) {
+		JsonObject result = new JsonObject();
+
+		for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+			String key = entry.getKey();
+			JsonElement child = entry.getValue();
+			String childPath = path + "/" + key;
+
+			if (matchesFilter(key, childPath, rules)) {
+				result.add(key, child);
+				continue;
+			}
+
+			JsonElement filteredChild = filter(child, rules, childPath);
+
+			if (hasContent(filteredChild)) {
+				result.add(key, filteredChild);
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Filters a JSON array by filtering each item.
+	 *
+	 * @param array source JSON array
+	 * @param rules fields or JSON path rules to keep
+	 * @param path  current JSON path
+	 * @return filtered JSON array
+	 */
+	private static JsonArray filterArray(JsonArray array, List<String> rules, String path) {
+		JsonArray result = new JsonArray();
+		for (int i = 0; i < array.size(); i++) {
+			JsonElement child = array.get(i);
+			String childPath = path == null || path.isEmpty() ? "" : path + "/" + i;
+			JsonElement filteredChild = filter(child, rules, childPath);
+
+			if (hasContent(filteredChild)) {
+				result.add(filteredChild);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Checks whether a field key or JSON path matches any filter rule.
+	 *
+	 * @param key   field key
+	 * @param path  JSON path
+	 * @param rules fields or JSON path rules
+	 * @return {@code true} when the field should be kept
+	 */
+	private static boolean matchesFilter(String key, String path, List<String> rules) {
+		for (String rule : rules) {
+			if (rule == null || rule.isBlank()) {
+				continue;
+			}
+
+			String trimmed = JsonPathRules.normalizeRule(rule);
+
+			if (key != null && !trimmed.startsWith("/") && key.equals(trimmed)) {
+				return true;
+			}
+
+			if (trimmed.startsWith("/") && JsonPathRules.matches(trimmed, path)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Checks whether a filtered element contains output.
+	 *
+	 * @param element filtered element
+	 * @return {@code true} when the element should be kept
+	 */
+	private static boolean hasContent(JsonElement element) {
+		if (element == null || element.isJsonNull()) {
+			return false;
+		}
+
+		if (element.isJsonObject()) {
+			return element.getAsJsonObject().size() > 0;
+		}
+
+		if (element.isJsonArray()) {
+			return element.getAsJsonArray().size() > 0;
+		}
+
+		return true;
 	}
 }

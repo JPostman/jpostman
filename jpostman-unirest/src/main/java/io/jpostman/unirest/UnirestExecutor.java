@@ -21,6 +21,7 @@ import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Authentication;
 import io.jpostman.Request;
+import io.jpostman.RequestProvider;
 
 /**
  * Optional Unirest adapter for executing JPostman requests.
@@ -160,6 +161,16 @@ public final class UnirestExecutor implements ApiExecutor {
 	}
 
 	/**
+	 * Executes a request provided by a {@link RequestProvider}.
+	 *
+	 * @param requestProvider request provider
+	 * @return API response
+	 */
+	public static ApiResponse execute(RequestProvider requestProvider) {
+		return execute(requestProvider.build());
+	}
+
+	/**
 	 * Executes a request once using Unirest.
 	 *
 	 * <p>
@@ -272,8 +283,8 @@ public final class UnirestExecutor implements ApiExecutor {
 	 */
 	private <T extends HttpRequest> T applyHeaders(T httpRequest, Request request) {
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && 
-					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
+			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)
+					&& !runtimeHeaders.containsKey(name)) {
 				httpRequest.header(name, value);
 			}
 		});

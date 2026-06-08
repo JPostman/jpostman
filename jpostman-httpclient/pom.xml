@@ -7,13 +7,14 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.0.1</version>
+		<version>${revision}</version>
 	</parent>
 
 	<artifactId>jpostman-httpclient</artifactId>
 	<packaging>jar</packaging>
 	<name>JPostman Java HttpClient Executor</name>
 	<description>Java 11 HttpClient executor adapter for JPostman.</description>
+	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-httpclient</url>
 
 	<dependencies>
 		<dependency>

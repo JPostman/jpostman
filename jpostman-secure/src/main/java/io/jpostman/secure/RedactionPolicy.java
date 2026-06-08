@@ -251,62 +251,13 @@ public final class RedactionPolicy {
 	}
 
 	static String normalizePath(String path) {
-		if (path == null) {
-			return "";
-		}
-
-		String value = path.trim();
-
-		if (!value.startsWith("/")) {
-			value = "/" + value;
-		}
-
-		while (value.contains("//")) {
-			value = value.replace("//", "/");
-		}
-
-		if (value.length() > 1 && value.endsWith("/")) {
-			value = value.substring(0, value.length() - 1);
-		}
-
-		return value;
+		return JsonPathRules.normalizePath(path);
 	}
 
 	private static boolean pathMatches(String pattern, String path) {
-		String[] patternParts = normalizePath(pattern).split("/");
-		String[] pathParts = normalizePath(path).split("/");
-
-		return pathMatches(patternParts, 0, pathParts, 0);
+		return JsonPathRules.matches(pattern, path);
 	}
 
-	private static boolean pathMatches(String[] patternParts, int patternIndex, String[] pathParts, int pathIndex) {
-		if (patternIndex == patternParts.length && pathIndex == pathParts.length) {
-			return true;
-		}
-
-		if (patternIndex == patternParts.length) {
-			return false;
-		}
-
-		String patternPart = patternParts[patternIndex];
-
-		if ("**".equals(patternPart)) {
-			if (pathMatches(patternParts, patternIndex + 1, pathParts, pathIndex)) {
-				return true;
-			}
-			return pathIndex < pathParts.length && pathMatches(patternParts, patternIndex, pathParts, pathIndex + 1);
-		}
-
-		if (pathIndex == pathParts.length) {
-			return false;
-		}
-
-		if ("*".equals(patternPart) || patternPart.equals(pathParts[pathIndex])) {
-			return pathMatches(patternParts, patternIndex + 1, pathParts, pathIndex + 1);
-		}
-
-		return false;
-	}
 
 	public static final class Builder {
 		private final Set<String> protectedKeys = new LinkedHashSet<>();
@@ -377,7 +328,7 @@ public final class RedactionPolicy {
 			}
 
 			if (trimmed.startsWith("/")) {
-				return protectPathRule(trimmed);
+				return protectPathRule(JsonPathRules.normalizeRule(trimmed));
 			}
 
 			int bracketIndex = trimmed.indexOf('[');

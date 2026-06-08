@@ -116,17 +116,19 @@ public class TestCoverage {
 						.getAsJsonObject());
 		assertEquals(env.get("unknown"), null);
 		assertEquals(env.raw("unknown"), null);
-		assertEquals(env.getParam("apikey").isEnabled(), true);
-		assertEquals(env.getParam("apikey").getValue(), "v");
+		assertEquals(env.entry("apikey").isEnabled(), true);
+		assertEquals(env.entry("apikey").getValue(), "v");
 
 		assertEquals(env.getParams().size(), 1);
 		assertEquals(env.get("apikey"), "v");
 		assertEquals(env.raw("apikey"), "v");
-		env.getParam("apikey").setEnabled(false);
+		env.entry("apikey").setEnabled(false);
 		assertEquals(env.getParams().size(), 0);
 		assertEquals(env.get("apikey"), null);
 		assertEquals(env.raw("apikey"), "v");
-		assertEquals(env.getParam("apikey").toString(), "value=v, enabled=false");
+		assertEquals(env.entry("apikey").toString(), "value=v, enabled=false");
+		env.removeKey("apikey");
+		assertEquals(env.get("apikey"), null);
 
 		// environment values: enabled=false → initially inactive; enabling restores to
 		// active params view
@@ -134,8 +136,8 @@ public class TestCoverage {
 				.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":false}]}")
 						.getAsJsonObject());
 		assertEquals(env.getParams().size(), 0);
-		assertEquals(env.getParam("apikey").isEnabled(), false);
-		env.getParam("apikey").setEnabled(true);
+		assertEquals(env.entry("apikey").isEnabled(), false);
+		env.entry("apikey").setEnabled(true);
 		assertEquals(env.getParams().size(), 1);
 
 		// environment values: key absent and enabled=false → skipped
@@ -198,6 +200,7 @@ public class TestCoverage {
 		assertEquals(target2.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n");
 		assertEquals(target3.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n"
 				+ "  OLD_KEY                             = " + TEST_USERNAME + "\n");
+		assertEquals(source.resolve(null).toString(), "{}");
 
 		// environment builder: source remains unchanged
 		assertEquals(source.getParams().size(), 0);
@@ -275,12 +278,14 @@ public class TestCoverage {
 	@Test
 	public void testParamsMapJsonPath() {
 		// asMap: creates an ordered map and keeps values as-is, including lists.
-		Map<String, Object> result1 = Params.asMap("key1", "value", "key2", Params.asList(1, 2, 3));
+		Map<String, ?> result1 = Params.asMap("key1", "value", "key2", Params.asList(1, 2, 3));
 		assertEquals(result1.toString(), "{key1=value, key2=[1, 2, 3]}");
+		assertEquals(Params.asMap((Object[]) null).toString(), "{}");
+		assertEquals(Params.asMap().toString(), "{}");
 
 		// asJson: JSON-stringifies String values, but keeps nested maps and primitive
 		// values as-is.
-		Map<String, Object> result2 = Params.asJson("key3", "value", "key4",
+		Map<String, ?> result2 = Params.asJson("key3", "value", "key4",
 				Params.asMap("key5", true, "key6", 12.34, "key7", null));
 		assertEquals(result2.toString(), "{key3=\"value\", key4={key5=true, key6=12.34, key7=null}}");
 
@@ -459,6 +464,7 @@ public class TestCoverage {
 		// folder request: unnamed empty request → default GET and empty URL
 		req = productFolder.getRequest("Unnamed");
 		assertEquals(req.toString(), "[GET   ] Unnamed                                  -> ");
+		assertEquals(req, req.build());
 		folder.print();
 
 		col = Collection.load(JsonParser.parseString("{\"item\":[{\"name\":\"" + PRODUCT_FOLDER
@@ -913,9 +919,11 @@ public class TestCoverage {
 		assertEquals(req.getBody().toString(),
 				"[raw/json] {\n" + "  \"username\": \"TEST_USER\",\n" + "  \"password\": \"emilyspass\"\n" + "}");
 
-		// body builder: original template remains unchanged
-		assertEquals(template.getBody().toString(),
-				"[raw/json] {\n" + "  \"username\": \"{{username}}\",\n" + "  \"password\": \"{{password}}\"\n" + "}");
+		// The resolved body only contains tokens that are still unresolved.
+		assertEquals(body.params().toString(), "{password=}");
+
+		// The original template still contains all template tokens.
+		assertEquals(template.getBody().params().toString(), "{username=, password=}");
 	}
 
 	@Test
@@ -1172,12 +1180,6 @@ public class TestCoverage {
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
 				.getAsJsonObject());
-		resolved = body.builder().map("username", "emmy", (Object[]) null);
-		assertEquals(resolved.getRaw(), "{\"username\":\"emmy\"}");
-
-		assertEquals(body.params().toString(), "{username=}");
-		assertEquals(env.resolve(body.params()).toString(), "{username=emilys}");
-		assertEquals(env.resolve(null).toString(), "{}");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Key must be String. Found: 123")
@@ -1247,7 +1249,7 @@ public class TestCoverage {
 		assertEquals(req.getBody().getRaw(),
 				"{\"username\":\"emmy\",\"single\":\"true\",\"age\":\"25\",\"note\":\"age=10\"}");
 
-		assertEquals(req.builder().build(null).toDebugString(),
+		assertEquals(req.builder().build(null).log(),
 				"[POST  ] Primitive Body                           -> \n" + "Body: [raw/json] {\n"
 						+ "  \"username\": \"emmy\",\n" + "  \"single\": \"true\",\n" + "  \"age\": \"25\",\n"
 						+ "  \"note\": \"age=10\"\n" + "}");
@@ -1268,7 +1270,7 @@ public class TestCoverage {
 		assertEquals(req.getBody().getParsed().isJsonObject(), true);
 	}
 
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Key/value arguments must be pairs.")
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Values must be provided as key/value pairs.")
 	public void testPartLevelMapAliasRejectsOddKeyValuePairs() {
 		Body body = Body.from(JsonParser
 				.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\","
@@ -1695,6 +1697,8 @@ public class TestCoverage {
 		String raw = col.getRoot().toString();
 		ApiResponse colResponse = new ApiResponse(200, raw, null, null);
 		assertEquals(raw, colResponse.parse(raw).toString());
+		assertEquals(colResponse.exists("info.unknown"), false);
+		assertEquals(colResponse.exists("info.name"), true);
 		assertEquals(colResponse.path("info.name"), "DummyJSON");
 		assertEquals(colResponse.path("item[0].item[0].name"), ALL_PRODUCTS);
 	}
@@ -1715,6 +1719,8 @@ public class TestCoverage {
 		assertNotNull(request);
 		assertEquals(request.getName(), GET_AUTH_USER);
 		assertEquals(request.toUrl(), "https://dummyjson.com/auth/me");
+		
+		assertEquals(context.folder(PRODUCT_FOLDER).getName(), PRODUCT_FOLDER);
 
 		JPostman.Context sessionWithoutEnv = JPostman.load(new ByteArrayInputStream(COLLECTION_BYTES));
 

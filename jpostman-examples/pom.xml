@@ -7,7 +7,7 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.0.1</version>
+		<version>${revision}</version>
 	</parent>
 
 	<artifactId>jpostman-examples</artifactId>
@@ -15,6 +15,7 @@
 	<name>JPostman Examples</name>
 	<description>Example TestNG tests showing Java HttpClient, REST Assured, and
 		Playwright executor usage.</description>
+	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-examples</url>
 
 	<properties>
 		<!-- Examples compile by default but do not run live API tests unless

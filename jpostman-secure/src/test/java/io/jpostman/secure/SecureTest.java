@@ -63,7 +63,7 @@ public class SecureTest {
 	public void redactionPolicyProtectsCustomKeys() {
 		RedactionPolicy policy = RedactionPolicy.builder().sliceExpressionFactory(new DefaultSliceExpressionFactory())
 				.protectKey("API-KEY").protectKey("accessToken").mask("*!!!!*").build();
-		String text = "" + "API-KEY = secret-key\n" + "accessToken: token-value\n" + "username = testuser";
+		String text = "API-KEY = secret-key\naccessToken: token-value\nusername = testuser";
 		String redacted = SecureText.redact(text, SecureValues.empty(), policy);
 		assertTrue(redacted.contains("API-KEY = *!!!!*"), redacted);
 		assertTrue(redacted.contains("accessToken: *!!!!*"), redacted);
@@ -72,27 +72,29 @@ public class SecureTest {
 
 	@Test
 	public void secureRequestMasksBeforeBuildAndResolvesOnBuild() {
-		Map<String, Object> plainEnv = Params.asMap("baseUrl", "https://api.example.com");
-		Map<String, Object> vaultEnv = Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key", "SSN",
+		Map<String, ?> plainEnv = Params.asMap("baseUrl", "https://api.example.com");
+		Map<String, ?> vaultEnv = Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key", "SSN",
 				"999-99-9999");
 		Request loginRequest = loginRequest();
 		SecureRequest secure = SecureRequest.from(loginRequest).redactionPolicy(RedactionPolicy.defaults())
 				.plain(plainEnv).secret(vaultEnv);
 
 		secure.print();
-		String unresolved = secure.toDebugString();
-		String resolved = secure.toDebugString(true);
+		String unresolved = secure.log(false);
+		String resolved = secure.log();
 		assertEquals(secure.toString(), "[POST  ] Login                                    -> {{baseUrl}}/login");
-		assertEquals(resolved, "[POST  ] Login                                    -> https://api.example.com/login\n"
-				+ "Headers:\n" + "  Authorization                       = ********\n"
-				+ "  API-KEY                             = ********\n"
-				+ "  Content-Type                        = application/json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"sam\",\n" + "  \"password\": \"********\",\n" + "  \"ssn\": \"********\"\n}");
-		assertEquals(unresolved, "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = application/json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"sam\",\n" + "  \"password\": \"********\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		assertEquals(resolved,
+				"[POST  ] Login                                    -> https://api.example.com/login\n"
+						+ "Headers:\n  Authorization                       = ********\n"
+						+ "  API-KEY                             = ********\n"
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"********\"\n}");
+		assertEquals(unresolved,
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		// Also mask username and Content-Type.
 		assertEquals(secure.redactionPolicy().isProtectedKey("username"), false);
 		assertEquals(secure.redactionPolicy().isProtectedKey("password"), true);
@@ -100,11 +102,12 @@ public class SecureTest {
 		assertEquals(secure.redactionPolicy().isProtectedKey("username"), true);
 		assertEquals(secure.redactionPolicy().isProtectedKey("password"), false);
 
-		assertEquals(secure.toDebugString(), "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = ********application\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"********\",\n" + "  \"password\": \"secret\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		assertEquals(secure.log(false),
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = ********application\n\nBody: [raw] {\n"
+						+ "  \"username\": \"********\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		Request request = secure.build();
 		assertEquals(request.getHeader().get("Authorization"), "Bearer real-token");
 		assertEquals(request.getHeader().get("API-KEY"), "real-api-key");
@@ -123,24 +126,25 @@ public class SecureTest {
 
 		SecureRequest login = secure.from(loginRequest());
 		SecureRequest user = secure.from(userRequest());
-		String resolved = login.toDebugString(true);
-		String loginDebug = login.toDebugString();
-		String userDebug = user.toDebugString();
+		String resolved = login.log();
+		String loginDebug = login.log(false);
+		String userDebug = user.log(false);
 		Request resolvedLogin = login.build();
 		Request resolvedUser = user.build();
 
 		assertTrue(resolved.contains("Authorization                       = Bearer ********"));
 
-		assertEquals(loginDebug, "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = ********json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"********\",\n" + "  \"password\": \"********\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		assertEquals(loginDebug,
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"********\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		assertEquals(userDebug,
-				"[GET   ] Get User                                 -> {{baseUrl}}/users/123\n" + "Headers:\n"
+				"[GET   ] Get User                                 -> {{baseUrl}}/users/123\nHeaders:\n"
 						+ "  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********json\n\n" + "Body: [none]");
+						+ "  Content-Type                        = ********json\n\nBody: [none]");
 		assertEquals(resolvedLogin.getHeader().get("Authorization"), "Bearer real-token");
 		assertEquals(resolvedLogin.getHeader().get("API-KEY"), "real-api-key");
 		assertEquals(resolvedLogin.toUrl(), "https://api.example.com/login");
@@ -149,20 +153,20 @@ public class SecureTest {
 		assertEquals(resolvedUser.toUrl(), "https://api.example.com/users/123");
 		assertEquals(secure.redactionPolicy().isProtectedKey("username"), true);
 		assertEquals(secure.redactionPolicy().protectedKeys().contains("username"), true);
-		loginDebug = SecureContext.create().secret(new Environment("postman-secure")).from(loginRequest())
-				.toDebugString();
-		assertEquals(loginDebug, "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = application/json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"sam\",\n" + "  \"password\": \"********\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		loginDebug = SecureContext.create().secret(new Environment("postman-secure")).from(loginRequest()).log(false);
+		assertEquals(loginDebug,
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
 	public void secureApiResponseRedactsKnownValuesAndProtectedKeys() {
 		ApiResponse response = new ApiResponse(200,
 				"{\"accessToken\":\"abc123\",\"username\":\"testuser\",\"apiKey\":\"key-1\","
-						+ "\"token\":\"ABCD\",\"ssn\":\"999-999-9999\"," + "\"creditCard\":\"1234-4567-7890-0987\"}",
+						+ "\"token\":\"ABCD\",\"ssn\":\"999-999-9999\",\"creditCard\":\"1234-4567-7890-0987\"}",
 				new byte[0], Map.of("Authorization", Params.asList("Bearer abc123")));
 
 		SecureResponse secureResponse = SecureContext.create().from(response)
@@ -188,9 +192,9 @@ public class SecureTest {
 		assertEquals(secureResponse.getHeaders().get("Authorization").get(0), "Bearer abc123");
 		assertEquals(secureResponse.path("creditCard"), "1234-4567-7890-0987");
 		assertEquals(secureResponse.pretty(),
-				"{\n" + "  \"accessToken\": \"********\",\n" + "  \"username\": \"testuser\",\n"
-						+ "  \"apiKey\": \"********\",\n" + "  \"token\": \"********\",\n"
-						+ "  \"ssn\": \"********\",\n" + "  \"creditCard\": \"********0987\"\n" + "}");
+				"{\n  \"accessToken\": \"********\",\n  \"username\": \"testuser\",\n"
+						+ "  \"apiKey\": \"********\",\n  \"token\": \"********\",\n"
+						+ "  \"ssn\": \"********\",\n  \"creditCard\": \"********0987\"\n}");
 		assertEquals(secureResponse.response(), response);
 		secureResponse.print();
 	}
@@ -198,8 +202,7 @@ public class SecureTest {
 	@Test
 	public void secureApiResponseJsonPathProtectedKeys() {
 		ApiResponse response = new ApiResponse(200,
-				"{\"key1\": {\"subkey\": \"value\"},\n" + "\"key2\": {\"subkey\": \"value\"}\n}", new byte[0],
-				Map.of());
+				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}", new byte[0], Map.of());
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/key2/subkey");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"key1\": {\n    \"subkey\": \"value\"\n  }"));
@@ -209,8 +212,7 @@ public class SecureTest {
 	@Test
 	public void secureApiResponseRedactsJsonParentPath() {
 		ApiResponse response = new ApiResponse(200,
-				"{\"key1\": {\"subkey\": \"value\"},\n" + "\"key2\": {\"subkey\": \"value\"}\n}", new byte[0],
-				Map.of());
+				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}", new byte[0], Map.of());
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/key2");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"key1\": {\n    \"subkey\": \"value\"\n  }"));
@@ -233,7 +235,7 @@ public class SecureTest {
 				"{\"users\":[{\"name\":\"sam\"},{\"name\":\"bob\"}],\"status\":\"ok\"}", new byte[0], Map.of());
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/users/0/name");
 		String log = secureResponse.log(true);
-		assertTrue(log.contains("\"users\": [\n" + "    {\n      \"name\": \"********\"\n    },\n"
+		assertTrue(log.contains("\"users\": [\n    {\n      \"name\": \"********\"\n    },\n"
 				+ "    {\n      \"name\": \"bob\"\n    }\n  ]"));
 		assertTrue(log.contains("\"status\": \"ok\""));
 	}
@@ -241,8 +243,8 @@ public class SecureTest {
 	@Test
 	public void secureApiResponseSupportsSliceRedactionRules() {
 		ApiResponse response = new ApiResponse(200,
-				"{\"index0\":\"ABCDE\"," + "\"range13\":\"ABCDE\"," + "\"range0Minus1\":\"ABCDE\","
-						+ "\"keepLastByEnd\":\"1234-4567-7890-0987\"," + "\"keepLastByStart\":\"1234-4567-7890-0987\","
+				"{\"index0\":\"ABCDE\",\"range13\":\"ABCDE\",\"range0Minus1\":\"ABCDE\","
+						+ "\"keepLastByEnd\":\"1234-4567-7890-0987\",\"keepLastByStart\":\"1234-4567-7890-0987\","
 						+ "\"singleNegativeIndex\":\"1234-4567-7890-0987\"}",
 				new byte[0], Map.of());
 		String log = SecureResponse.from(response).redact("index0[0]", "range13[1:3]", "range0Minus1[0:-1]",
@@ -260,34 +262,36 @@ public class SecureTest {
 		SecureContext secure = SecureContext.create()
 				.load(SecureTest.class.getClassLoader().getResourceAsStream("secure-rules.ini"));
 		SecureRequest login = secure.from(loginRequest());
-		assertEquals(login.toDebugString(), "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = ********json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"********\",\n" + "  \"password\": \"secret\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		assertEquals(login.log(false),
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"********\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
 	public void secureContextCanLoadIniStyleSettings() throws Exception {
-		String config = "username\n" + "Content-Type[-4:]\n" + "/key2/subkey\n";
+		String config = "username\nContent-Type[-4:]\n/key2/subkey\n";
 
 		SecureContext secure = SecureContext.create()
 				.load(new ByteArrayInputStream(config.getBytes(StandardCharsets.UTF_8)));
 		SecureRequest login = secure.from(loginRequest());
-		assertEquals(login.toDebugString(), "[POST  ] Login                                    -> {{baseUrl}}/login\n"
-				+ "Headers:\n" + "  Authorization                       = Bearer {{accessToken}}\n"
-				+ "  API-KEY                             = {{API-KEY}}\n"
-				+ "  Content-Type                        = ********json\n\n" + "Body: [raw] {\n"
-				+ "  \"username\": \"********\",\n" + "  \"password\": \"********\",\n" + "  \"ssn\": \"{{SSN}}\"\n}");
+		assertEquals(login.log(false),
+				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
+						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
+						+ "  API-KEY                             = {{API-KEY}}\n"
+						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"********\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
 	public void secureApiResponseRedactsWildcardJsonPathUnderProductsOnly() {
-		ApiResponse response = new ApiResponse(200, "{" + "\"products\":["
-				+ "{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
-				+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}" + "],"
-				+ "\"orders\":["
-				+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}" + "]" + "}",
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
+						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
+						+ "\"orders\":["
+						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
 				new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
@@ -306,11 +310,11 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsAllReviewsWithDoubleStarPath() {
-		ApiResponse response = new ApiResponse(200, "{" + "\"products\":["
-				+ "{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
-				+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}" + "],"
-				+ "\"orders\":["
-				+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}" + "]" + "}",
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
+						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
+						+ "\"orders\":["
+						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
 				new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
@@ -322,10 +326,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsWildcardJsonPathWithSlice() {
-		ApiResponse response = new ApiResponse(200,
-				"{" + "\"products\":[" + "{\"id\":1,\"cardNumber\":\"1234-4567-7890-0987\"},"
-						+ "{\"id\":2,\"cardNumber\":\"1111-2222-3333-4444\"}" + "]" + "}",
-				new byte[0], Map.of());
+		ApiResponse response = new ApiResponse(200, "{\"products\":[{\"id\":1,\"cardNumber\":\"1234-4567-7890-0987\"},"
+				+ "{\"id\":2,\"cardNumber\":\"1111-2222-3333-4444\"}]}", new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
 				.redact("/products/*/cardNumber[-4:]");
@@ -337,8 +339,7 @@ public class SecureTest {
 	@Test
 	public void secureApiResponseRedactsCaseInsensitiveRegexKeyRules() {
 		ApiResponse response = new ApiResponse(200,
-				"{" + "\"accessToken\":\"abc123\"," + "\"id_token\":\"id123\"," + "\"username\":\"sam\"" + "}",
-				new byte[0], Map.of());
+				"{\"accessToken\":\"abc123\",\"id_token\":\"id123\",\"username\":\"sam\"}", new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response)
 				.redactionPolicy(RedactionPolicy.builder().protectRule("regex:(?i).*token.*").build());
@@ -358,11 +359,11 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsRegexJsonPathRules() {
-		ApiResponse response = new ApiResponse(200, "{" + "\"products\":["
-				+ "{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
-				+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}" + "],"
-				+ "\"orders\":["
-				+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}" + "]" + "}",
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
+						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
+						+ "\"orders\":["
+						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
 				new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response)
@@ -379,11 +380,11 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsRegexJsonPathForSingleDigitProductIndexes() {
-		ApiResponse response = new ApiResponse(200, "{" + "\"products\":["
-				+ "{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
-				+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}" + "],"
-				+ "\"orders\":["
-				+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}" + "]" + "}",
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
+						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
+						+ "\"orders\":["
+						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
 				new byte[0], Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response)
@@ -403,7 +404,7 @@ public class SecureTest {
 	@Test
 	public void redactionPolicyCanRemoveRegexJsonPathRule() {
 		ApiResponse response = new ApiResponse(200,
-				"{\"products\":[" + "{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]}]}",
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]}]}",
 				new byte[0], Map.of());
 		RedactionPolicy policy = RedactionPolicy.builder().protectRule("regex:/products/[0-9]/reviews").build()
 				.removeRules("regex:/products/[0-9]/reviews");
@@ -420,20 +421,102 @@ public class SecureTest {
 		assertEquals(parsed.mask("1234-4567-7890-0987", "********"), "********1234");
 	}
 
+	@Test
+	public void secureApiResponseExistsSupportsSimpleJsonPath() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"accessToken\":\"abc123\",\"products\":[{\"id\":1,\"title\":\"Phone\"}]}", new byte[0], Map.of());
+		SecureResponse secureResponse = SecureResponse.from(response);
+		assertTrue(secureResponse.exists("accessToken"));
+		assertTrue(secureResponse.exists("products[0].id"));
+		assertTrue(secureResponse.exists("products[0].title"));
+	}
+
+	@Test
+	public void secureApiResponseExistsSupportsWildcardJsonPathRules() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\"}]},"
+						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\"}]}],\"orders\":[{\"id\":10,\"comments\":[]}]}",
+				new byte[0], Map.of());
+		SecureResponse secureResponse = SecureResponse.from(response);
+		assertTrue(secureResponse.exists("/products/*/reviews"));
+		assertTrue(secureResponse.exists("/**/reviews"));
+	}
+
+	@Test
+	public void secureApiResponseExistsSupportsRegexRules() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"token\":\"abc123\",\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\"}]}],"
+						+ "\"orders\":[{\"id\":10,\"reviews\":[{\"comment\":\"keep\"}]}]}",
+				new byte[0], Map.of());
+		SecureResponse secureResponse = SecureResponse.from(response);
+		assertTrue(secureResponse.exists("regex:.*token.*"));
+		assertTrue(secureResponse.exists("regex:/products/\\d+/reviews"));
+	}
+
+	@Test
+	public void secureContextLogsLatestRequestAndResponse() {
+		SecureContext secure = SecureContext.create().plain("key1", "value1").secret("key2", "secret2");
+		secure.from(loginRequest());
+		assertEquals(secure.log(),
+				"\n********** SecureRequest: **********\n"
+						+ "[POST  ] Login                                    -> /login\nHeaders:\n"
+						+ "  Authorization                       = ********\n"
+						+ "  API-KEY                             =********\n"
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}");
+		ApiResponse response = new ApiResponse(200, "{\"creditCard\":\"1234-4567-7890-0987\"}", new byte[0], Map.of());
+		secure.from(response);
+		assertEquals(secure.log(),
+				"\n********** SecureRequest: **********\n"
+						+ "[POST  ] Login                                    -> /login\nHeaders:\n"
+						+ "  Authorization                       = ********\n"
+						+ "  API-KEY                             =********\n"
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}\n\n"
+						+ "**********SecureResponse: **********\nStatus Code: 200\nBody: {\n"
+						+ "  \"creditCard\": \"1234-4567-7890-0987\"\n}\n");
+	}
+
+	@Test
+	public void secureApiResponseFiltersNestedWildcardPaths() {
+		ApiResponse response = new ApiResponse(200,
+				"[{\"id\":29,\"title\":\"Juice\",\"rating\":1,\"reviews\":["
+						+ "{\"rating\":2,\"comment\":\"Excellent quality!\",\"date\":\"2025-04-30T09:41:02.053Z\"},"
+						+ "{\"rating\":3,\"comment\":\"Would buy again!\",\"date\":\"2025-04-30T09:41:02.053Z\"}]}]",
+				new byte[0], Map.of());
+		SecureContext secure = SecureContext.create().filter("id", "title", "/reviews/*/date", "/**/rating");
+		SecureResponse secureResponse = secure.from(response);
+		assertEquals(secureResponse.filtered(),
+				"[\n  {\n    \"id\": 29,\n    \"title\": \"Juice\",\n    \"rating\": 1,\n"
+						+ "    \"reviews\": [\n      {\n        \"rating\": 2,\n"
+						+ "        \"date\": \"2025-04-30T09:41:02.053Z\"\n      },\n      {\n"
+						+ "        \"rating\": 3,\n        \"date\": \"2025-04-30T09:41:02.053Z\"\n      }\n    ]\n  }\n]");
+	}
+
+	@Test
+	public void secureApiResponsePathsReturnsValuesForRecursiveWildcardRule() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"title\":\"Essence Mascara Lash Princess\"},"
+						+ "{\"id\":2,\"title\":\"Eyeshadow Palette\"},{\"id\":3,\"title\":\"Powder Canister\"}]}",
+				new byte[0], Map.of());
+		SecureResponse res = SecureResponse.from(response);
+		assertEquals(res.paths("/**/id"), Params.asList(1, 2, 3));
+	}
+
 	private static Request loginRequest() {
-		String json = "{\"method\":\"POST\"," + "\"url\":{\"raw\":\"{{baseUrl}}/login\","
-				+ "\"host\":[\"{{baseUrl}}\"],\"path\":[\"login\"]}," + "\"header\":["
+		String json = "{\"method\":\"POST\",\"url\":{\"raw\":\"{{baseUrl}}/login\","
+				+ "\"host\":[\"{{baseUrl}}\"],\"path\":[\"login\"]},\"header\":["
 				+ "{\"key\":\"Authorization\",\"value\":\"Bearer {{accessToken}}\"},"
 				+ "{\"key\":\"API-KEY\",\"value\":\"{{API-KEY}}\"},"
-				+ "{\"key\":\"Content-Type\",\"value\":\"application/json\"}" + "]," + "\"body\":{\"mode\":\"raw\","
+				+ "{\"key\":\"Content-Type\",\"value\":\"application/json\"}],\"body\":{\"mode\":\"raw\","
 				+ "\"raw\":\"{\\\"username\\\":\\\"sam\\\",\\\"password\\\":\\\"secret\\\",\\\"ssn\\\":\\\"{{SSN}}\\\"}\""
 				+ "}}";
 		return Request.from("Login", "secure", JsonParser.parseString(json).getAsJsonObject());
 	}
 
 	private static Request userRequest() {
-		String json = "{\"method\":\"GET\"," + "\"url\":{\"raw\":\"{{baseUrl}}/users/123\","
-				+ "\"host\":[\"{{baseUrl}}\"],\"path\":[\"users\",\"123\"]}," + "\"header\":["
+		String json = "{\"method\":\"GET\",\"url\":{\"raw\":\"{{baseUrl}}/users/123\","
+				+ "\"host\":[\"{{baseUrl}}\"],\"path\":[\"users\",\"123\"]},\"header\":["
 				+ "{\"key\":\"Authorization\",\"value\":\"Bearer {{accessToken}}\"},"
 				+ "{\"key\":\"API-KEY\",\"value\":\"{{API-KEY}}\"},"
 				+ "{\"key\":\"Content-Type\",\"value\":\"application/json\"}]}";

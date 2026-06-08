@@ -16,6 +16,7 @@ import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Authentication;
 import io.jpostman.Request;
+import io.jpostman.RequestProvider;
 
 /**
  * Java 11 {@link HttpClient} adapter for executing JPostman requests.
@@ -39,11 +40,7 @@ import io.jpostman.Request;
  * </p>
  *
  * <pre>
- * ApiResponse response = HttpClientExecutor
- *         .apply(request)
- *         .auth()
- *         .oauth2(token)
- *         .response();
+ * ApiResponse response = HttpClientExecutor.apply(request).auth().oauth2(token).response();
  * </pre>
  *
  * <p>
@@ -98,7 +95,7 @@ public class HttpClientExecutor implements ApiExecutor {
 	 * </p>
 	 *
 	 * @param request request associated with this executor
-	 * @param client HTTP client used for execution
+	 * @param client  HTTP client used for execution
 	 * @param timeout request timeout; defaults to 30 seconds when {@code null}
 	 * @throws IllegalArgumentException if {@code client} is {@code null}
 	 */
@@ -109,10 +106,12 @@ public class HttpClientExecutor implements ApiExecutor {
 	/**
 	 * Internal constructor.
 	 *
-	 * @param request request associated with this executor
-	 * @param client HTTP client used for execution
-	 * @param timeout request timeout; defaults to 30 seconds when {@code null}
-	 * @param cookieManager cookie manager used by {@link #create()}, or {@code null}
+	 * @param request       request associated with this executor
+	 * @param client        HTTP client used for execution
+	 * @param timeout       request timeout; defaults to 30 seconds when
+	 *                      {@code null}
+	 * @param cookieManager cookie manager used by {@link #create()}, or
+	 *                      {@code null}
 	 */
 	private HttpClientExecutor(Request request, HttpClient client, Duration timeout, CookieManager cookieManager) {
 		if (client == null) {
@@ -139,9 +138,7 @@ public class HttpClientExecutor implements ApiExecutor {
 		CookieManager cookieManager = new CookieManager();
 		cookieManager.setCookiePolicy(CookiePolicy.ACCEPT_ALL);
 
-		HttpClient client = HttpClient.newBuilder()
-				.cookieHandler(cookieManager)
-				.build();
+		HttpClient client = HttpClient.newBuilder().cookieHandler(cookieManager).build();
 
 		return new HttpClientExecutor(null, client, Duration.ofSeconds(30), cookieManager);
 	}
@@ -170,6 +167,16 @@ public class HttpClientExecutor implements ApiExecutor {
 	 */
 	public static HttpClientExecutor apply(Request request) {
 		return new HttpClientExecutor(request);
+	}
+
+	/**
+	 * Executes a request provided by a {@link RequestProvider}.
+	 *
+	 * @param requestProvider request provider
+	 * @return API response
+	 */
+	public static ApiResponse execute(RequestProvider requestProvider) {
+		return execute(requestProvider.build());
 	}
 
 	/**
@@ -205,7 +212,7 @@ public class HttpClientExecutor implements ApiExecutor {
 	 * so they can override collection headers.
 	 * </p>
 	 *
-	 * @param name header name
+	 * @param name  header name
 	 * @param value header value
 	 * @return this executor
 	 */
@@ -259,9 +266,7 @@ public class HttpClientExecutor implements ApiExecutor {
 	 * @return Java HTTP request
 	 */
 	private HttpRequest toHttpRequest(Request request) {
-		HttpRequest.Builder builder = HttpRequest.newBuilder()
-				.uri(toSafeUri(request.toUrl()))
-				.timeout(timeout);
+		HttpRequest.Builder builder = HttpRequest.newBuilder().uri(toSafeUri(request.toUrl())).timeout(timeout);
 
 		applyRequestHeaders(request, builder);
 		applyRuntimeHeaders(builder);
@@ -281,8 +286,8 @@ public class HttpClientExecutor implements ApiExecutor {
 	 */
 	private void applyRequestHeaders(Request request, HttpRequest.Builder builder) {
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && 
-					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
+			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)
+					&& !runtimeHeaders.containsKey(name)) {
 				builder.header(name, value);
 			}
 		});
@@ -310,8 +315,7 @@ public class HttpClientExecutor implements ApiExecutor {
 	 * Postman request nor runtime configuration already supplied one.
 	 */
 	private void applyContentTypeIfNeeded(Request request, HttpRequest.Builder builder) {
-		if (request.getBody() != null
-				&& !request.getBody().isEmpty()
+		if (request.getBody() != null && !request.getBody().isEmpty()
 				&& "json".equalsIgnoreCase(request.getBody().getLanguage())
 				&& !hasHeaderIgnoreCase(request.getHeader().getParams(), "Content-Type")
 				&& !hasHeaderIgnoreCase(runtimeHeaders, "Content-Type")) {
