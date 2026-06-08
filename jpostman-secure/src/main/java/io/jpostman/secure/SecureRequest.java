@@ -20,8 +20,7 @@ import io.jpostman.RequestProvider;
  * <li>a redacted request for review, logging, or debugging</li>
  * </ul>
  * <p>
- * Executors should execute the request returned by {@link #build()} and use
- * {@link #review()} only for safe output.
+ * Executors should execute the request returned by {@link #build()}
  * </p>
  */
 public final class SecureRequest implements RequestProvider {
