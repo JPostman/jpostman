@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+### Added
+
+- Added `Params.props(Map<String, String>)` to copy values and override matching keys with non-empty system properties.
+
+
 ## 1.0.2
 
 ### Added

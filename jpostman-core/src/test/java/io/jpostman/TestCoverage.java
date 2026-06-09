@@ -276,6 +276,27 @@ public class TestCoverage {
 	}
 
 	@Test
+	public void testParamsPropsOverridesWithNonEmptySystemProperties() {
+		System.setProperty("PARAMS_TOKEN", "system-token");
+		System.setProperty("PARAMS_EMPTY", "");
+		try {
+			Map<String, String> source = Map.of("PARAMS_TOKEN", "default-token", "PARAMS_EMPTY", "default-empty",
+					"PARAMS_NAME", "default-name");
+
+			Map<String, String> result = Params.props(source);
+
+			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
+			assertEquals(result.get("PARAMS_EMPTY"), "default-empty");
+			assertEquals(result.get("PARAMS_NAME"), "default-name");
+			assertEquals(source.get("PARAMS_TOKEN"), "default-token");
+			assertEquals(Params.props(null).size(), 0);
+		} finally {
+			System.clearProperty("PARAMS_TOKEN");
+			System.clearProperty("PARAMS_EMPTY");
+		}
+	}
+
+	@Test
 	public void testParamsMapJsonPath() {
 		// asMap: creates an ordered map and keeps values as-is, including lists.
 		Map<String, ?> result1 = Params.asMap("key1", "value", "key2", Params.asList(1, 2, 3));
@@ -313,13 +334,8 @@ public class TestCoverage {
 				() -> Params.path(JsonParser.parseString("{\"info\":{\"name\":null}}"), "info.name"));
 
 		JsonElement root = JsonParser.parseString(
-				"{\"text\":\"hello\","
-						+ "\"flag\":true,"
-						+ "\"intValue\":123,"
-						+ "\"longValue\":9999999999999,"
-						+ "\"doubleValue\":12.5,"
-						+ "\"array\":[1,2,3],"
-						+ "\"object\":{\"name\":\"JPostman\"}}");
+				"{\"text\":\"hello\"," + "\"flag\":true," + "\"intValue\":123," + "\"longValue\":9999999999999,"
+						+ "\"doubleValue\":12.5," + "\"array\":[1,2,3]," + "\"object\":{\"name\":\"JPostman\"}}");
 
 		// String primitive branch
 		assertEquals(Params.path(root, "text"), "hello");
@@ -353,9 +369,8 @@ public class TestCoverage {
 		assertEquals(Params.path(root, "lowerExponent"), Double.valueOf(1000.0));
 		assertEquals(Params.path(root, "upperExponent"), Double.valueOf(1000.0));
 
-		root = JsonParser.parseString(
-				"{\"info\":{\"name\":\"DummyJSON\",\"empty\":null},"
-						+ "\"products\":[{\"id\":1,\"title\":\"Phone\"}]}");
+		root = JsonParser.parseString("{\"info\":{\"name\":\"DummyJSON\",\"empty\":null},"
+				+ "\"products\":[{\"id\":1,\"title\":\"Phone\"}]}");
 
 		// Covers: after simple object access, final current.isJsonNull() ? null :
 		// current
@@ -384,10 +399,9 @@ public class TestCoverage {
 
 	@Test
 	public void testParamsPathElement() {
-		JsonElement root = JsonParser.parseString(
-				"{\"info\":{\"name\":\"DummyJSON\",\"nullValue\":null},"
-						+ "\"products\":[{\"id\":1,\"title\":\"Phone\"},{\"id\":2,\"title\":\"Laptop\"}],"
-						+ "\"matrix\":[[10,20],[30,40]]}");
+		JsonElement root = JsonParser.parseString("{\"info\":{\"name\":\"DummyJSON\",\"nullValue\":null},"
+				+ "\"products\":[{\"id\":1,\"title\":\"Phone\"},{\"id\":2,\"title\":\"Laptop\"}],"
+				+ "\"matrix\":[[10,20],[30,40]]}");
 
 		// root == null
 		assertEquals(Params.pathElement(null, "info.name"), null);
@@ -1719,7 +1733,7 @@ public class TestCoverage {
 		assertNotNull(request);
 		assertEquals(request.getName(), GET_AUTH_USER);
 		assertEquals(request.toUrl(), "https://dummyjson.com/auth/me");
-		
+
 		assertEquals(context.folder(PRODUCT_FOLDER).getName(), PRODUCT_FOLDER);
 
 		JPostman.Context sessionWithoutEnv = JPostman.load(new ByteArrayInputStream(COLLECTION_BYTES));

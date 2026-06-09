@@ -219,6 +219,24 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Creates a copy of this secure context.
+	 *
+	 * <p>
+	 * The copy keeps the configured values, filters, and redaction policy, but does
+	 * not copy the latest request or response state.
+	 * </p>
+	 *
+	 * @return copied secure context
+	 */
+	public SecureContext copy() {
+		SecureContext copy = new SecureContext();
+		copy.values.values(values.build());
+		copy.redactionPolicy = redactionPolicy;
+		copy.filters.addAll(filters);
+		return copy;
+	}
+
+	/**
 	 * Wraps a request using this secure context.
 	 *
 	 * @param request request to wrap

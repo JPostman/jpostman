@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+### Added
+
+- Added `SecureContext.copy()` for creating an independent secure context copy for parallel request flows.
+
 ## 1.0.2
 
 ### Added

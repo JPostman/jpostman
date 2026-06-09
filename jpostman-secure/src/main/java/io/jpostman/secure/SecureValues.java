@@ -142,6 +142,25 @@ public final class SecureValues {
 		}
 
 		/**
+		 * Adds values from an existing registry.
+		 *
+		 * @param secureValues secure values
+		 * @return this builder
+		 */
+		public Builder values(SecureValues secureValues) {
+			if (secureValues != null) {
+				secureValues.values().forEach((key, value) -> {
+					if (value.isProtected()) {
+						secret(key, value.reveal());
+					} else {
+						plain(key, value.reveal());
+					}
+				});
+			}
+			return this;
+		}
+
+		/**
 		 * Builds the immutable registry.
 		 *
 		 * @return secure values

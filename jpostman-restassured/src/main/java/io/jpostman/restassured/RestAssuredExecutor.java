@@ -106,6 +106,17 @@ public final class RestAssuredExecutor implements ApiExecutor {
 	}
 
 	/**
+	 * Builds a request from the supplied {@link RequestProvider} and delegates to
+	 * the request-based method.
+	 *
+	 * @param requestProvider provider used to build the request
+	 * @return executor associated with the request
+	 */
+	public static RestAssuredExecutor apply(RequestProvider requestProvider) {
+		return apply(requestProvider.build());
+	}
+
+	/**
 	 * Creates a fluent JPostman-style REST Assured executor for the supplied
 	 * request.
 	 *

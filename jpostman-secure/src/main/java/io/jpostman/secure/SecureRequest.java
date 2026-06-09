@@ -55,15 +55,7 @@ public final class SecureRequest implements RequestProvider {
 	 * @return this secure request
 	 */
 	public SecureRequest values(SecureValues secureValues) {
-		if (secureValues != null) {
-			secureValues.values().forEach((key, value) -> {
-				if (value.isProtected()) {
-					this.values.secret(key, value.reveal());
-				} else {
-					this.values.plain(key, value.reveal());
-				}
-			});
-		}
+		this.values.values(secureValues);
 		return this;
 	}
 

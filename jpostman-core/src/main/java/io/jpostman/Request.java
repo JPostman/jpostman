@@ -14,8 +14,8 @@ import org.slf4j.LoggerFactory;
  * Represents an HTTP request.
  * <p>
  * A request contains the method, URL, headers, body, authentication, and other
- * request data used by executors. It also implements {@link RequestProvider}
- * so it can be passed directly to executors that accept request providers.
+ * request data used by executors. It also implements {@link RequestProvider} so
+ * it can be passed directly to executors that accept request providers.
  * </p>
  */
 public final class Request implements RequestProvider {
@@ -130,7 +130,7 @@ public final class Request implements RequestProvider {
 	public Body getBody() {
 		return body;
 	}
-	
+
 	@Override
 	public Request build() {
 		return this;
@@ -310,7 +310,7 @@ public final class Request implements RequestProvider {
 			return this;
 		}
 
-		/** Builds and returns the final immutable {@link Request}. */
+		/** Builds and returns the final {@link Request}. */
 		public Request build() {
 			return new Request(name, method, folderName, description, urlBuilder.end(), headerBuilder.end(),
 					bodyBuilder.end(), authBuilder.end());
@@ -360,7 +360,8 @@ public final class Request implements RequestProvider {
 			}
 
 			/**
-			 * Builds this request after resolving variables from local key/value pairs.
+			 * Resolves this request part using local key/value pairs and returns to the
+			 * parent request builder.
 			 *
 			 * @param values alternating key/value pairs
 			 * @return parent request builder
@@ -371,8 +372,8 @@ public final class Request implements RequestProvider {
 			}
 
 			/**
-			 * Builds this request after resolving variables from local key/value pairs where
-			 * String values are JSON-stringified.
+			 * Resolves this request part using local key/value pairs and returns to the
+			 * parent request builder. String values are JSON-stringified.
 			 *
 			 * @param values alternating key/value pairs
 			 * @return parent request builder

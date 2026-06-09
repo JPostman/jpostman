@@ -33,11 +33,7 @@ import io.jpostman.RequestProvider;
  * </p>
  *
  * <pre>
- * ApiResponse response = PlaywrightExecutor
- *         .apply(request)
- *         .auth()
- *         .oauth2(token)
- *         .response();
+ * ApiResponse response = PlaywrightExecutor.apply(request).auth().oauth2(token).response();
  * </pre>
  *
  * <p>
@@ -46,8 +42,8 @@ import io.jpostman.RequestProvider;
  *
  * <pre>
  * try (PlaywrightExecutor executor = PlaywrightExecutor.create()) {
- *     ApiResponse login = executor.setRequest(loginRequest).response();
- *     ApiResponse user = executor.setRequest(userRequest).response();
+ * 	ApiResponse login = executor.setRequest(loginRequest).response();
+ * 	ApiResponse user = executor.setRequest(userRequest).response();
  * }
  * </pre>
  *
@@ -77,9 +73,12 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	 * closes the {@link Playwright} instance when {@code ownsPlaywright} is true.
 	 * </p>
 	 *
-	 * @param playwright Playwright instance used to create an API request context
-	 * @param context existing API request context, or {@code null} to create one
-	 * @param ownsPlaywright whether this executor should close the Playwright instance
+	 * @param playwright     Playwright instance used to create an API request
+	 *                       context
+	 * @param context        existing API request context, or {@code null} to create
+	 *                       one
+	 * @param ownsPlaywright whether this executor should close the Playwright
+	 *                       instance
 	 * @throws IllegalArgumentException if {@code playwright} is {@code null}
 	 */
 	public PlaywrightExecutor(Playwright playwright, APIRequestContext context, boolean ownsPlaywright) {
@@ -124,6 +123,17 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	}
 
 	/**
+	 * Builds a request from the supplied {@link RequestProvider} and delegates to
+	 * the request-based method.
+	 *
+	 * @param requestProvider provider used to build the request
+	 * @return executor associated with the request
+	 */
+	public static PlaywrightExecutor apply(RequestProvider requestProvider) {
+		return apply(requestProvider.build());
+	}
+
+	/**
 	 * Creates a fluent Playwright executor for one request.
 	 *
 	 * <p>
@@ -146,7 +156,7 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	 * @return API response
 	 */
 	public static ApiResponse execute(RequestProvider requestProvider) {
-	    return execute(requestProvider.build());
+		return execute(requestProvider.build());
 	}
 
 	/**
@@ -182,7 +192,7 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	 * so they can override collection headers.
 	 * </p>
 	 *
-	 * @param name header name
+	 * @param name  header name
 	 * @param value header value
 	 * @return this executor
 	 */
@@ -224,14 +234,8 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 			byte[] bytes = response.body() == null ? new byte[0] : response.body();
 			String body = new String(bytes, StandardCharsets.UTF_8);
 
-			Map<String, List<String>> headers = response.headers()
-					.entrySet()
-					.stream()
-					.collect(Collectors.toMap(
-							Map.Entry::getKey,
-							e -> List.of(e.getValue()),
-							(left, right) -> right,
-							LinkedHashMap::new));
+			Map<String, List<String>> headers = response.headers().entrySet().stream().collect(Collectors
+					.toMap(Map.Entry::getKey, e -> List.of(e.getValue()), (left, right) -> right, LinkedHashMap::new));
 
 			return new ApiResponse(response.status(), body, bytes, headers);
 		} finally {
@@ -271,8 +275,8 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 		}
 
 		request.getHeader().getParams().forEach((name, value) -> {
-			if (name != null && !name.isBlank() && value != null && 
-					authState.shouldApplyRequestHeader(name) && !runtimeHeaders.containsKey(name)) {
+			if (name != null && !name.isBlank() && value != null && authState.shouldApplyRequestHeader(name)
+					&& !runtimeHeaders.containsKey(name)) {
 				options.setHeader(name, value);
 			}
 		});
@@ -299,8 +303,7 @@ public final class PlaywrightExecutor implements ApiExecutor, AutoCloseable {
 	 * Postman request did not already define Content-Type.
 	 */
 	private void applyContentTypeIfNeeded(Request request, RequestOptions options) {
-		if (request.getBody() != null
-				&& !request.getBody().isEmpty()
+		if (request.getBody() != null && !request.getBody().isEmpty()
 				&& "json".equalsIgnoreCase(request.getBody().getLanguage())
 				&& !request.getHeader().getParams().containsKey("Content-Type")) {
 			options.setHeader("Content-Type", "application/json");

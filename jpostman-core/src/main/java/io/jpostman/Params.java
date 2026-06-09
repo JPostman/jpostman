@@ -188,6 +188,29 @@ public class Params<T> {
 	}
 
 	/**
+	 * Creates a copy of the supplied values and overrides matching keys with
+	 * non-empty system property values.
+	 *
+	 * @param values default values
+	 * @return copied values with system property overrides
+	 */
+	public static Map<String, String> props(Map<String, String> values) {
+		Map<String, String> result = new LinkedHashMap<>();
+		if (values != null) {
+			result.putAll(values);
+		}
+
+		for (String key : result.keySet()) {
+			String value = System.getProperty(key);
+			if (value != null && !value.isEmpty()) {
+				result.put(key, value);
+			}
+		}
+
+		return result;
+	}
+
+	/**
 	 * Creates a mutable list from the supplied values.
 	 *
 	 * @param values list values

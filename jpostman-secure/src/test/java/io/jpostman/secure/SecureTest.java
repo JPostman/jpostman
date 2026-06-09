@@ -1,6 +1,7 @@
 package io.jpostman.secure;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -451,6 +452,39 @@ public class SecureTest {
 		SecureResponse secureResponse = SecureResponse.from(response);
 		assertTrue(secureResponse.exists("regex:.*token.*"));
 		assertTrue(secureResponse.exists("regex:/products/\\d+/reviews"));
+	}
+
+	@Test
+	public void secureContextCopyKeepsConfigurationButNotLatestState() {
+		SecureContext secure = SecureContext.create()
+				.plain(Params.asMap("baseUrl", "https://api.example.com"))
+				.secret(Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key"))
+				.redact("username")
+				.filter("id");
+
+		SecureContext first = secure.copy();
+		SecureContext second = secure.copy();
+
+		SecureRequest login = first.from(loginRequest());
+		SecureRequest user = second.from(userRequest());
+
+		String firstLog = first.log(false);
+		String secondLog = second.log(false);
+		String originalLog = secure.log(false);
+
+		assertTrue(firstLog.contains("Login"));
+		assertFalse(firstLog.contains("Get User"));
+		assertTrue(secondLog.contains("Get User"));
+		assertFalse(secondLog.contains("Login"));
+		assertEquals(originalLog, "");
+
+		assertEquals(login.build().toUrl(), "https://api.example.com/login");
+		assertEquals(user.build().toUrl(), "https://api.example.com/users/123");
+		assertEquals(login.build().getHeader().get("Authorization"), "Bearer real-token");
+		assertTrue(login.log(false).contains("\"username\": \"********\""));
+
+		ApiResponse response = new ApiResponse(200, "{\"id\":1,\"token\":\"abc\"}", new byte[0], Map.of());
+		assertEquals(first.from(response).filtered(), "{\n  \"id\": 1\n}");
 	}
 
 	@Test

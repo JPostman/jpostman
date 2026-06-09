@@ -151,6 +151,17 @@ public final class UnirestExecutor implements ApiExecutor {
 	}
 
 	/**
+	 * Builds a request from the supplied {@link RequestProvider} and delegates to
+	 * the request-based method.
+	 *
+	 * @param requestProvider provider used to build the request
+	 * @return executor associated with the request
+	 */
+	public static UnirestExecutor apply(RequestProvider requestProvider) {
+		return apply(requestProvider.build());
+	}
+
+	/**
 	 * Creates a fluent Unirest executor for the supplied request.
 	 *
 	 * @param request request to execute
