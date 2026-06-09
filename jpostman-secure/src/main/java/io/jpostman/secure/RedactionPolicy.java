@@ -2,6 +2,7 @@ package io.jpostman.secure;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -11,8 +12,8 @@ import java.util.regex.Pattern;
  */
 public final class RedactionPolicy {
 
-	private static final String DEFAULT_MASK = "********";
-	private static final String REGEX_PREFIX = "regex:";
+	static final String DEFAULT_MASK = "********";
+	static final String REGEX_PREFIX = "regex:";
 
 	private final Set<String> protectedKeys;
 	private final Map<String, SliceExpressionFactory> sliceExpressions;
@@ -22,6 +23,7 @@ public final class RedactionPolicy {
 	private final Set<Pattern> protectedPathPatterns;
 	private final String mask;
 	private final SliceExpressionFactory sliceExpressionFactory;
+	private final Set<String> headers = new LinkedHashSet<>();
 
 	private RedactionPolicy(Set<String> protectedKeys, Map<String, SliceExpressionFactory> sliceExpressions,
 			Set<String> protectedPaths, Map<String, SliceExpressionFactory> pathSliceExpressions,
@@ -44,7 +46,40 @@ public final class RedactionPolicy {
 	 */
 	public static RedactionPolicy defaults() {
 		return builder().protectKey("authorization", "proxy-authorization", "api-key", "x-api-key", "access-token",
-				"refresh-token", "token", "password", "secret", "set-cookie").build();
+				"refresh-token", "token", "password", "secret", "set-cookie")
+				.build()
+				.headers("authorization", "proxy-authorization", "cookie", "set-cookie", "api-key", "x-api-key",
+						"x-auth-token", "access-token", "refresh-token");
+	}
+
+	/**
+	 * Adds header names whose values should be fully masked.
+	 *
+	 * @param names header names
+	 * @return this policy
+	 */
+	public RedactionPolicy headers(String... names) {
+		RedactionPolicy result = addRules();
+
+		if (names != null) {
+			for (String name : names) {
+				if (name != null && !name.trim().isEmpty()) {
+					result.headers.add(name.trim().toLowerCase(Locale.ROOT));
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Checks whether a header value should be fully masked.
+	 *
+	 * @param name header name
+	 * @return true if the header is protected
+	 */
+	public boolean isHeaderProtected(String name) {
+		return name != null && headers.contains(name.trim().toLowerCase(Locale.ROOT));
 	}
 
 	/**
@@ -181,7 +216,9 @@ public final class RedactionPolicy {
 				builder.protectRule(rule);
 			}
 		}
-		return builder.build();
+		RedactionPolicy result = builder.build();
+		result.headers.addAll(headers);
+		return result;
 	}
 
 	/**
@@ -218,7 +255,9 @@ public final class RedactionPolicy {
 			}
 		}
 
-		return builder.build();
+		RedactionPolicy result = builder.build();
+		result.headers.addAll(headers);
+		return result;
 	}
 
 	private Builder toBuilder() {

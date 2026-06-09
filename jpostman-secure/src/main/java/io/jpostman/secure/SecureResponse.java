@@ -19,6 +19,7 @@ public final class SecureResponse {
 	private static final Logger log = LoggerFactory.getLogger(SecureResponse.class);
 
 	private List<String> filters = List.of();
+	private List<String> headerFilters = List.of();
 
 	private final ApiResponse response;
 	private SecureValues secureValues = SecureValues.empty();
@@ -97,13 +98,82 @@ public final class SecureResponse {
 	}
 
 	/**
-	 * Sets response filter rules.
+	 * Adds protected header names whose values should be fully masked in logs.
 	 *
-	 * @param filters fields or JSON path rules to keep
+	 * @param names header names
+	 * @return this wrapper
+	 */
+	public SecureResponse headers(String... names) {
+		this.redactionPolicy = this.redactionPolicy.headers(names);
+		return this;
+	}
+
+	/**
+	 * Sets response body filter rules.
+	 *
+	 * <p>
+	 * When filters are configured, only matching response fields or JSON paths are
+	 * included in the logged response body.
+	 * </p>
+	 *
+	 * @param filters fields or JSON path rules to include
 	 * @return this response
 	 */
-	public SecureResponse filters(List<String> filters) {
+	public SecureResponse filter(List<String> filters) {
 		this.filters = filters == null ? List.of() : List.copyOf(filters);
+		return this;
+	}
+
+	/**
+	 * Sets response header filter rules.
+	 *
+	 * <p>
+	 * When header filters are configured, only matching response headers are
+	 * included in the logged response headers.
+	 * </p>
+	 *
+	 * @param headerFilters header names to include
+	 * @return this response
+	 */
+	public SecureResponse headersFilter(List<String> headerFilters) {
+		this.headerFilters = headerFilters == null ? List.of() : List.copyOf(headerFilters);
+		return this;
+	}
+
+	/**
+	 * Sets response header filter rules.
+	 *
+	 * @param headerFilters header names to include
+	 * @return this response
+	 */
+	public SecureResponse headersFilter(String... headerFilters) {
+		return headersFilter(headerFilters == null ? null : Params.asList(headerFilters));
+	}
+
+	/**
+	 * Removes response header filter rules.
+	 *
+	 * @param names header names to remove from filtered header output
+	 * @return this response
+	 */
+	public SecureResponse removeHeaders(String... names) {
+		return removeHeaders(names == null ? null : Params.asList(names));
+	}
+
+	/**
+	 * Removes response header filter rules.
+	 *
+	 * @param headerFilters header names to remove from filtered header output
+	 * @return this response
+	 */
+	public SecureResponse removeHeaders(List<String> headerFilters) {
+		if (headerFilters == null || headerFilters.isEmpty()) {
+			return this;
+		}
+
+		this.headerFilters = this.headerFilters.stream()
+				.filter(filter -> headerFilters.stream().noneMatch(value -> value.equalsIgnoreCase(filter)))
+				.collect(java.util.stream.Collectors.toUnmodifiableList());
 		return this;
 	}
 
@@ -277,13 +347,29 @@ public final class SecureResponse {
 
 		if (all) {
 			response.getHeaders().entrySet().stream()
-					.map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
+					.filter(e -> includeHeader(e.getKey()))
+					.map(e -> String.format("  %-35s = %s\n", e.getKey(), filteredHeader(e.getKey(), e.getValue())))
 					.forEach(sb::append);
 		}
 
 		sb.append(String.format("Body: %s\n", filtered()));
 
 		return sb.toString();
+	}
+
+	private boolean includeHeader(String name) {
+		if (headerFilters.isEmpty()) {
+			return true;
+		}
+
+		return headerFilters.stream().anyMatch(filter -> filter.equalsIgnoreCase(name));
+	}
+
+	private String filteredHeader(String name, Object value) {
+		if (redactionPolicy.isHeaderProtected(name)) {
+			return RedactionPolicy.DEFAULT_MASK;
+		}
+		return SecureText.redact(String.valueOf(value), secureValues, redactionPolicy);
 	}
 
 	/** Logs this body at TRACE level. */

@@ -6,6 +6,7 @@ import static org.testng.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import org.testng.annotations.Test;
@@ -69,6 +70,78 @@ public class SecureTest {
 		assertTrue(redacted.contains("API-KEY = *!!!!*"), redacted);
 		assertTrue(redacted.contains("accessToken: *!!!!*"), redacted);
 		assertTrue(redacted.contains("username = testuser"), redacted);
+	}
+
+	@Test
+	public void secureRequestKeepsUnresolvedPlaceholdersButMasksConcreteProtectedHeaders() {
+		SecureRequest unresolved = SecureRequest.from(loginRequest())
+				.secret(Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key", "SSN", "999-99-9999"));
+
+		String unresolvedLog = unresolved.log(false);
+		assertTrue(unresolvedLog.contains("Authorization                       = Bearer {{accessToken}}"),
+				unresolvedLog);
+		assertTrue(unresolvedLog.contains("API-KEY                             = {{API-KEY}}"), unresolvedLog);
+		assertTrue(unresolvedLog.contains("\"ssn\": \"{{SSN}}\""), unresolvedLog);
+
+		String json = "{\"method\":\"GET\",\"url\":{\"raw\":\"/secure\",\"path\":[\"secure\"]},\"header\":["
+				+ "{\"key\":\"Authorization\",\"value\":\"Bearer real-token\"},"
+				+ "{\"key\":\"X-Trace\",\"value\":\"trace-123\"}]}";
+		Request concreteRequest = Request.from("Concrete", "secure", JsonParser.parseString(json).getAsJsonObject());
+		String concreteLog = SecureRequest.from(concreteRequest).headers("Authorization").log(false);
+		assertTrue(concreteLog.contains("Authorization                       = ********"), concreteLog);
+		assertTrue(concreteLog.contains("X-Trace                             = trace-123"), concreteLog);
+	}
+
+	@Test
+	public void secureResponseMasksConfiguredHeadersWithoutChangingRequestPlaceholderBehavior() {
+		ApiResponse response = new ApiResponse(200, "{\"token\":\"abc123\",\"trace\":\"trace-secret\"}", new byte[0],
+				Map.of("Set-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+
+		SecureResponse secureResponse = SecureResponse.from(response)
+				.values(SecureValues.builder().secret("trace", "trace-secret").build())
+				.redactionPolicy(RedactionPolicy.defaults().headers("X-Trace-Id"));
+
+		String log = secureResponse.log(true);
+		assertTrue(log.contains("Set-Cookie                          = ********"), log);
+		assertTrue(log.contains("X-Trace-Id                          = ********"), log);
+		assertFalse(log.contains("jwt-value"), log);
+		assertFalse(log.contains("trace-secret"), log);
+	}
+
+	@Test
+	public void secureContextHeaderAddsProtectedResponseHeader() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+				Map.of("X-Session-Id", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+		SecureContext secure = SecureContext.create().headers("X-Session-Id");
+		SecureResponse secureResponse = secure.from(response);
+		String log = secureResponse.log(true);
+		assertTrue(log.contains("X-Session-Id                        = ********"), log);
+		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
+		
+		secureResponse = SecureResponse.from(response).headers("X-Session-Id");
+		log = secureResponse.log(true);
+		assertTrue(log.contains("X-Session-Id                        = ********"), log);
+		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
+	}
+
+	@Test
+	public void secureContextHeaderFilterShowsOnlySelectedResponseHeaders() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+
+		SecureContext secure = SecureContext.create().headers("X-Cookie").headersFilter("X-Cookie");
+		
+		SecureResponse secureResponse = secure.from(response);
+		String log = secureResponse.log(true);
+		assertTrue(log.contains("X-Cookie                            = ********"), log);
+		assertFalse(log.contains("X-Trace-Id"), log);
+		assertFalse(log.contains("trace-secret"), log);
+		
+		secureResponse = secure.from(response).headers("X-Cookie").headersFilter("X-Cookie");
+		log = secureResponse.log(true);
+		assertTrue(log.contains("X-Cookie                            = ********"), log);
+		assertFalse(log.contains("X-Trace-Id"), log);
+		assertFalse(log.contains("trace-secret"), log);
 	}
 
 	@Test
@@ -456,10 +529,8 @@ public class SecureTest {
 
 	@Test
 	public void secureContextCopyKeepsConfigurationButNotLatestState() {
-		SecureContext secure = SecureContext.create()
-				.plain(Params.asMap("baseUrl", "https://api.example.com"))
-				.secret(Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key"))
-				.redact("username")
+		SecureContext secure = SecureContext.create().plain(Params.asMap("baseUrl", "https://api.example.com"))
+				.secret(Params.asMap("accessToken", "real-token", "API-KEY", "real-api-key")).redact("username")
 				.filter("id");
 
 		SecureContext first = secure.copy();
@@ -555,6 +626,25 @@ public class SecureTest {
 				+ "{\"key\":\"API-KEY\",\"value\":\"{{API-KEY}}\"},"
 				+ "{\"key\":\"Content-Type\",\"value\":\"application/json\"}]}";
 		return Request.from("Get User", "secure", JsonParser.parseString(json).getAsJsonObject());
+	}
+
+	@Test
+	public void secureContextCanRemoveHeaderFilters() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+		SecureContext secure = SecureContext.create().headersFilter("X-Cookie", "X-Trace-Id")
+				.removeHeaders("X-Trace-Id");
+		SecureResponse secureResponse = secure.from(response);
+		String log = secureResponse.log(true);
+		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
+		assertFalse(log.contains("X-Trace-Id"), log);
+		assertFalse(log.contains("trace-secret"), log);
+		
+		secureResponse = secure.from(response).removeHeaders("X-Trace-Id");
+		log = secureResponse.log(true);
+		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
+		assertFalse(log.contains("X-Trace-Id"), log);
+		assertFalse(log.contains("trace-secret"), log);
 	}
 
 }

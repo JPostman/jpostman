@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.4
+
+### Added
+
+- Added protected header redaction with configurable `headers(...)` support for `SecureContext`, `SecureRequest`, and `SecureResponse`.
+- Added response header filtering with `headersFilter(...)` and `removeHeaders(...)`.
+
+### Changed
+
+- Updated secure logging so unresolved request placeholders remain visible in `log(false)`, while concrete protected header values are masked.
+
+### Fixed
+
+- Fixed response header leaks for protected headers such as cookies and authorization-style headers.
+- Fixed protected header configuration copying so custom header rules are preserved across policy changes and context copies.
+
 ## 1.0.3
 
 ### Added

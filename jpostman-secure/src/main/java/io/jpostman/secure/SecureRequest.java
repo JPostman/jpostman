@@ -110,6 +110,17 @@ public final class SecureRequest implements RequestProvider {
 	}
 
 	/**
+	 * Adds protected header names whose values should be fully masked in logs.
+	 *
+	 * @param names header names
+	 * @return this secure request
+	 */
+	public SecureRequest headers(String... names) {
+		this.redactionPolicy = this.redactionPolicy.headers(names);
+		return this;
+	}
+
+	/**
 	 * Adds plain values used for request resolution.
 	 *
 	 * <p>
@@ -185,7 +196,35 @@ public final class SecureRequest implements RequestProvider {
 		if (resolve) {
 			return SecureText.redact(build().log(), values.build(), redactionPolicy);
 		}
-		return SecureText.redact(request.log(), redactionPolicy);
+		return redactConcreteProtectedHeaders(SecureText.redact(request.log(), redactionPolicy));
+	}
+
+	private String redactConcreteProtectedHeaders(String text) {
+		String[] lines = text.split("\\R", -1);
+		StringBuilder result = new StringBuilder();
+
+		for (int i = 0; i < lines.length; i++) {
+			if (i > 0) {
+				result.append('\n');
+			}
+
+			String line = lines[i];
+			int index = line.indexOf('=');
+			if (index < 0) {
+				result.append(line);
+				continue;
+			}
+
+			String name = line.substring(0, index).trim();
+			String value = line.substring(index + 1);
+			if (redactionPolicy.isHeaderProtected(name) && !value.contains("{{")) {
+				result.append(line.substring(0, index + 1)).append(' ').append(redactionPolicy.mask());
+			} else {
+				result.append(line);
+			}
+		}
+
+		return result.toString();
 	}
 
 	/**

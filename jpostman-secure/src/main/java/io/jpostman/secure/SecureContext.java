@@ -29,6 +29,7 @@ public final class SecureContext {
 	private RedactionPolicy redactionPolicy = RedactionPolicy.defaults();
 
 	private final List<String> filters = new ArrayList<>();
+	private final List<String> headerFilters = new ArrayList<>();
 
 	private SecureRequest request;
 	private SecureResponse response;
@@ -108,6 +109,35 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Adds response header filter rules.
+	 *
+	 * <p>
+	 * When header filters are configured, only matching response headers are
+	 * included in the logged response headers.
+	 * </p>
+	 *
+	 * @param names header names to include
+	 * @return this context
+	 */
+	public SecureContext headersFilter(String... names) {
+		if (names != null) {
+			headerFilters.addAll(Params.asList(names));
+		}
+		return this;
+	}
+
+	/**
+	 * Removes response header filter rules.
+	 *
+	 * @param names header names to remove from filtered header output
+	 * @return this context
+	 */
+	public SecureContext removeHeaders(String... names) {
+		removeHeaders(headerFilters, names);
+		return this;
+	}
+
+	/**
 	 * Sets the redaction policy.
 	 *
 	 * @param redactionPolicy redaction policy
@@ -137,6 +167,17 @@ public final class SecureContext {
 	 */
 	public SecureContext unredact(String... rules) {
 		this.redactionPolicy = this.redactionPolicy.removeRules(rules);
+		return this;
+	}
+
+	/**
+	 * Adds protected header names whose values should be fully masked in logs.
+	 *
+	 * @param names header names
+	 * @return this secure context
+	 */
+	public SecureContext headers(String... names) {
+		this.redactionPolicy = this.redactionPolicy.headers(names);
 		return this;
 	}
 
@@ -233,7 +274,17 @@ public final class SecureContext {
 		copy.values.values(values.build());
 		copy.redactionPolicy = redactionPolicy;
 		copy.filters.addAll(filters);
+		copy.headerFilters.addAll(headerFilters);
 		return copy;
+	}
+
+	private static void removeHeaders(List<String> filters, String... names) {
+		if (filters.isEmpty() || names == null || names.length == 0) {
+			return;
+		}
+
+		List<String> values = Params.asList(names);
+		filters.removeIf(filter -> values.stream().anyMatch(value -> value.equalsIgnoreCase(filter)));
 	}
 
 	/**
@@ -255,7 +306,7 @@ public final class SecureContext {
 	 */
 	public SecureResponse from(ApiResponse response) {
 		return this.response = SecureResponse.from(response).redactionPolicy(redactionPolicy).values(values.build())
-				.filters(filters);
+				.filter(filters).headersFilter(headerFilters);
 	}
 
 	/**
