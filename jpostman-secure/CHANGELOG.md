@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.5
+
+### Added
+
+- Added INI-style secure policy profiles with `SecureContext.loadPolicy(...)`.
+- Added `SecureContext.loadRules(...)` to apply named policy profiles to a copied context without mutating the original context.
+- Added policy profile dependencies with `extends=...` and section references such as `[default]`.
+- Added `unsecret(...)` to convert protected values back to plain values by key.
+- Added `unheaders(...)` for `SecureContext`, `SecureRequest`, and `SecureResponse` to remove protected header masking rules.
+- Added shared exact, wildcard path, and `regex:` matching support for JSON rules and header rules.
+
+### Changed
+
+- Updated response header filtering to support exact and `regex:` header rules.
+
 ## 1.0.4
 
 ### Added

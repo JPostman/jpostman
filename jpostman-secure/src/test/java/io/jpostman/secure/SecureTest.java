@@ -117,7 +117,7 @@ public class SecureTest {
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("X-Session-Id                        = ********"), log);
 		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
-		
+
 		secureResponse = SecureResponse.from(response).headers("X-Session-Id");
 		log = secureResponse.log(true);
 		assertTrue(log.contains("X-Session-Id                        = ********"), log);
@@ -130,13 +130,13 @@ public class SecureTest {
 				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 
 		SecureContext secure = SecureContext.create().headers("X-Cookie").headersFilter("X-Cookie");
-		
+
 		SecureResponse secureResponse = secure.from(response);
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("X-Cookie                            = ********"), log);
 		assertFalse(log.contains("X-Trace-Id"), log);
 		assertFalse(log.contains("trace-secret"), log);
-		
+
 		secureResponse = secure.from(response).headers("X-Cookie").headersFilter("X-Cookie");
 		log = secureResponse.log(true);
 		assertTrue(log.contains("X-Cookie                            = ********"), log);
@@ -234,6 +234,13 @@ public class SecureTest {
 						+ "  API-KEY                             = {{API-KEY}}\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+
+		assertEquals(secure.values().get("accessToken").isProtected(), true);
+		secure.unsecret("accessToken");
+		login = secure.from(loginRequest());
+		String afterUnsecret = login.log();
+		assertTrue(afterUnsecret.contains("Authorization                       = Bearer real-token"), afterUnsecret);
+		assertEquals(secure.values().get("accessToken").isProtected(), false);
 	}
 
 	@Test
@@ -334,14 +341,15 @@ public class SecureTest {
 	@Test
 	public void secureContextCanLoadIniFromFile() throws Exception {
 		SecureContext secure = SecureContext.create()
-				.load(SecureTest.class.getClassLoader().getResourceAsStream("secure-rules.ini"));
+				.load(SecureTest.class.getClassLoader().getResourceAsStream("secure-rules.ini"))
+				.loadRules("debug_forgot");
 		SecureRequest login = secure.from(loginRequest());
 		assertEquals(login.log(false),
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
 						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"********\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
@@ -608,6 +616,106 @@ public class SecureTest {
 		assertEquals(res.paths("/**/id"), Params.asList(1, 2, 3));
 	}
 
+	@Test
+	public void secureContextHeaderFilterReplacesExistingRules() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+		SecureContext secure = SecureContext.create().headersFilter("X-Cookie", "X-Trace-Id").headersFilter("X-Cookie");
+
+		String log = secure.from(response).log(true);
+
+		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
+		assertFalse(log.contains("X-Trace-Id"), log);
+		assertFalse(log.contains("trace-secret"), log);
+	}
+
+	@Test
+	public void secureResponsePathsSupportsExactFieldNamesAfterRuleRefactor() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"products\":[{\"id\":1,\"title\":\"A\"},{\"id\":2,\"title\":\"B\"}]}", new byte[0], Map.of());
+
+		SecureResponse secureResponse = SecureResponse.from(response);
+
+		assertEquals(secureResponse.paths("id").toString(), Params.asList(1, 2).toString());
+	}
+
+	@Test
+	public void secureHeadersCanUseRegexRulesAndUnheaders() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+
+		SecureContext secure = SecureContext.create().headers("regex:.*cookie.*").headersFilter("regex:^x-.*");
+
+		String log = secure.from(response).log(true);
+		assertTrue(log.contains("X-Cookie                            = ********"), log);
+		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
+
+		log = secure.unheaders("regex:.*cookie.*").from(response).log(true);
+		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
+	}
+
+	@Test
+	public void secureContextLoadsIniPolicyProfilesAndClonesForRules() throws Exception {
+		String policy = "# Default policy rules\n[default]\nunsecret=baseUrl\n"
+				+ "redact=api-key,password,token\nheaders=Authorization,Set-Cookie\n"
+				+ "headersFilter=Date,Set-Cookie\n\n[login]\nextends=default\nredact=username\n"
+				+ "\n[debug_login]\nextends=login\nunredact=username\nunheaders=Set-Cookie\n"
+				+ "headersFilter=Set-Cookie\n";
+
+		SecureContext base = SecureContext
+				.create().secret(Params.asMap("baseUrl", "https://api.example.com", "accessToken", "real-token",
+						"API-KEY", "real-api-key"))
+				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
+
+		assertFalse(base.values().get("baseUrl").isProtected());
+		assertFalse(base.redactionPolicy().isProtectedKey("username"));
+
+		SecureContext login = base.loadRules("login");
+		assertTrue(login.redactionPolicy().isProtectedKey("username"));
+		assertFalse(base.redactionPolicy().isProtectedKey("username"));
+
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of("Date", List.of("Mon"),
+				"Set-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+
+		String loginLog = login.from(response).log(true);
+		assertTrue(loginLog.contains("Date                                = [Mon]"), loginLog);
+		assertTrue(loginLog.contains("Set-Cookie                          = ********"), loginLog);
+		assertFalse(loginLog.contains("X-Trace-Id"), loginLog);
+
+		SecureContext debugLogin = base.loadRules("debug_login");
+		String debugLog = debugLogin.from(response).log(true);
+		assertFalse(debugLog.contains("Date"), debugLog);
+		assertTrue(debugLog.contains("Set-Cookie                          = [refreshToken=jwt-value]"), debugLog);
+		assertFalse(debugLogin.redactionPolicy().isProtectedKey("username"));
+	}
+
+	@Test
+	public void unheadersRemovesProtectedHeadersForSecureRequestAndSecureResponse() {
+		Request request = Request.from("Header test", "header-test",
+				JsonParser.parseString("{\"method\":\"GET\",\"url\":{\"raw\":\"/secure\",\"path\":[\"secure\"]},"
+						+ "\"header\":[{\"key\":\"X-Debug-Token\",\"value\":\"request-secret\"},"
+						+ "{\"key\":\"X-Trace-Id\",\"value\":\"trace-request\"}]}").getAsJsonObject());
+
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of("X-Debug-Token",
+				Params.asList("response-secret"), "X-Trace-Id", Params.asList("trace-response")));
+
+		SecureRequest secureRequest = SecureRequest.from(request).headers("X-Debug-Token").unheaders("X-Debug-Token");
+
+		SecureResponse secureResponse = SecureResponse.from(response).headers("X-Debug-Token")
+				.unheaders("X-Debug-Token");
+
+		String requestLog = secureRequest.log(true);
+		String responseLog = secureResponse.log(true);
+
+		assertTrue(requestLog.contains("X-Debug-Token"), requestLog);
+		assertTrue(requestLog.contains("request-secret"), requestLog);
+		assertFalse(requestLog.contains("X-Debug-Token                       = ********"), requestLog);
+
+		assertTrue(responseLog.contains("X-Debug-Token"), responseLog);
+		assertTrue(responseLog.contains("response-secret"), responseLog);
+		assertFalse(responseLog.contains("X-Debug-Token                       = ********"), responseLog);
+	}
+
 	private static Request loginRequest() {
 		String json = "{\"method\":\"POST\",\"url\":{\"raw\":\"{{baseUrl}}/login\","
 				+ "\"host\":[\"{{baseUrl}}\"],\"path\":[\"login\"]},\"header\":["
@@ -627,24 +735,4 @@ public class SecureTest {
 				+ "{\"key\":\"Content-Type\",\"value\":\"application/json\"}]}";
 		return Request.from("Get User", "secure", JsonParser.parseString(json).getAsJsonObject());
 	}
-
-	@Test
-	public void secureContextCanRemoveHeaderFilters() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
-				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
-		SecureContext secure = SecureContext.create().headersFilter("X-Cookie", "X-Trace-Id")
-				.removeHeaders("X-Trace-Id");
-		SecureResponse secureResponse = secure.from(response);
-		String log = secureResponse.log(true);
-		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
-		assertFalse(log.contains("X-Trace-Id"), log);
-		assertFalse(log.contains("trace-secret"), log);
-		
-		secureResponse = secure.from(response).removeHeaders("X-Trace-Id");
-		log = secureResponse.log(true);
-		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
-		assertFalse(log.contains("X-Trace-Id"), log);
-		assertFalse(log.contains("trace-secret"), log);
-	}
-
 }

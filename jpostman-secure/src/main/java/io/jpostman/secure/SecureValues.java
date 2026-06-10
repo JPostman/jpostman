@@ -161,6 +161,28 @@ public final class SecureValues {
 		}
 
 		/**
+		 * Converts protected values to plain values by key.
+		 *
+		 * @param names value keys to convert to plain values
+		 * @return this builder
+		 */
+		public Builder unsecret(String... names) {
+			if (names != null) {
+				for (String name : names) {
+					if (name == null) {
+						continue;
+					}
+
+					SecureValue value = values.get(name);
+					if (value != null && value.isProtected()) {
+						values.put(name, SecureValue.plain(value.reveal()));
+					}
+				}
+			}
+			return this;
+		}
+
+		/**
 		 * Builds the immutable registry.
 		 *
 		 * @return secure values

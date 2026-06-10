@@ -402,17 +402,7 @@ public final class SecureText {
 	 */
 	private static boolean matchesFilter(String key, String path, List<String> rules) {
 		for (String rule : rules) {
-			if (rule == null || rule.isBlank()) {
-				continue;
-			}
-
-			String trimmed = JsonPathRules.normalizeRule(rule);
-
-			if (key != null && !trimmed.startsWith("/") && key.equals(trimmed)) {
-				return true;
-			}
-
-			if (trimmed.startsWith("/") && JsonPathRules.matches(trimmed, path)) {
+			if (JsonPathRules.matchesRule(key, path, rule)) {
 				return true;
 			}
 		}

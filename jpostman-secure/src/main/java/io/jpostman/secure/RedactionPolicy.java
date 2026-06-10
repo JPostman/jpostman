@@ -2,7 +2,6 @@ package io.jpostman.secure;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -46,10 +45,9 @@ public final class RedactionPolicy {
 	 */
 	public static RedactionPolicy defaults() {
 		return builder().protectKey("authorization", "proxy-authorization", "api-key", "x-api-key", "access-token",
-				"refresh-token", "token", "password", "secret", "set-cookie")
-				.build()
-				.headers("authorization", "proxy-authorization", "cookie", "set-cookie", "api-key", "x-api-key",
-						"x-auth-token", "access-token", "refresh-token");
+				"refresh-token", "token", "password", "secret", "set-cookie").build().headers("authorization",
+						"proxy-authorization", "cookie", "set-cookie", "api-key", "x-api-key", "x-auth-token",
+						"access-token", "refresh-token");
 	}
 
 	/**
@@ -64,8 +62,30 @@ public final class RedactionPolicy {
 		if (names != null) {
 			for (String name : names) {
 				if (name != null && !name.trim().isEmpty()) {
-					result.headers.add(name.trim().toLowerCase(Locale.ROOT));
+					result.headers.add(name.trim());
 				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Removes protected header names.
+	 *
+	 * @param names header names or regex rules to remove
+	 * @return new policy
+	 */
+	public RedactionPolicy unheaders(String... names) {
+		RedactionPolicy result = addRules();
+
+		if (names != null) {
+			for (String name : names) {
+				if (name == null || name.trim().isEmpty()) {
+					continue;
+				}
+				String rule = name.trim();
+				result.headers.removeIf(header -> sameHeaderRule(header, rule));
 			}
 		}
 
@@ -79,7 +99,7 @@ public final class RedactionPolicy {
 	 * @return true if the header is protected
 	 */
 	public boolean isHeaderProtected(String name) {
-		return name != null && headers.contains(name.trim().toLowerCase(Locale.ROOT));
+		return headers.stream().anyMatch(rule -> JsonPathRules.matchesName(name, rule));
 	}
 
 	/**
@@ -297,6 +317,16 @@ public final class RedactionPolicy {
 		return JsonPathRules.matches(pattern, path);
 	}
 
+	private static boolean sameHeaderRule(String left, String right) {
+		boolean leftRegex = left.startsWith(REGEX_PREFIX);
+		boolean rightRegex = right.startsWith(REGEX_PREFIX);
+
+		if (leftRegex || rightRegex) {
+			return left.equals(right);
+		}
+
+		return left.equalsIgnoreCase(right);
+	}
 
 	public static final class Builder {
 		private final Set<String> protectedKeys = new LinkedHashSet<>();

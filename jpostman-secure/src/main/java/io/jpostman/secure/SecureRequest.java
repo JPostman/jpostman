@@ -121,6 +121,17 @@ public final class SecureRequest implements RequestProvider {
 	}
 
 	/**
+	 * Removes protected header names.
+	 *
+	 * @param names header names or regex rules to remove
+	 * @return this secure request
+	 */
+	public SecureRequest unheaders(String... names) {
+		this.redactionPolicy = this.redactionPolicy.unheaders(names);
+		return this;
+	}
+
+	/**
 	 * Adds plain values used for request resolution.
 	 *
 	 * <p>

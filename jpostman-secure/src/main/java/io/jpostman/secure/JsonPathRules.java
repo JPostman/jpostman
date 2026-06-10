@@ -3,6 +3,7 @@ package io.jpostman.secure;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -126,6 +127,59 @@ final class JsonPathRules {
 	}
 
 	/**
+	 * Checks whether a field key or JSON path matches a rule.
+	 *
+	 * @param key  field key
+	 * @param path JSON path
+	 * @param rule exact field name, slash/wildcard path, or regex rule
+	 * @return {@code true} when the rule matches
+	 */
+	static boolean matchesRule(String key, String path, String rule) {
+		if (rule == null || rule.trim().isEmpty()) {
+			return false;
+		}
+
+		String trimmed = rule.trim();
+
+		if (trimmed.startsWith(RedactionPolicy.REGEX_PREFIX)) {
+			String regex = trimmed.substring(RedactionPolicy.REGEX_PREFIX.length()).trim();
+			Pattern pattern = Pattern.compile(regex);
+			return pattern.matcher(key == null ? "" : key).matches()
+					|| pattern.matcher(path == null ? "" : normalizePath(path)).matches();
+		}
+
+		if (!trimmed.startsWith("/")) {
+			return key != null && key.equals(trimmed);
+		}
+
+		String normalized = normalizeRule(trimmed);
+
+		return path != null && matches(normalized, path);
+	}
+
+	/**
+	 * Checks whether a name matches an exact or regex rule.
+	 *
+	 * @param name name to check
+	 * @param rule exact name or regex rule
+	 * @return {@code true} when the rule matches
+	 */
+	static boolean matchesName(String name, String rule) {
+		if (name == null || rule == null || rule.trim().isEmpty()) {
+			return false;
+		}
+
+		String trimmed = rule.trim();
+
+		if (trimmed.startsWith(RedactionPolicy.REGEX_PREFIX)) {
+			String regex = trimmed.substring(RedactionPolicy.REGEX_PREFIX.length()).trim();
+			return Pattern.compile(regex, Pattern.CASE_INSENSITIVE).matcher(name).matches();
+		}
+
+		return trimmed.equalsIgnoreCase(name);
+	}
+
+	/**
 	 * Checks whether a path rule matches a JSON path.
 	 *
 	 * @param pattern path rule
@@ -182,22 +236,18 @@ final class JsonPathRules {
 			return List.of();
 		}
 
-		RedactionPolicy policy = RedactionPolicy.builder()
-				.protectRule(normalizeRule(rule))
-				.build();
-
 		List<T> result = new ArrayList<>();
-		paths(element, "", policy, result);
+		paths(element, null, "", rule, result);
 		return result;
 	}
 
 	@SuppressWarnings("unchecked")
-	private static <T> void paths(JsonElement element, String path, RedactionPolicy policy, List<T> result) {
-		if (element == null || element.isJsonNull() || policy == null) {
+	private static <T> void paths(JsonElement element, String key, String path, String rule, List<T> result) {
+		if (element == null || element.isJsonNull()) {
 			return;
 		}
 
-		if (policy.isProtectedPath(path)) {
+		if (matchesRule(key, path, rule)) {
 			result.add((T) jsonValue(element));
 			return;
 		}
@@ -206,7 +256,8 @@ final class JsonPathRules {
 			JsonObject object = element.getAsJsonObject();
 
 			for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
-				paths(entry.getValue(), path + "/" + entry.getKey(), policy, result);
+				String childKey = entry.getKey();
+				paths(entry.getValue(), childKey, path + "/" + childKey, rule, result);
 			}
 
 			return;
@@ -216,7 +267,7 @@ final class JsonPathRules {
 			JsonArray array = element.getAsJsonArray();
 
 			for (int i = 0; i < array.size(); i++) {
-				paths(array.get(i), path + "/" + i, policy, result);
+				paths(array.get(i), null, path + "/" + i, rule, result);
 			}
 		}
 	}

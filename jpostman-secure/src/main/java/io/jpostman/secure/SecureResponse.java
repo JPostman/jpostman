@@ -109,6 +109,17 @@ public final class SecureResponse {
 	}
 
 	/**
+	 * Removes protected header names.
+	 *
+	 * @param names header names or regex rules to remove
+	 * @return this response
+	 */
+	public SecureResponse unheaders(String... names) {
+		this.redactionPolicy = this.redactionPolicy.unheaders(names);
+		return this;
+	}
+
+	/**
 	 * Sets response body filter rules.
 	 *
 	 * <p>
@@ -148,33 +159,6 @@ public final class SecureResponse {
 	 */
 	public SecureResponse headersFilter(String... headerFilters) {
 		return headersFilter(headerFilters == null ? null : Params.asList(headerFilters));
-	}
-
-	/**
-	 * Removes response header filter rules.
-	 *
-	 * @param names header names to remove from filtered header output
-	 * @return this response
-	 */
-	public SecureResponse removeHeaders(String... names) {
-		return removeHeaders(names == null ? null : Params.asList(names));
-	}
-
-	/**
-	 * Removes response header filter rules.
-	 *
-	 * @param headerFilters header names to remove from filtered header output
-	 * @return this response
-	 */
-	public SecureResponse removeHeaders(List<String> headerFilters) {
-		if (headerFilters == null || headerFilters.isEmpty()) {
-			return this;
-		}
-
-		this.headerFilters = this.headerFilters.stream()
-				.filter(filter -> headerFilters.stream().noneMatch(value -> value.equalsIgnoreCase(filter)))
-				.collect(java.util.stream.Collectors.toUnmodifiableList());
-		return this;
 	}
 
 	/** @return HTTP status code. */
@@ -346,8 +330,7 @@ public final class SecureResponse {
 		sb.append(String.format("Status Code: %d\n", response.statusCode()));
 
 		if (all) {
-			response.getHeaders().entrySet().stream()
-					.filter(e -> includeHeader(e.getKey()))
+			response.getHeaders().entrySet().stream().filter(e -> includeHeader(e.getKey()))
 					.map(e -> String.format("  %-35s = %s\n", e.getKey(), filteredHeader(e.getKey(), e.getValue())))
 					.forEach(sb::append);
 		}
@@ -362,7 +345,7 @@ public final class SecureResponse {
 			return true;
 		}
 
-		return headerFilters.stream().anyMatch(filter -> filter.equalsIgnoreCase(name));
+		return headerFilters.stream().anyMatch(filter -> JsonPathRules.matchesName(name, filter));
 	}
 
 	private String filteredHeader(String name, Object value) {

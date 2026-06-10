@@ -6,8 +6,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import io.jpostman.ApiResponse;
 import io.jpostman.Environment;
@@ -30,6 +33,7 @@ public final class SecureContext {
 
 	private final List<String> filters = new ArrayList<>();
 	private final List<String> headerFilters = new ArrayList<>();
+	private final Map<String, PolicySection> policySections = new LinkedHashMap<>();
 
 	private SecureRequest request;
 	private SecureResponse response;
@@ -64,27 +68,193 @@ public final class SecureContext {
 			throw new IllegalArgumentException("input cannot be null");
 		}
 
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-			String line;
+		List<String> lines = readLines(input);
 
-			while ((line = reader.readLine()) != null) {
-				String value = line.trim();
+		if (isPolicy(lines)) {
+			return loadPolicyLines(lines);
+		}
 
-				if (value.isEmpty() || value.startsWith("#")) {
-					continue;
-				}
+		for (String line : lines) {
+			String value = line.trim();
 
-				if (value.startsWith("\\-")) {
-					redact(value.substring(1));
-				} else if (value.startsWith("-")) {
-					unredact(value.substring(1));
-				} else {
-					redact(value);
-				}
+			if (value.isEmpty() || value.startsWith("#")) {
+				continue;
+			}
+
+			if (value.startsWith("\\-")) {
+				redact(value.substring(1));
+			} else if (value.startsWith("-")) {
+				unredact(value.substring(1));
+			} else {
+				redact(value);
 			}
 		}
 
 		return this;
+	}
+
+	/**
+	 * Loads secure policy profiles from an INI-style input stream.
+	 *
+	 * <p>
+	 * Sections define reusable profiles. The {@code default} section is applied to
+	 * this context after loading. Other profiles can be applied with
+	 * {@link #loadRules(String...)}.
+	 * </p>
+	 *
+	 * @param input input stream containing policy profiles
+	 * @return this context
+	 * @throws IOException if the input stream cannot be read
+	 */
+	public SecureContext loadPolicy(InputStream input) throws IOException {
+		if (input == null) {
+			throw new IllegalArgumentException("input cannot be null");
+		}
+
+		return loadPolicyLines(readLines(input));
+	}
+
+	private SecureContext loadPolicyLines(List<String> lines) {
+		PolicySection current = null;
+
+		for (String line : lines) {
+			String value = line.trim();
+
+			if (value.isEmpty() || value.startsWith("#")) {
+				continue;
+			}
+
+			if (value.startsWith("[") && value.endsWith("]")) {
+				String name = value.substring(1, value.length() - 1).trim();
+				if (name.isEmpty()) {
+					throw new IllegalArgumentException("policy section name cannot be blank");
+				}
+				current = policySections.computeIfAbsent(name, PolicySection::new);
+				continue;
+			}
+
+			if (current == null) {
+				throw new IllegalArgumentException("policy rule must be inside a section: " + value);
+			}
+
+			int index = value.indexOf('=');
+			if (index < 0) {
+				throw new IllegalArgumentException("policy rule must use key=value format: " + value);
+			}
+
+			current.add(value.substring(0, index).trim(), value.substring(index + 1).trim());
+		}
+
+		if (policySections.containsKey("default")) {
+			applyRules("default", new LinkedHashSet<>(), new LinkedHashSet<>());
+		}
+
+		return this;
+	}
+
+	private static List<String> readLines(InputStream input) throws IOException {
+		List<String> lines = new ArrayList<>();
+
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+			String line;
+			while ((line = reader.readLine()) != null) {
+				lines.add(line);
+			}
+		}
+
+		return lines;
+	}
+
+	private static boolean isPolicy(List<String> lines) {
+		for (String line : lines) {
+			String value = line.trim();
+			if (value.isEmpty() || value.startsWith("#")) {
+				continue;
+			}
+			return value.startsWith("[") && value.endsWith("]");
+		}
+		return false;
+	}
+
+	/**
+	 * Applies named policy profiles to a copied context.
+	 *
+	 * @param names profile names to apply
+	 * @return copied context with the selected rules applied
+	 */
+	public SecureContext loadRules(String... names) {
+		SecureContext copy = copy();
+
+		if (names != null) {
+			Set<String> applied = new LinkedHashSet<>();
+			if (copy.policySections.containsKey("default")) {
+				applied.add("default");
+			}
+			for (String name : names) {
+				copy.applyRules(name, applied, new LinkedHashSet<>());
+			}
+		}
+
+		return copy;
+	}
+
+	private void applyRules(String name, Set<String> applied, Set<String> resolving) {
+		if (name == null || name.trim().isEmpty()) {
+			return;
+		}
+
+		String sectionName = name.trim();
+		if (applied.contains(sectionName)) {
+			return;
+		}
+
+		PolicySection section = policySections.get(sectionName);
+		if (section == null) {
+			throw new IllegalArgumentException("unknown policy section: " + sectionName);
+		}
+
+		if (!resolving.add(sectionName)) {
+			throw new IllegalArgumentException("cyclic policy section dependency: " + sectionName);
+		}
+
+		for (String parent : section.extendsRules) {
+			applyRules(parent, applied, resolving);
+		}
+
+		applyRuleValues(section.redact, this::redact, applied, resolving);
+		applyRuleValues(section.unredact, this::unredact, applied, resolving);
+		applyRuleValues(section.headers, this::headers, applied, resolving);
+		applyRuleValues(section.unheaders, this::unheaders, applied, resolving);
+		applyRuleValues(section.filter, this::filter, applied, resolving);
+		applyRuleValues(section.headersFilter, this::headersFilter, applied, resolving);
+		applyRuleValues(section.unsecret, this::unsecret, applied, resolving);
+
+		resolving.remove(sectionName);
+		applied.add(sectionName);
+	}
+
+	private void applyRuleValues(List<String> values, RuleApplier applier, Set<String> applied, Set<String> resolving) {
+		if (values.isEmpty()) {
+			return;
+		}
+
+		List<String> rules = new ArrayList<>();
+
+		for (String value : values) {
+			if (isSectionReference(value)) {
+				applyRules(value.substring(1, value.length() - 1), applied, resolving);
+			} else {
+				rules.add(value);
+			}
+		}
+
+		if (!rules.isEmpty()) {
+			applier.apply(rules.toArray(new String[0]));
+		}
+	}
+
+	private static boolean isSectionReference(String value) {
+		return value != null && value.startsWith("[") && value.endsWith("]") && value.length() > 2;
 	}
 
 	/**
@@ -109,31 +279,22 @@ public final class SecureContext {
 	}
 
 	/**
-	 * Adds response header filter rules.
+	 * Sets response header filter rules.
 	 *
 	 * <p>
 	 * When header filters are configured, only matching response headers are
-	 * included in the logged response headers.
+	 * included in the logged response headers. Calling this method replaces any
+	 * existing header filter rules.
 	 * </p>
 	 *
 	 * @param names header names to include
 	 * @return this context
 	 */
 	public SecureContext headersFilter(String... names) {
+		headerFilters.clear();
 		if (names != null) {
 			headerFilters.addAll(Params.asList(names));
 		}
-		return this;
-	}
-
-	/**
-	 * Removes response header filter rules.
-	 *
-	 * @param names header names to remove from filtered header output
-	 * @return this context
-	 */
-	public SecureContext removeHeaders(String... names) {
-		removeHeaders(headerFilters, names);
 		return this;
 	}
 
@@ -171,6 +332,17 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Converts protected values to plain values by key.
+	 *
+	 * @param names value keys to convert to plain values
+	 * @return this context
+	 */
+	public SecureContext unsecret(String... names) {
+		this.values.unsecret(names);
+		return this;
+	}
+
+	/**
 	 * Adds protected header names whose values should be fully masked in logs.
 	 *
 	 * @param names header names
@@ -178,6 +350,17 @@ public final class SecureContext {
 	 */
 	public SecureContext headers(String... names) {
 		this.redactionPolicy = this.redactionPolicy.headers(names);
+		return this;
+	}
+
+	/**
+	 * Removes protected header names.
+	 *
+	 * @param names header names or regex rules to remove
+	 * @return this secure context
+	 */
+	public SecureContext unheaders(String... names) {
+		this.redactionPolicy = this.redactionPolicy.unheaders(names);
 		return this;
 	}
 
@@ -260,6 +443,15 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Returns the current secure values.
+	 *
+	 * @return current secure values
+	 */
+	public SecureValues values() {
+		return this.values.build();
+	}
+
+	/**
 	 * Creates a copy of this secure context.
 	 *
 	 * <p>
@@ -275,16 +467,10 @@ public final class SecureContext {
 		copy.redactionPolicy = redactionPolicy;
 		copy.filters.addAll(filters);
 		copy.headerFilters.addAll(headerFilters);
-		return copy;
-	}
-
-	private static void removeHeaders(List<String> filters, String... names) {
-		if (filters.isEmpty() || names == null || names.length == 0) {
-			return;
+		for (Map.Entry<String, PolicySection> entry : policySections.entrySet()) {
+			copy.policySections.put(entry.getKey(), entry.getValue().copy());
 		}
-
-		List<String> values = Params.asList(names);
-		filters.removeIf(filter -> values.stream().anyMatch(value -> value.equalsIgnoreCase(filter)));
+		return copy;
 	}
 
 	/**
@@ -348,5 +534,88 @@ public final class SecureContext {
 		}
 
 		return sb.toString();
+	}
+
+	private interface RuleApplier {
+		void apply(String... values);
+	}
+
+	private static final class PolicySection {
+		private final String name;
+		private final List<String> extendsRules = new ArrayList<>();
+		private final List<String> redact = new ArrayList<>();
+		private final List<String> unredact = new ArrayList<>();
+		private final List<String> headers = new ArrayList<>();
+		private final List<String> unheaders = new ArrayList<>();
+		private final List<String> filter = new ArrayList<>();
+		private final List<String> headersFilter = new ArrayList<>();
+		private final List<String> unsecret = new ArrayList<>();
+
+		private PolicySection(String name) {
+			this.name = name;
+		}
+
+		private void add(String key, String value) {
+			List<String> items = splitValues(value);
+
+			switch (key) {
+			case "extends":
+				this.extendsRules.addAll(items);
+				break;
+			case "redact":
+				this.redact.addAll(items);
+				break;
+			case "unredact":
+				this.unredact.addAll(items);
+				break;
+			case "headers":
+				this.headers.addAll(items);
+				break;
+			case "unheaders":
+				this.unheaders.addAll(items);
+				break;
+			case "filter":
+				this.filter.addAll(items);
+				break;
+			case "headersFilter":
+				this.headersFilter.addAll(items);
+				break;
+			case "unsecret":
+				this.unsecret.addAll(items);
+				break;
+			default:
+				throw new IllegalArgumentException("unknown policy key in [" + name + "]: " + key);
+			}
+		}
+
+		private PolicySection copy() {
+			PolicySection copy = new PolicySection(name);
+			copy.extendsRules.addAll(extendsRules);
+			copy.redact.addAll(redact);
+			copy.unredact.addAll(unredact);
+			copy.headers.addAll(headers);
+			copy.unheaders.addAll(unheaders);
+			copy.filter.addAll(filter);
+			copy.headersFilter.addAll(headersFilter);
+			copy.unsecret.addAll(unsecret);
+			return copy;
+		}
+
+		private static List<String> splitValues(String value) {
+			List<String> result = new ArrayList<>();
+
+			if (value == null || value.trim().isEmpty()) {
+				return result;
+			}
+
+			for (String item : value.split(",")) {
+				String trimmed = item.trim();
+				if (!trimmed.isEmpty()) {
+					result.add(trimmed);
+				}
+			}
+
+			return result;
+		}
 	}
 }
