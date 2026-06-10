@@ -14,6 +14,8 @@
 
 [JPostman API Documentation](https://jpostman.github.io/jpostman/)
 
+[JPostman Wiki](https://github.com/JPostman/jpostman/wiki)
+
 **JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
 
 Instead of copying request URLs, headers, authentication, query parameters, and request bodies into Java code, JPostman keeps Postman as the source of truth. Export the collection and environment, load them in Java, override only what your test needs, resolve Postman-style templates, and execute the final request with the executor you prefer.
