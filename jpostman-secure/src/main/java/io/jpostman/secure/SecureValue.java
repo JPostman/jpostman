@@ -11,12 +11,12 @@ package io.jpostman.secure;
 public final class SecureValue {
 
 	public static final String DEFAULT_MASK = "********";
-	private final String value;
+	private final Object value;
 	private final boolean protectedValue;
 	private final String mask;
 
-	private SecureValue(String value, boolean protectedValue, String mask) {
-		this.value = value == null ? "" : value;
+	private SecureValue(Object value, boolean protectedValue, String mask) {
+		this.value = value;
 		this.protectedValue = protectedValue;
 		this.mask = mask == null || mask.isBlank() ? DEFAULT_MASK : mask;
 	}
@@ -27,7 +27,7 @@ public final class SecureValue {
 	 * @param value value to store
 	 * @return plain secure value
 	 */
-	public static SecureValue plain(String value) {
+	public static SecureValue plain(Object value) {
 		return new SecureValue(value, false, DEFAULT_MASK);
 	}
 
@@ -37,7 +37,7 @@ public final class SecureValue {
 	 * @param value real value to store
 	 * @return protected secure value
 	 */
-	public static SecureValue secret(String value) {
+	public static SecureValue secret(Object value) {
 		return new SecureValue(value, true, DEFAULT_MASK);
 	}
 
@@ -48,7 +48,7 @@ public final class SecureValue {
 	 * @param mask  display mask
 	 * @return protected secure value
 	 */
-	public static SecureValue secret(String value, String mask) {
+	public static SecureValue secret(Object value, String mask) {
 		return new SecureValue(value, true, mask);
 	}
 
@@ -58,7 +58,7 @@ public final class SecureValue {
 	}
 
 	/** @return real value. */
-	public String reveal() {
+	public Object reveal() {
 		return value;
 	}
 
@@ -69,6 +69,6 @@ public final class SecureValue {
 
 	@Override
 	public String toString() {
-		return protectedValue ? mask : value;
+		return protectedValue ? mask : String.valueOf(value);
 	}
 }

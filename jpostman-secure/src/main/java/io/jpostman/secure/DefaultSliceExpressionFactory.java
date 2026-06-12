@@ -1,5 +1,8 @@
 package io.jpostman.secure;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 /**
  * Default implementation for parsing and applying slice expressions.
  *
@@ -13,11 +16,13 @@ package io.jpostman.secure;
  * [0:-1]
  * [:-4]
  * [-4:]
+ * [regex:^\+\d{1,2}]
  * </pre>
  *
  * <p>
  * For redaction, {@code [:-4]} and {@code [-4:]} both keep the last four
- * characters visible.
+ * characters visible. A {@code [regex:...]} expression keeps the first value
+ * match visible.
  * </p>
  */
 public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
@@ -47,6 +52,10 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 
 		if (body.isEmpty()) {
 			throw new IllegalArgumentException("Empty slice expression: " + expression);
+		}
+
+		if (body.startsWith(RedactionPolicy.REGEX_PREFIX)) {
+			return regexExpression(body.substring(RedactionPolicy.REGEX_PREFIX.length()).trim(), expression);
 		}
 
 		if (!body.contains(":")) {
@@ -120,6 +129,34 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 		String visible = source.substring(resolvedStart, resolvedEnd);
 
 		return mask + visible;
+	}
+
+	private static SliceExpressionFactory regexExpression(String regex, String expression) {
+		if (regex.isEmpty()) {
+			throw new IllegalArgumentException("regex slice expression cannot be blank: " + expression);
+		}
+
+		Pattern pattern = Pattern.compile(regex);
+		return new SliceExpressionFactory() {
+			@Override
+			public SliceExpressionFactory parse(String expression) {
+				return new DefaultSliceExpressionFactory().parse(expression);
+			}
+
+			@Override
+			public String mask(String source, String mask) {
+				if (source == null || source.isEmpty()) {
+					return mask;
+				}
+
+				Matcher matcher = pattern.matcher(source);
+				if (!matcher.find()) {
+					return mask;
+				}
+
+				return matcher.groupCount() > 0 && matcher.group(1) != null ? matcher.group(1) : matcher.group();
+			}
+		};
 	}
 
 	private static int resolve(Integer value, int length, int defaultValue) {

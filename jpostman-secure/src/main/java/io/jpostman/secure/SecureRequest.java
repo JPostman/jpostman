@@ -168,7 +168,7 @@ public final class SecureRequest implements RequestProvider {
 	 * @return key/value map using unmasked values
 	 */
 	private Map<String, ?> resolveValues() {
-		Map<String, String> result = new LinkedHashMap<>();
+		Map<String, Object> result = new LinkedHashMap<>();
 		values.build().values().forEach((key, value) -> result.put(key, value.reveal()));
 		return result;
 	}
@@ -205,7 +205,7 @@ public final class SecureRequest implements RequestProvider {
 	 */
 	public String log(boolean resolve) {
 		if (resolve) {
-			return SecureText.redact(build().log(), values.build(), redactionPolicy);
+			return redactConcreteProtectedHeaders(SecureText.redact(build().log(), values.build(), redactionPolicy));
 		}
 		return redactConcreteProtectedHeaders(SecureText.redact(request.log(), redactionPolicy));
 	}

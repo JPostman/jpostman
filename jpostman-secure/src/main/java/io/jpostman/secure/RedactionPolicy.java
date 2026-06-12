@@ -19,6 +19,7 @@ public final class RedactionPolicy {
 	private final Set<String> protectedPaths;
 	private final Map<String, SliceExpressionFactory> pathSliceExpressions;
 	private final Set<Pattern> protectedKeyPatterns;
+	private final Map<Pattern, SliceExpressionFactory> protectedKeyPatternSlices;
 	private final Set<Pattern> protectedPathPatterns;
 	private final String mask;
 	private final SliceExpressionFactory sliceExpressionFactory;
@@ -26,13 +27,14 @@ public final class RedactionPolicy {
 
 	private RedactionPolicy(Set<String> protectedKeys, Map<String, SliceExpressionFactory> sliceExpressions,
 			Set<String> protectedPaths, Map<String, SliceExpressionFactory> pathSliceExpressions,
-			Set<Pattern> protectedKeyPatterns, Set<Pattern> protectedPathPatterns, String mask,
-			SliceExpressionFactory sliceExpressionFactory) {
+			Set<Pattern> protectedKeyPatterns, Map<Pattern, SliceExpressionFactory> protectedKeyPatternSlices,
+			Set<Pattern> protectedPathPatterns, String mask, SliceExpressionFactory sliceExpressionFactory) {
 		this.protectedKeys = protectedKeys;
 		this.sliceExpressions = sliceExpressions;
 		this.protectedPaths = protectedPaths;
 		this.pathSliceExpressions = pathSliceExpressions;
 		this.protectedKeyPatterns = protectedKeyPatterns;
+		this.protectedKeyPatternSlices = protectedKeyPatternSlices;
 		this.protectedPathPatterns = protectedPathPatterns;
 		this.mask = mask;
 		this.sliceExpressionFactory = sliceExpressionFactory;
@@ -137,6 +139,12 @@ public final class RedactionPolicy {
 			}
 		}
 
+		for (Pattern pattern : protectedKeyPatternSlices.keySet()) {
+			if (pattern.matcher(key == null ? "" : key).matches()) {
+				return true;
+			}
+		}
+
 		return false;
 	}
 
@@ -160,7 +168,15 @@ public final class RedactionPolicy {
 		if (expression == null) {
 			expression = sliceExpressions.get(key);
 		}
-		return expression;
+		if (expression != null) {
+			return expression;
+		}
+		for (Map.Entry<Pattern, SliceExpressionFactory> entry : protectedKeyPatternSlices.entrySet()) {
+			if (entry.getKey().matcher(key == null ? "" : key).matches()) {
+				return entry.getValue();
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -242,6 +258,35 @@ public final class RedactionPolicy {
 	}
 
 	/**
+	 * Returns a new policy with an additional regex key redaction rule.
+	 *
+	 * @param keyRegex regular expression used to match field keys
+	 * @return new redaction policy
+	 */
+	public RedactionPolicy addRegexRule(String keyRegex) {
+		Builder builder = toBuilder();
+		builder.protectRegexRule(keyRegex);
+		RedactionPolicy result = builder.build();
+		result.headers.addAll(headers);
+		return result;
+	}
+
+	/**
+	 * Returns a new policy with an additional regex key rule and value expression.
+	 *
+	 * @param keyRegex        regular expression used to match field keys
+	 * @param valueExpression slice or regex expression applied to matched values
+	 * @return new redaction policy
+	 */
+	public RedactionPolicy addRegexRule(String keyRegex, String valueExpression) {
+		Builder builder = toBuilder();
+		builder.protectRegexRule(keyRegex, valueExpression);
+		RedactionPolicy result = builder.build();
+		result.headers.addAll(headers);
+		return result;
+	}
+
+	/**
 	 * Returns a new policy without the supplied redaction rules.
 	 *
 	 * @param rules field or JSON path rules to remove
@@ -287,6 +332,7 @@ public final class RedactionPolicy {
 		builder.protectedPaths.addAll(protectedPaths);
 		builder.pathSliceExpressions.putAll(pathSliceExpressions);
 		builder.protectedKeyPatterns.addAll(protectedKeyPatterns);
+		builder.protectedKeyPatternSlices.putAll(protectedKeyPatternSlices);
 		builder.protectedPathPatterns.addAll(protectedPathPatterns);
 		builder.mask = mask;
 		builder.sliceExpressionFactory = sliceExpressionFactory;
@@ -334,6 +380,7 @@ public final class RedactionPolicy {
 		private final Set<String> protectedPaths = new LinkedHashSet<>();
 		private final Map<String, SliceExpressionFactory> pathSliceExpressions = new LinkedHashMap<>();
 		private final Set<Pattern> protectedKeyPatterns = new LinkedHashSet<>();
+		private final Map<Pattern, SliceExpressionFactory> protectedKeyPatternSlices = new LinkedHashMap<>();
 		private final Set<Pattern> protectedPathPatterns = new LinkedHashSet<>();
 		private String mask = DEFAULT_MASK;
 		private SliceExpressionFactory sliceExpressionFactory = new DefaultSliceExpressionFactory();
@@ -433,6 +480,21 @@ public final class RedactionPolicy {
 			return this;
 		}
 
+		private Builder protectRegexRule(String pattern, String valueExpression) {
+			if (pattern == null || pattern.isBlank()) {
+				throw new IllegalArgumentException("regex rule cannot be blank");
+			}
+			if (valueExpression == null || valueExpression.isBlank()) {
+				return protectRegexRule(pattern);
+			}
+			if (pattern.startsWith("/")) {
+				throw new IllegalArgumentException("regex value expressions are supported only for field keys");
+			}
+
+			protectedKeyPatternSlices.put(Pattern.compile(pattern), parsedSlice(valueExpression.trim()));
+			return this;
+		}
+
 		private void removeRegexRule(String pattern) {
 			if (pattern == null || pattern.isBlank()) {
 				return;
@@ -442,6 +504,7 @@ public final class RedactionPolicy {
 				protectedPathPatterns.removeIf(item -> item.pattern().equals(pattern));
 			} else {
 				protectedKeyPatterns.removeIf(item -> item.pattern().equals(pattern));
+				protectedKeyPatternSlices.keySet().removeIf(item -> item.pattern().equals(pattern));
 			}
 		}
 
@@ -512,8 +575,8 @@ public final class RedactionPolicy {
 		public RedactionPolicy build() {
 			return new RedactionPolicy(new LinkedHashSet<>(protectedKeys), new LinkedHashMap<>(sliceExpressions),
 					new LinkedHashSet<>(protectedPaths), new LinkedHashMap<>(pathSliceExpressions),
-					new LinkedHashSet<>(protectedKeyPatterns), new LinkedHashSet<>(protectedPathPatterns), mask,
-					sliceExpressionFactory);
+					new LinkedHashSet<>(protectedKeyPatterns), new LinkedHashMap<>(protectedKeyPatternSlices),
+					new LinkedHashSet<>(protectedPathPatterns), mask, sliceExpressionFactory);
 		}
 	}
 }

@@ -13,6 +13,7 @@ import org.testng.annotations.Test;
 
 import com.google.gson.JsonParser;
 
+import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Environment;
 import io.jpostman.Params;
@@ -206,7 +207,7 @@ public class SecureTest {
 		Request resolvedLogin = login.build();
 		Request resolvedUser = user.build();
 
-		assertTrue(resolved.contains("Authorization                       = Bearer ********"));
+		assertTrue(resolved.contains("Authorization                       = ********"));
 
 		assertEquals(loginDebug,
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
@@ -236,8 +237,9 @@ public class SecureTest {
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 
 		assertEquals(secure.values().get("accessToken").isProtected(), true);
-		secure.unsecret("accessToken");
+		secure.unsecret("accessToken").unheaders("Authorization");
 		login = secure.from(loginRequest());
+		secure.print();
 		String afterUnsecret = login.log();
 		assertTrue(afterUnsecret.contains("Authorization                       = Bearer real-token"), afterUnsecret);
 		assertEquals(secure.values().get("accessToken").isProtected(), false);
@@ -341,15 +343,14 @@ public class SecureTest {
 	@Test
 	public void secureContextCanLoadIniFromFile() throws Exception {
 		SecureContext secure = SecureContext.create()
-				.load(SecureTest.class.getClassLoader().getResourceAsStream("secure-rules.ini"))
-				.loadRules("debug_forgot");
+				.load(SecureTest.class.getClassLoader().getResourceAsStream("secure-rules.ini"));
 		SecureRequest login = secure.from(loginRequest());
 		assertEquals(login.log(false),
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
 						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
@@ -427,8 +428,8 @@ public class SecureTest {
 				.redactionPolicy(RedactionPolicy.builder().protectRule("regex:(?i).*token.*").build());
 
 		String log = secureResponse.log(true);
-		assertTrue(log.contains("\"accessToken\": " + SecureValue.DEFAULT_MASK));
-		assertTrue(log.contains("\"id_token\": " + SecureValue.DEFAULT_MASK));
+		assertTrue(log.contains("\"accessToken\": \"" + SecureValue.DEFAULT_MASK + "\""));
+		assertTrue(log.contains("\"id_token\": \"" + SecureValue.DEFAULT_MASK + "\""));
 		assertTrue(log.contains("\"username\": \"sam\""));
 
 		secureResponse = SecureResponse.from(response)
@@ -574,7 +575,7 @@ public class SecureTest {
 				"\n********** SecureRequest: **********\n"
 						+ "[POST  ] Login                                    -> /login\nHeaders:\n"
 						+ "  Authorization                       = ********\n"
-						+ "  API-KEY                             =********\n"
+						+ "  API-KEY                             = ********\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}");
 		ApiResponse response = new ApiResponse(200, "{\"creditCard\":\"1234-4567-7890-0987\"}", new byte[0], Map.of());
@@ -583,11 +584,15 @@ public class SecureTest {
 				"\n********** SecureRequest: **********\n"
 						+ "[POST  ] Login                                    -> /login\nHeaders:\n"
 						+ "  Authorization                       = ********\n"
-						+ "  API-KEY                             =********\n"
+						+ "  API-KEY                             = ********\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}\n\n"
 						+ "**********SecureResponse: **********\nStatus Code: 200\nBody: {\n"
 						+ "  \"creditCard\": \"1234-4567-7890-0987\"\n}\n");
+		
+		assertEquals(secure.get("key1"), "value1");
+		assertEquals(secure.get("key2"), "secret2");
+		assertEquals(secure.asString("key2"), "secret2");
 	}
 
 	@Test
@@ -614,6 +619,92 @@ public class SecureTest {
 				new byte[0], Map.of());
 		SecureResponse res = SecureResponse.from(response);
 		assertEquals(res.paths("/**/id"), Params.asList(1, 2, 3));
+	}
+
+	@Test
+	public void regexpSliceCanDisplayOnlyPhoneCountryCode() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\",\"otherPhone\":\"+12 555-1234\"}",
+				new byte[0], Map.of());
+
+		// Match fields by key name using a regex rule.
+		SecureResponse secureResponse = SecureResponse.from(response).redact("regex:(?i).*phone.*");
+		String pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"********\""), pretty);
+
+		// Keep only the first three characters by using a slice rule.
+		secureResponse = SecureResponse.from(response).redact("phone[:3]", "backupPhone[:3]", "otherPhone[:3]");
+		pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"********+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"********+1 \""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"********+12\""), pretty);
+
+		// Keep only the value part matched by the regex.
+		secureResponse = SecureResponse.from(response).redact("phone[regex:^\\+\\d{1,2}]",
+				"backupPhone[regex:^\\+\\d{1,2}]", "otherPhone[regex:^\\+\\d{1,2}]");
+		pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"+1\""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"+12\""), pretty);
+		assertFalse(pretty.contains("965-431-3024"), pretty);
+		assertFalse(pretty.contains("999-999-9999"), pretty);
+
+		secureResponse = SecureContext.create().redactRegex("(?i).*phone.*", "[:3]").from(response);
+		pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"********+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"********+1 \""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"********+12\""), pretty);
+
+		secureResponse = SecureContext.create().redactRegex("(?i).*phone.*", "[regex:^\\+\\d{1,2}]").from(response);
+		pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"+1\""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"+12\""), pretty);
+
+		secureResponse = SecureContext.create().redactRegex("(?i).*phone.*").from(response);
+		pretty = secureResponse.pretty();
+		assertTrue(pretty.contains("\"phone\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"otherPhone\": \"********\""), pretty);
+	}
+
+	@Test
+	public void policySplitKeepsRegexpCommasInsideSliceRules() throws Exception {
+		String policy = "[default]\nredact=phone[regex:^\\+\\d{1,2}],backupPhone[regex:^\\+\\d{1,2}]\n";
+		ApiResponse response = new ApiResponse(200,
+				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}", new byte[0], Map.of());
+
+		SecureContext secure = SecureContext.create()
+				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
+
+		String pretty = secure.from(response).pretty();
+
+		assertTrue(pretty.contains("\"phone\": \"+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"+1\""), pretty);
+		assertFalse(pretty.contains("965-431-3024"), pretty);
+		assertFalse(pretty.contains("999-999-9999"), pretty);
+	}
+
+	@Test
+	public void regexSliceExpressionCanParseAnotherSliceExpression() {
+		SliceExpressionFactory regexSlice = new DefaultSliceExpressionFactory().parse("[regex:^\\+\\d{1,2}]");
+		SliceExpressionFactory parsed = regexSlice.parse("[:3]");
+		assertEquals(parsed.mask("+81 965-431-3024", "********"), "********+81");
+	}
+
+	@Test
+	public void redactionPolicyCanRemoveRegexKeySliceRule() {
+		ApiResponse response = new ApiResponse(200,
+				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}", new byte[0], Map.of());
+
+		RedactionPolicy policy = RedactionPolicy.defaults().addRegexRule("(?i).*phone.*", "[:3]")
+				.removeRules("regex:(?i).*phone.*");
+
+		String pretty = SecureResponse.from(response).redactionPolicy(policy).pretty();
+		assertTrue(pretty.contains("\"phone\": \"+81 965-431-3024\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"+1 999-999-9999\""), pretty);
 	}
 
 	@Test
@@ -651,6 +742,21 @@ public class SecureTest {
 		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
 
 		log = secure.unheaders("regex:.*cookie.*").from(response).log(true);
+		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
+
+		// Test unheaders for request
+		secure = SecureContext.create().headers("Content-Type").request(loginRequest());
+		log = secure.request().log(true);
+		assertTrue(log.contains("Content-Type                        = ********"), log);
+
+		log = secure.request().unheaders("Content-Type").log(true);
+		assertTrue(log.contains("Content-Type                        = application/json"), log);
+
+		// Test unheaders for response
+		log = secure.headers("X-Cookie").response(response).log(true);
+		assertTrue(log.contains("X-Cookie                            = ********"), log);
+
+		log = secure.response().unheaders("X-Cookie").log(true);
 		assertTrue(log.contains("X-Cookie                            = [refreshToken=jwt-value]"), log);
 	}
 
@@ -690,30 +796,50 @@ public class SecureTest {
 	}
 
 	@Test
-	public void unheadersRemovesProtectedHeadersForSecureRequestAndSecureResponse() {
-		Request request = Request.from("Header test", "header-test",
-				JsonParser.parseString("{\"method\":\"GET\",\"url\":{\"raw\":\"/secure\",\"path\":[\"secure\"]},"
-						+ "\"header\":[{\"key\":\"X-Debug-Token\",\"value\":\"request-secret\"},"
-						+ "{\"key\":\"X-Trace-Id\",\"value\":\"trace-request\"}]}").getAsJsonObject());
+	public void shouldCreateSecureResponseFromApiExecutor() {
+		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of());
+		ApiExecutor executor = () -> response;
+		SecureResponse secureResponse = SecureContext.create().from(executor);
+		assertEquals(secureResponse.statusCode(), 200);
+		assertEquals(secureResponse.pretty(), "{\n  \"status\": \"ok\"\n}");
 
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of("X-Debug-Token",
-				Params.asList("response-secret"), "X-Trace-Id", Params.asList("trace-response")));
+		SecureContext secure = SecureContext.create().response(executor);
+		assertEquals(secure.response().statusCode(), 200);
+		assertEquals(secure.response().pretty(), "{\n  \"status\": \"ok\"\n}");
+	}
 
-		SecureRequest secureRequest = SecureRequest.from(request).headers("X-Debug-Token").unheaders("X-Debug-Token");
+	@Test
+	public void secureValueKeepsOriginalObjectTypes() {
+		Map<String, Object> profile = Map.of("id", 123, "active", true, "roles", List.of("admin", "tester"));
+		SecureValue secret = SecureValue.secret(profile);
+		SecureValue plain = SecureValue.plain(profile);
 
-		SecureResponse secureResponse = SecureResponse.from(response).headers("X-Debug-Token")
-				.unheaders("X-Debug-Token");
+		assertEquals(secret.reveal(), profile);
+		assertEquals(secret.toString(), SecureValue.DEFAULT_MASK);
+		assertEquals(plain.reveal(), profile);
+		assertEquals(plain.toString(), profile.toString());
+	}
 
-		String requestLog = secureRequest.log(true);
-		String responseLog = secureResponse.log(true);
+	@Test
+	public void secureValuesKeepsMapListNumberAndBooleanTypes() {
+		Map<String, Object> profile = Map.of("id", 123, "active", true, "roles", List.of("admin", "tester"));
+		SecureValues values = SecureValues.builder()
+				.plain("count", 5)
+				.plain("enabled", true)
+				.plain("profile", profile)
+				.secret("token", "abc123")
+				.secret("secretProfile", profile)
+				.build();
 
-		assertTrue(requestLog.contains("X-Debug-Token"), requestLog);
-		assertTrue(requestLog.contains("request-secret"), requestLog);
-		assertFalse(requestLog.contains("X-Debug-Token                       = ********"), requestLog);
-
-		assertTrue(responseLog.contains("X-Debug-Token"), responseLog);
-		assertTrue(responseLog.contains("response-secret"), responseLog);
-		assertFalse(responseLog.contains("X-Debug-Token                       = ********"), responseLog);
+		assertEquals(values.get("count").reveal(), 5);
+		assertEquals(values.get("enabled").reveal(), true);
+		assertEquals(values.get("profile").reveal(), profile);
+		assertEquals(values.get("secretProfile").reveal(), profile);
+		assertEquals(values.asMap().get("count"), 5);
+		assertEquals(values.asMap().get("enabled"), true);
+		assertEquals(values.asMap().get("profile"), profile);
+		assertEquals(values.asMap().get("token"), SecureValue.DEFAULT_MASK);
+		assertEquals(values.asMap().get("secretProfile"), SecureValue.DEFAULT_MASK);
 	}
 
 	private static Request loginRequest() {

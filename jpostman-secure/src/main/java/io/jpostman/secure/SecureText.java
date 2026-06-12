@@ -70,8 +70,12 @@ public final class SecureText {
 	private static String redactKnownProtectedValues(String text, SecureValues values, String mask) {
 		String result = text;
 		for (SecureValue value : values.values().values()) {
-			if (value.isProtected() && !value.reveal().isEmpty()) {
-				result = result.replace(value.reveal(), mask);
+			Object revealed = value.reveal();
+			if (value.isProtected() && revealed != null) {
+				String plain = String.valueOf(revealed);
+				if (!plain.isEmpty()) {
+					result = result.replace(plain, mask);
+				}
 			}
 		}
 		return result;
@@ -81,9 +85,16 @@ public final class SecureText {
 		Pattern pattern = Pattern.compile("(?m)^([ \\t]*)([^=:\\n]{1,80})([ \\t]*[=:][ \\t]*)(.+)$");
 		Matcher matcher = pattern.matcher(text);
 		StringBuffer output = new StringBuffer();
+
 		while (matcher.find()) {
 			String key = matcher.group(2).trim();
 			String value = matcher.group(4);
+
+			if (isJsonQuotedKey(key)) {
+				matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group()));
+				continue;
+			}
+
 			SliceExpressionFactory slice = policy.sliceExpressionFor(key);
 			if (slice != null) {
 				String replacement = matcher.group(1) + matcher.group(2) + matcher.group(3)
@@ -93,6 +104,7 @@ public final class SecureText {
 				matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group()));
 			}
 		}
+
 		matcher.appendTail(output);
 		return output.toString();
 	}
@@ -109,13 +121,24 @@ public final class SecureText {
 		return result;
 	}
 
+	private static boolean isJsonQuotedKey(String key) {
+		return key != null && key.length() >= 2 && key.startsWith("\"") && key.endsWith("\"");
+	}
+
 	private static String redactAssignmentsByKey(String text, RedactionPolicy policy) {
 		Pattern pattern = Pattern.compile("(?m)^([ \\t]*)([^=:\\n]{1,80})([ \\t]*[=:][ \\t]*)(.+)$");
 		Matcher matcher = pattern.matcher(text);
 		StringBuffer output = new StringBuffer();
+
 		while (matcher.find()) {
 			String key = matcher.group(2).trim();
 			String value = matcher.group(4);
+
+			if (isJsonQuotedKey(key)) {
+				matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group()));
+				continue;
+			}
+
 			if (policy.isProtectedKey(key)) {
 				SliceExpressionFactory slice = policy.sliceExpressionFor(key);
 				String redactedValue = slice == null ? policy.mask() : slice.mask(value, policy.mask());
@@ -125,6 +148,7 @@ public final class SecureText {
 				matcher.appendReplacement(output, Matcher.quoteReplacement(matcher.group()));
 			}
 		}
+
 		matcher.appendTail(output);
 		return output.toString();
 	}

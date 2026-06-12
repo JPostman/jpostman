@@ -12,6 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Environment;
 import io.jpostman.Params;
@@ -26,6 +30,8 @@ import io.jpostman.Request;
  * </p>
  */
 public final class SecureContext {
+
+	private static final Logger log = LoggerFactory.getLogger(SecureContext.class);
 
 	private final SecureValues.Builder values = SecureValues.builder();
 
@@ -310,6 +316,46 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Adds a redaction rule for keys that match the given regular expression.
+	 * <p>
+	 * This is useful when multiple fields should be protected by the same key
+	 * pattern. For example, {@code (?i).*phone.*} can match keys such as
+	 * {@code phone}, {@code backupPhone}, and {@code otherPhone}.
+	 *
+	 * @param keyRegex the regular expression used to match field keys
+	 * @return this secure context
+	 */
+	public SecureContext redactRegex(String keyRegex) {
+		this.redactionPolicy = this.redactionPolicy.addRegexRule(keyRegex);
+		return this;
+	}
+
+	/**
+	 * Adds a redaction rule for keys that match the given regular expression and
+	 * applies the given value expression to the matched values.
+	 * <p>
+	 * The value expression can be a slice expression, such as {@code [:3]} or
+	 * {@code [-4:]}, or a regex value expression, such as
+	 * {@code [regex:^\\+\\d{1,2}]}.
+	 * <p>
+	 * Example:
+	 *
+	 * <pre>
+	 * redactRegex("(?i).*phone.*", "[:3]");
+	 * redactRegex("(?i).*phone.*", "[regex:^\\+\\d{1,2}]");
+	 * </pre>
+	 *
+	 * @param keyRegex        the regular expression used to match field keys
+	 * @param valueExpression the slice or regex expression applied to matched
+	 *                        values
+	 * @return this secure context
+	 */
+	public SecureContext redactRegex(String keyRegex, String valueExpression) {
+		this.redactionPolicy = this.redactionPolicy.addRegexRule(keyRegex, valueExpression);
+		return this;
+	}
+
+	/**
 	 * Adds request fields that should be redacted.
 	 *
 	 * @param rules field redaction rules
@@ -452,6 +498,27 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Returns the current secure values.
+	 *
+	 * @return current secure values
+	 */
+	public Object get(String key) {
+		SecureValue value = values().get(key);
+		return value == null ? null : value.reveal();
+	}
+
+	/**
+	 * Returns the value for the given key as a string.
+	 *
+	 * @param key the secure value key
+	 * @return the value as a string, or an empty string if the key does not exist
+	 */
+	public String asString(String key) {
+		Object value = get(key);
+		return value == null ? "" : String.valueOf(value);
+	}
+
+	/**
 	 * Creates a copy of this secure context.
 	 *
 	 * <p>
@@ -493,6 +560,85 @@ public final class SecureContext {
 	public SecureResponse from(ApiResponse response) {
 		return this.response = SecureResponse.from(response).redactionPolicy(redactionPolicy).values(values.build())
 				.filter(filters).headersFilter(headerFilters);
+	}
+
+	/**
+	 * Wraps the response returned by the given executor as a secure response.
+	 *
+	 * @param executor the API executor used to execute the request
+	 * @return the secure response wrapper
+	 */
+	public SecureResponse from(ApiExecutor executor) {
+		return this.from(executor.response());
+	}
+
+	/**
+	 * Wraps the given request and stores it in this secure context.
+	 *
+	 * @param request the request to protect
+	 * @return this secure context
+	 */
+	public SecureContext request(Request request) {
+		this.from(request);
+		return this;
+	}
+
+	/**
+	 * Wraps the given API response and stores it in this secure context.
+	 *
+	 * @param response the response to protect
+	 * @return this secure context
+	 */
+	public SecureContext response(ApiResponse response) {
+		this.from(response);
+		return this;
+	}
+
+	/**
+	 * Wraps the response returned by the given executor and stores it in this
+	 * secure context.
+	 *
+	 * @param executor the API executor used to execute the request
+	 * @return this secure context
+	 */
+	public SecureContext response(ApiExecutor executor) {
+		this.from(executor.response());
+		return this;
+	}
+
+	/**
+	 * Returns the current secure request stored in this context.
+	 *
+	 * @return the current secure request, or {@code null} if no request was set
+	 */
+	public SecureRequest request() {
+		return request;
+	}
+
+	/**
+	 * Returns the current secure response stored in this context.
+	 *
+	 * @return the current secure response, or {@code null} if no response was set
+	 */
+	public SecureResponse response() {
+		return response;
+	}
+
+	/**
+	 * Logs the current secure request and response output at TRACE level.
+	 */
+	public void print() {
+		print(true);
+	}
+
+	/**
+	 * Logs the current secure request and response output at TRACE level.
+	 *
+	 * @param resolve {@code true} to resolve variables before logging, or
+	 *                {@code false} to log unresolved placeholders
+	 */
+	public void print(boolean resolve) {
+		log.trace(log(resolve));
 	}
 
 	/**
@@ -608,14 +754,35 @@ public final class SecureContext {
 				return result;
 			}
 
-			for (String item : value.split(",")) {
-				String trimmed = item.trim();
-				if (!trimmed.isEmpty()) {
-					result.add(trimmed);
+			StringBuilder item = new StringBuilder();
+			int bracketDepth = 0;
+
+			for (int i = 0; i < value.length(); i++) {
+				char ch = value.charAt(i);
+				if (ch == '[') {
+					bracketDepth++;
+				} else if (ch == ']' && bracketDepth > 0) {
+					bracketDepth--;
+				}
+
+				if (ch == ',' && bracketDepth == 0) {
+					addSplitValue(result, item);
+					item.setLength(0);
+				} else {
+					item.append(ch);
 				}
 			}
 
+			addSplitValue(result, item);
+
 			return result;
+		}
+
+		private static void addSplitValue(List<String> result, StringBuilder item) {
+			String trimmed = item.toString().trim();
+			if (!trimmed.isEmpty()) {
+				result.add(trimmed);
+			}
 		}
 	}
 }

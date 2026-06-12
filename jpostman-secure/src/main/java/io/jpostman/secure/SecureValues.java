@@ -49,9 +49,9 @@ public final class SecureValues {
 	 *
 	 * @return key/value map using masked values for protected entries
 	 */
-	public Map<String, String> asMap() {
-		Map<String, String> result = new LinkedHashMap<>();
-		values.forEach((key, value) -> result.put(key, value.toString()));
+	public Map<String, Object> asMap() {
+		Map<String, Object> result = new LinkedHashMap<>();
+		values.forEach((key, value) -> result.put(key, value.isProtected() ? value.mask() : value.reveal()));
 		return result;
 	}
 
@@ -89,7 +89,7 @@ public final class SecureValues {
 		 * @return this builder
 		 */
 		public Builder plain(String key, Object value) {
-			values.put(key, SecureValue.plain(String.valueOf(value)));
+			values.put(key, SecureValue.plain(value));
 			return this;
 		}
 
@@ -101,7 +101,7 @@ public final class SecureValues {
 		 * @return this builder
 		 */
 		public Builder secret(String key, Object value) {
-			values.put(key, SecureValue.secret(String.valueOf(value)));
+			values.put(key, SecureValue.secret(value));
 			return this;
 		}
 

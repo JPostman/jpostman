@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.6
+
+### Added
+
+- Added regex value expressions for slice rules, such as phone[regex:^\\+\\d{1,2}], to keep only the matched value portion visible.
+- Added SecureContext.redactRegex(String keyRegex, String valueExpression) for applying slice or regex value expressions to fields matched by key regex.
+- Added SecureContext.get(...) to return the original secure value by key.
+- Added SecureContext.asString(...) to return a secure value as a string.
+- Added SecureContext.request(...) and SecureContext.response(...) helpers for storing the latest secure request and response in the context.
+- Added SecureContext.from(ApiExecutor) and SecureContext.response(ApiExecutor) helpers for wrapping executor responses.
+- Added SecureContext.print() and SecureContext.print(boolean) for TRACE-level secure request and response logging.
+- Added support for storing non-string secure values, including numbers, booleans, maps, and lists.
+
+### Changed
+
+- Updated SecureValue to store the original value as Object instead of converting everything to String.
+- Updated INI policy rule splitting so commas inside bracket expressions, such as regex value expressions, are not split incorrectly.
+
 ## 1.0.5
 
 ### Added
