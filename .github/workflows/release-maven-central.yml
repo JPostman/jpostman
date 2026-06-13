@@ -45,7 +45,7 @@ jobs:
             -DskipTests \
             -Dgpg.skip=false \
             -Dcentral.skipPublishing=false \
-            -pl .,jpostman-core,jpostman-httpclient,jpostman-restassured,jpostman-playwright,jpostman-unirest,jpostman-secure
+            -pl .,jpostman-core,jpostman-httpclient,jpostman-restassured,jpostman-playwright,jpostman-unirest,jpostman-secure,jpostman-testng,jpostman-junit
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}

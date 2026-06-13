@@ -10,23 +10,27 @@
 		<version>1.1.0</version>
 	</parent>
 
-	<artifactId>jpostman-secure</artifactId>
+	<artifactId>jpostman-junit</artifactId>
 	<packaging>jar</packaging>
 
-	<name>JPostman Secure</name>
-	<description>Secret-safe value, request, and response redaction helpers for JPostman.</description>
-	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-secure</url>
+	<name>JPostman JUnit</name>
+	<description>JUnit assertion and secure context helpers for JPostman.</description>
+	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-junit</url>
 
 	<dependencies>
 		<dependency>
 			<groupId>io.github.jpostman</groupId>
-			<artifactId>jpostman-core</artifactId>
+			<artifactId>jpostman-secure</artifactId>
 		</dependency>
-
 		<dependency>
-			<groupId>org.testng</groupId>
-			<artifactId>testng</artifactId>
-			<version>${testng.version}</version>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<version>5.10.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-engine</artifactId>
+			<version>5.10.2</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

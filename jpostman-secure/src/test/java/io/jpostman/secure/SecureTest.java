@@ -3,11 +3,13 @@ package io.jpostman.secure;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
 
@@ -565,6 +567,92 @@ public class SecureTest {
 
 		ApiResponse response = new ApiResponse(200, "{\"id\":1,\"token\":\"abc\"}", new byte[0], Map.of());
 		assertEquals(first.from(response).filtered(), "{\n  \"id\": 1\n}");
+		assertEquals(first.statusCode(), 200);
+		assertTrue(first.exists("id"));
+		assertEquals(first.path("id"), 1);
+		assertEquals(first.paths("id").toString(), "[1]");
+		assertEquals(SecureContext.callerMethodName(1), "secureContextCopyKeepsConfigurationButNotLatestState");
+	}
+
+	@Test
+	public void cacheCanUseExplicitKeyAndReuseValue() {
+		SecureContext secure = SecureContext.create();
+		AtomicInteger calls = new AtomicInteger();
+
+		String first = secure.cache("token", () -> {
+			calls.incrementAndGet();
+			return "abc123";
+		});
+
+		String second = secure.cache("token", () -> {
+			calls.incrementAndGet();
+			return "new-value";
+		});
+
+		String third = secure.cache(() -> {
+			calls.incrementAndGet();
+			return "new-value";
+		});
+
+		assertEquals(first, "abc123");
+		assertEquals(second, "abc123");
+		assertEquals(third, "new-value");
+		assertEquals(calls.get(), 2);
+
+		assertEquals(secure.cache().get("token"), "abc123");
+		assertEquals(secure.cache().get("cacheCanUseExplicitKeyAndReuseValue"), "new-value");
+
+		secure.cacheClean("cacheCanUseExplicitKeyAndReuseValue");
+
+		assertEquals(secure.cache().get("token"), "abc123");
+		assertEquals(secure.cache().get("cacheCanUseExplicitKeyAndReuseValue"), null);
+		assertEquals(secure.cache().size(), 1);
+
+		secure.cacheClean();
+
+		assertEquals(secure.cache().get("token"), null);
+		assertEquals(secure.cache().size(), 0);
+	}
+
+	@Test
+	public void cacheStoresFailureAndLaterCallsThrowCachedFailureException() {
+		SecureContext secure = SecureContext.create();
+		AtomicInteger calls = new AtomicInteger();
+
+		try {
+			secure.cache("token", () -> {
+				calls.incrementAndGet();
+				throw new RuntimeException("Token failed");
+			});
+			fail("Expected first cache call to fail");
+		} catch (RuntimeException e) {
+			assertEquals(e.getMessage(), "Token failed");
+		}
+
+		try {
+			secure.cache("token", () -> {
+				calls.incrementAndGet();
+				return "abc123";
+			});
+			fail("Expected cached failure");
+		} catch (SecureContext.CachedFailureException e) {
+			assertTrue(e.getMessage().contains("token"));
+			assertEquals(e.getCause().getMessage(), "Token failed");
+		}
+
+		assertEquals(calls.get(), 1);
+	}
+
+	@Test
+	public void jPostmanAssertionErrorKeepsSecureLogAndCause() {
+		AssertionError original = new AssertionError("Original failure");
+		String secureLog = "secure log";
+		JPostmanAssertionError error = JPostmanAssertionError.wrap(original, secureLog);
+		assertTrue(error.getMessage().contains("Original failure"));
+		assertEquals(error.getCause(), original);
+		assertEquals(error.secureLog(), secureLog);
+		assertEquals(error.getSuppressed().length, 1);
+		assertTrue(error.getSuppressed()[0].getMessage().contains(secureLog));
 	}
 
 	@Test
@@ -589,7 +677,7 @@ public class SecureTest {
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}\n\n"
 						+ "**********SecureResponse: **********\nStatus Code: 200\nBody: {\n"
 						+ "  \"creditCard\": \"1234-4567-7890-0987\"\n}\n");
-		
+
 		assertEquals(secure.get("key1"), "value1");
 		assertEquals(secure.get("key2"), "secret2");
 		assertEquals(secure.asString("key2"), "secret2");
@@ -685,6 +773,26 @@ public class SecureTest {
 		assertTrue(pretty.contains("\"backupPhone\": \"+1\""), pretty);
 		assertFalse(pretty.contains("965-431-3024"), pretty);
 		assertFalse(pretty.contains("999-999-9999"), pretty);
+	}
+
+	@Test
+	public void iniPolicyCanUseRedactRegexWithValueExpressions() throws Exception {
+		String policy = "[default]\nredactRegex=(?i).*phone.* -> [:3],(?i).*mobile.* -> [regex:^\\+\\d{1,2}],other -> [regex:^\\+\\S+]\n";
+		ApiResponse response = new ApiResponse(200,
+				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\",\"mobile\":\"+1 555-1234\",\"other\":\"+1 123-4567\"}",
+				new byte[0], Map.of());
+
+		SecureContext secure = SecureContext.create()
+				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
+
+		String pretty = secure.from(response).pretty();
+
+		assertTrue(pretty.contains("\"phone\": \"********+81\""), pretty);
+		assertTrue(pretty.contains("\"backupPhone\": \"********+1 \""), pretty);
+		assertTrue(pretty.contains("\"mobile\": \"+1\""), pretty);
+		assertTrue(pretty.contains("\"other\": \"+1\""), pretty);
+		assertFalse(pretty.contains("965-431-3024"), pretty);
+		assertFalse(pretty.contains("555-1234"), pretty);
 	}
 
 	@Test
@@ -823,13 +931,8 @@ public class SecureTest {
 	@Test
 	public void secureValuesKeepsMapListNumberAndBooleanTypes() {
 		Map<String, Object> profile = Map.of("id", 123, "active", true, "roles", List.of("admin", "tester"));
-		SecureValues values = SecureValues.builder()
-				.plain("count", 5)
-				.plain("enabled", true)
-				.plain("profile", profile)
-				.secret("token", "abc123")
-				.secret("secretProfile", profile)
-				.build();
+		SecureValues values = SecureValues.builder().plain("count", 5).plain("enabled", true).plain("profile", profile)
+				.secret("token", "abc123").secret("secretProfile", profile).build();
 
 		assertEquals(values.get("count").reveal(), 5);
 		assertEquals(values.get("enabled").reveal(), true);
@@ -840,6 +943,60 @@ public class SecureTest {
 		assertEquals(values.asMap().get("profile"), profile);
 		assertEquals(values.asMap().get("token"), SecureValue.DEFAULT_MASK);
 		assertEquals(values.asMap().get("secretProfile"), SecureValue.DEFAULT_MASK);
+	}
+
+	@Test
+	public void redactRegexCanUsePrefixAndSuffixAroundRegexValueExpression() {
+		ApiResponse response = new ApiResponse(200, "{\"title\":\"Manager\"}", new byte[0], Map.of());
+
+		assertTrue(SecureContext.create().redactRegex("title", "[regex:\\S+]").from(response).pretty()
+				.contains("\"title\": \"Manager\""));
+
+		assertTrue(SecureContext.create().redactRegex("title", "****[regex:\\S+]").from(response).pretty()
+				.contains("\"title\": \"****Manager\""));
+
+		assertTrue(SecureContext.create().redactRegex("title", "****[regex:\\S+]****").from(response).pretty()
+				.contains("\"title\": \"****Manager****\""));
+
+		assertTrue(SecureContext.create().redactRegex("title", "[regex:\\S+]****").from(response).pretty()
+				.contains("\"title\": \"Manager****\""));
+	}
+
+	@Test
+	public void filterListCanKeepFullFirstItemAndSelectedFieldsForOtherItems() throws Exception {
+		String policy = "[default]\nfilterList=/**/reviews[0],/**/reviews/*/rating,/**/reviews/*/reviewerName\n"
+				+ "redact=regex:(?i).*email.*\n";
+
+		ApiResponse response = new ApiResponse(200, "{\"products\":[{\"id\":1,\"title\":\"Mascara\",\"reviews\":["
+				+ "{\"rating\":3,\"comment\":\"Would not recommend!\",\"reviewerName\":\"Eleanor\",\"reviewerEmail\":\"e@example.com\"},"
+				+ "{\"rating\":4,\"comment\":\"Very satisfied!\",\"reviewerName\":\"Lucas\",\"reviewerEmail\":\"l@example.com\"}"
+				+ "]}]}", new byte[0], Map.of());
+
+		SecureContext secure = SecureContext.create()
+				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
+
+		String filtered = secure.from(response).filtered();
+
+		assertTrue(filtered.contains("\"title\": \"Mascara\""), filtered);
+		assertTrue(filtered.contains("\"comment\": \"Would not recommend!\""), filtered);
+		assertTrue(filtered.contains("\"reviewerEmail\": \"********\""), filtered);
+		assertTrue(filtered.contains("\"rating\": 4"), filtered);
+		assertTrue(filtered.contains("\"reviewerName\": \"Lucas\""), filtered);
+		assertFalse(filtered.contains("Very satisfied!"), filtered);
+		assertFalse(filtered.contains("l@example.com"), filtered);
+
+		SecureResponse secureResponse = SecureResponse.from(response).redact("regex:(?i).*email.*")
+				.filterList("/**/reviews[0]", "/**/reviews/*/rating", "/**/reviews/*/reviewerName");
+
+		filtered = secureResponse.filtered();
+
+		assertTrue(filtered.contains("\"title\": \"Mascara\""), filtered);
+		assertTrue(filtered.contains("\"comment\": \"Would not recommend!\""), filtered);
+		assertTrue(filtered.contains("\"reviewerEmail\": \"********\""), filtered);
+		assertTrue(filtered.contains("\"rating\": 4"), filtered);
+		assertTrue(filtered.contains("\"reviewerName\": \"Lucas\""), filtered);
+		assertFalse(filtered.contains("Very satisfied!"), filtered);
+		assertFalse(filtered.contains("l@example.com"), filtered);
 	}
 
 	private static Request loginRequest() {

@@ -19,6 +19,7 @@ public final class SecureResponse {
 	private static final Logger log = LoggerFactory.getLogger(SecureResponse.class);
 
 	private List<String> filters = List.of();
+	private List<String> filterLists = List.of();
 	private List<String> headerFilters = List.of();
 
 	private final ApiResponse response;
@@ -133,6 +134,28 @@ public final class SecureResponse {
 	public SecureResponse filter(List<String> filters) {
 		this.filters = filters == null ? List.of() : List.copyOf(filters);
 		return this;
+	}
+
+	/**
+	 * Sets list filter rules. List filters are applied inside matching JSON arrays
+	 * while parent response fields are preserved.
+	 *
+	 * @param filterLists list filter rules
+	 * @return this response
+	 */
+	public SecureResponse filterList(List<String> filterLists) {
+		this.filterLists = filterLists == null ? List.of() : List.copyOf(filterLists);
+		return this;
+	}
+
+	/**
+	 * Sets list filter rules.
+	 *
+	 * @param filterLists list filter rules
+	 * @return this response
+	 */
+	public SecureResponse filterList(String... filterLists) {
+		return filterList(filterLists == null ? null : Params.asList(filterLists));
 	}
 
 	/**
@@ -301,6 +324,9 @@ public final class SecureResponse {
 		String body = response.pretty();
 		if (!filters.isEmpty()) {
 			body = SecureText.filter(body, filters);
+		}
+		if (!filterLists.isEmpty()) {
+			body = SecureText.filterList(body, filterLists);
 		}
 		return SecureText.redact(body, secureValues, redactionPolicy);
 	}

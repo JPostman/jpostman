@@ -417,6 +417,136 @@ public final class SecureText {
 	}
 
 	/**
+	 * Applies list filter rules inside matching JSON arrays while preserving parent
+	 * response fields.
+	 *
+	 * <p>
+	 * Rules can keep a full array item, such as {@code /&#42;&#42;/reviews[0]}, or
+	 * selected fields from array items, such as
+	 * {@code /&#42;&#42;/reviews/&#42;/rating}.
+	 * </p>
+	 *
+	 * @param text  source JSON text
+	 * @param rules list filter rules
+	 * @return filtered JSON text, or the original text when no rule matches
+	 */
+	public static String filterList(String text, List<String> rules) {
+		if (text == null || text.isEmpty() || rules == null || rules.isEmpty()) {
+			return text == null ? "" : text;
+		}
+
+		try {
+			JsonElement source = JsonParser.parseString(text);
+			FilterListResult filtered = filterList(source, rules, "");
+
+			if (!filtered.changed) {
+				return text;
+			}
+
+			return GSON.toJson(filtered.element);
+		} catch (RuntimeException e) {
+			return text;
+		}
+	}
+
+	private static FilterListResult filterList(JsonElement element, List<String> rules, String path) {
+		if (element == null || element.isJsonNull()) {
+			return new FilterListResult(JsonNull.INSTANCE, false);
+		}
+
+		if (element.isJsonObject()) {
+			JsonObject result = new JsonObject();
+			boolean changed = false;
+
+			for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+				String childPath = path + "/" + entry.getKey();
+				FilterListResult child = filterList(entry.getValue(), rules, childPath);
+				result.add(entry.getKey(), child.element);
+				changed = changed || child.changed;
+			}
+
+			return new FilterListResult(result, changed);
+		}
+
+		if (element.isJsonArray()) {
+			JsonArray array = element.getAsJsonArray();
+
+			if (isDirectListFilterArray(array, rules, path)) {
+				return new FilterListResult(filterListArrayItems(array, rules, path), true);
+			}
+
+			JsonArray result = new JsonArray();
+			boolean changed = false;
+
+			for (int i = 0; i < array.size(); i++) {
+				String itemPath = path == null || path.isEmpty() ? "/" + i : path + "/" + i;
+				FilterListResult child = filterList(array.get(i), rules, itemPath);
+				result.add(child.element);
+				changed = changed || child.changed;
+			}
+
+			return new FilterListResult(result, changed);
+		}
+
+		return new FilterListResult(element, false);
+	}
+
+	private static boolean isDirectListFilterArray(JsonArray array, List<String> rules, String path) {
+		for (int i = 0; i < array.size(); i++) {
+			String itemPath = path == null || path.isEmpty() ? "/" + i : path + "/" + i;
+
+			if (matchesFilter(null, itemPath, rules)) {
+				return true;
+			}
+
+			JsonElement item = array.get(i);
+			if (!item.isJsonObject()) {
+				continue;
+			}
+
+			for (Map.Entry<String, JsonElement> entry : item.getAsJsonObject().entrySet()) {
+				String childPath = itemPath + "/" + entry.getKey();
+				if (matchesFilter(entry.getKey(), childPath, rules)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private static JsonArray filterListArrayItems(JsonArray array, List<String> rules, String path) {
+		JsonArray result = new JsonArray();
+
+		for (int i = 0; i < array.size(); i++) {
+			JsonElement item = array.get(i);
+			String itemPath = path == null || path.isEmpty() ? "/" + i : path + "/" + i;
+
+			if (matchesFilter(null, itemPath, rules)) {
+				result.add(item);
+				continue;
+			}
+
+			JsonElement filteredItem = filter(item, rules, itemPath);
+			if (hasContent(filteredItem)) {
+				result.add(filteredItem);
+			}
+		}
+
+		return result;
+	}
+
+	private static final class FilterListResult {
+		private final JsonElement element;
+		private final boolean changed;
+
+		private FilterListResult(JsonElement element, boolean changed) {
+			this.element = element;
+			this.changed = changed;
+		}
+	}
+
+	/**
 	 * Checks whether a field key or JSON path matches any filter rule.
 	 *
 	 * @param key   field key

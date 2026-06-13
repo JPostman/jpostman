@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+
+- Added INI policy support for `redactRegex=REGEX -> VALUE_EXPRESSION`.
+- Added INI policy support for `filterList=...` rules.
+- Added product policy examples for `filterList`, `redactRegex`, and email redaction in `secure-rules.ini`.
+- Added support for custom prefix and suffix masks around regex value expressions such as `****[regex:...]`, `[regex:...]****`, and `****[regex:...]****`.
+- Added `SecureContext.filterList(...)` and `SecureResponse.filterList(...)` for filtering JSON array items while preserving parent response fields.
+- Added `SecureContext.path(...)`, `SecureContext.paths(...)`, `SecureContext.exists(...)`, and `SecureContext.statusCode()` helpers for accessing the current secure response directly.
+- Added `SecureContext.cache()` to expose the shared cache map for manual inspection and manipulation.
+- Added `SecureContext.cache(...)` for creating and reusing cached values across related contexts.
+- Added `SecureContext.cacheClean(...)` for clearing one or more cached values, or all cached values when no keys are provided.
+- Added `SecureContext.CachedFailureException` so framework adapters can skip dependent tests when cached value creation failed earlier.
+- Added `SecureContext.callerMethodName(int)` for deriving caller method names used by method-based cache keys.
+- Added `JPostmanAssertionError` to carry optional secure log context with assertion failures.
+
 ## 1.0.6
 
 ### Added

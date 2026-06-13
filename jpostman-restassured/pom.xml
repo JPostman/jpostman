@@ -7,11 +7,12 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.0.6</version>
+		<version>1.1.0</version>
 	</parent>
 
 	<artifactId>jpostman-restassured</artifactId>
 	<packaging>jar</packaging>
+
 	<name>JPostman REST Assured Executor</name>
 	<description>Optional REST Assured executor adapter for JPostman requests.</description>
 	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-restassured</url>

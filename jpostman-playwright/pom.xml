@@ -7,14 +7,14 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.0.6</version>
+		<version>1.1.0</version>
 	</parent>
 
 	<artifactId>jpostman-playwright</artifactId>
 	<packaging>jar</packaging>
+
 	<name>JPostman Playwright Executor</name>
-	<description>Optional Playwright APIRequestContext executor adapter for
-		JPostman requests.</description>
+	<description>Optional Playwright APIRequestContext executor adapter for JPostman requests.</description>
 	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-playwright</url>
 
 	<dependencies>

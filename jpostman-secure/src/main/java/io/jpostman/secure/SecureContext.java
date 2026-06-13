@@ -11,6 +11,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,13 +41,20 @@ public final class SecureContext {
 	private RedactionPolicy redactionPolicy = RedactionPolicy.defaults();
 
 	private final List<String> filters = new ArrayList<>();
+	private final List<String> filterLists = new ArrayList<>();
 	private final List<String> headerFilters = new ArrayList<>();
 	private final Map<String, PolicySection> policySections = new LinkedHashMap<>();
+	private final ConcurrentMap<String, Object> cache;
 
 	private SecureRequest request;
 	private SecureResponse response;
 
 	private SecureContext() {
+		this(new ConcurrentHashMap<>());
+	}
+
+	private SecureContext(ConcurrentMap<String, Object> cache) {
+		this.cache = cache;
 	}
 
 	/**
@@ -228,10 +238,12 @@ public final class SecureContext {
 		}
 
 		applyRuleValues(section.redact, this::redact, applied, resolving);
+		applyRedactRegexRuleValues(section.redactRegex, applied, resolving);
 		applyRuleValues(section.unredact, this::unredact, applied, resolving);
 		applyRuleValues(section.headers, this::headers, applied, resolving);
 		applyRuleValues(section.unheaders, this::unheaders, applied, resolving);
 		applyRuleValues(section.filter, this::filter, applied, resolving);
+		applyRuleValues(section.filterList, this::filterList, applied, resolving);
 		applyRuleValues(section.headersFilter, this::headersFilter, applied, resolving);
 		applyRuleValues(section.unsecret, this::unsecret, applied, resolving);
 
@@ -259,6 +271,41 @@ public final class SecureContext {
 		}
 	}
 
+	private void applyRedactRegexRuleValues(List<String> values, Set<String> applied, Set<String> resolving) {
+		if (values.isEmpty()) {
+			return;
+		}
+
+		for (String value : values) {
+			if (isSectionReference(value)) {
+				applyRules(value.substring(1, value.length() - 1), applied, resolving);
+			} else {
+				applyRedactRegexRule(value);
+			}
+		}
+	}
+
+	private void applyRedactRegexRule(String value) {
+		if (value == null || value.trim().isEmpty()) {
+			return;
+		}
+
+		String rule = value.trim();
+		int index = rule.indexOf("->");
+		if (index < 0) {
+			redactRegex(rule);
+			return;
+		}
+
+		String keyRegex = rule.substring(0, index).trim();
+		String valueExpression = rule.substring(index + 2).trim();
+		if (keyRegex.isEmpty() || valueExpression.isEmpty()) {
+			throw new IllegalArgumentException("redactRegex rule must use REGEX -> VALUE_EXPRESSION format: " + value);
+		}
+
+		redactRegex(keyRegex, valueExpression);
+	}
+
 	private static boolean isSectionReference(String value) {
 		return value != null && value.startsWith("[") && value.endsWith("]") && value.length() > 2;
 	}
@@ -280,6 +327,26 @@ public final class SecureContext {
 	public SecureContext filter(String... rules) {
 		if (rules != null) {
 			filters.addAll(Params.asList(rules));
+		}
+		return this;
+	}
+
+	/**
+	 * Adds list filter rules that are applied inside matching JSON arrays while
+	 * preserving parent response fields.
+	 *
+	 * <p>
+	 * For example, {@code filterList("/&#42;&#42;/reviews[0]",
+	 * "/&#42;&#42;/reviews/&#42;/rating")} keeps the first review item as-is and
+	 * keeps only the {@code rating} field for other review items.
+	 * </p>
+	 *
+	 * @param rules list filter rules
+	 * @return this context
+	 */
+	public SecureContext filterList(String... rules) {
+		if (rules != null) {
+			filterLists.addAll(Params.asList(rules));
 		}
 		return this;
 	}
@@ -519,6 +586,158 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Returns a value from the current secure response.
+	 *
+	 * @param path response path
+	 * @return response value
+	 */
+	public Object path(String path) {
+		return requireResponse().path(path);
+	}
+
+	/**
+	 * Returns all values matching the given path rule from the current secure
+	 * response.
+	 *
+	 * @param path response path rule
+	 * @return matching response values
+	 */
+	public List<Object> paths(String path) {
+		return requireResponse().paths(path);
+	}
+
+	/**
+	 * Checks whether the current secure response contains the given path.
+	 *
+	 * @param path response path
+	 * @return {@code true} if the path exists
+	 */
+	public boolean exists(String path) {
+		return requireResponse().exists(path);
+	}
+
+	/**
+	 * Returns the current secure response status code.
+	 *
+	 * @return response status code
+	 */
+	public int statusCode() {
+		return requireResponse().statusCode();
+	}
+
+	private SecureResponse requireResponse() {
+		if (response == null) {
+			throw new IllegalStateException("Secure response is not set");
+		}
+		return response;
+	}
+
+	/**
+	 * Returns the caller method name.
+	 *
+	 * @param skip number of stack frames to skip
+	 * @return caller method name, or {@code UNKNOWN} when it cannot be resolved
+	 */
+	public static String callerMethodName(int skip) {
+		return StackWalker.getInstance().walk(
+				frames -> frames.skip(skip).findFirst().map(StackWalker.StackFrame::getMethodName).orElse("UNKNOWN"));
+	}
+
+	/**
+	 * Returns a cached value using the calling method name as the cache key.
+	 *
+	 * @param supplier value supplier used when the key is not cached
+	 * @param <T>      value type
+	 * @return cached value
+	 */
+	public <T> T cache(Supplier<T> supplier) {
+		return cache(callerMethodName(2), supplier);
+	}
+
+	/**
+	 * Returns a cached value, creating it when missing.
+	 *
+	 * <p>
+	 * If value creation fails with a runtime exception or assertion error, the
+	 * failure is cached. Later calls with the same key throw
+	 * {@link CachedFailureException} so framework adapters can skip dependent
+	 * tests.
+	 * </p>
+	 *
+	 * @param key      cache key
+	 * @param supplier value supplier used when the key is not cached
+	 * @param <T>      value type
+	 * @return cached value
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T cache(String key, Supplier<T> supplier) {
+		if (key == null || key.isBlank()) {
+			throw new IllegalArgumentException("Cache key cannot be blank");
+		}
+		if (supplier == null) {
+			throw new IllegalArgumentException("Cache supplier cannot be null");
+		}
+
+		log.debug("Cache key: {}", key);
+		Object cached = cache.get(key);
+		if (cached instanceof CachedFailure) {
+			throw new CachedFailureException(key, ((CachedFailure) cached).error);
+		}
+		if (cached != null) {
+			return (T) cached;
+		}
+
+		try {
+			Object value = cache.computeIfAbsent(key, name -> supplier.get());
+			if (value instanceof CachedFailure) {
+				throw new CachedFailureException(key, ((CachedFailure) value).error);
+			}
+			return (T) value;
+		} catch (RuntimeException | AssertionError e) {
+			cache.putIfAbsent(key, new CachedFailure(e));
+			throw e;
+		}
+	}
+
+	/**
+	 * Clears cached values.
+	 *
+	 * <p>
+	 * If no keys are provided, all cached values are removed.
+	 * </p>
+	 *
+	 * @param keys cache keys to remove
+	 * @return this context
+	 */
+	public SecureContext cacheClean(String... keys) {
+		if (keys == null || keys.length == 0) {
+			cache.clear();
+			return this;
+		}
+
+		for (String key : keys) {
+			if (key != null && !key.isBlank()) {
+				cache.remove(key);
+			}
+		}
+		return this;
+	}
+
+	/**
+	 * Returns the shared cache map.
+	 *
+	 * <p>
+	 * Changes made to this map affect all copied contexts that share the same
+	 * cache.
+	 * </p>
+	 *
+	 * @return shared cache map
+	 */
+	public Map<String, Object> cache() {
+		return cache;
+	}
+
+	/**
 	 * Creates a copy of this secure context.
 	 *
 	 * <p>
@@ -529,10 +748,11 @@ public final class SecureContext {
 	 * @return copied secure context
 	 */
 	public SecureContext copy() {
-		SecureContext copy = new SecureContext();
+		SecureContext copy = new SecureContext(cache);
 		copy.values.values(values.build());
 		copy.redactionPolicy = redactionPolicy;
 		copy.filters.addAll(filters);
+		copy.filterLists.addAll(filterLists);
 		copy.headerFilters.addAll(headerFilters);
 		for (Map.Entry<String, PolicySection> entry : policySections.entrySet()) {
 			copy.policySections.put(entry.getKey(), entry.getValue().copy());
@@ -559,7 +779,7 @@ public final class SecureContext {
 	 */
 	public SecureResponse from(ApiResponse response) {
 		return this.response = SecureResponse.from(response).redactionPolicy(redactionPolicy).values(values.build())
-				.filter(filters).headersFilter(headerFilters);
+				.filter(filters).filterList(filterLists).headersFilter(headerFilters);
 	}
 
 	/**
@@ -690,10 +910,12 @@ public final class SecureContext {
 		private final String name;
 		private final List<String> extendsRules = new ArrayList<>();
 		private final List<String> redact = new ArrayList<>();
+		private final List<String> redactRegex = new ArrayList<>();
 		private final List<String> unredact = new ArrayList<>();
 		private final List<String> headers = new ArrayList<>();
 		private final List<String> unheaders = new ArrayList<>();
 		private final List<String> filter = new ArrayList<>();
+		private final List<String> filterList = new ArrayList<>();
 		private final List<String> headersFilter = new ArrayList<>();
 		private final List<String> unsecret = new ArrayList<>();
 
@@ -711,6 +933,9 @@ public final class SecureContext {
 			case "redact":
 				this.redact.addAll(items);
 				break;
+			case "redactRegex":
+				this.redactRegex.addAll(items);
+				break;
 			case "unredact":
 				this.unredact.addAll(items);
 				break;
@@ -722,6 +947,9 @@ public final class SecureContext {
 				break;
 			case "filter":
 				this.filter.addAll(items);
+				break;
+			case "filterList":
+				this.filterList.addAll(items);
 				break;
 			case "headersFilter":
 				this.headersFilter.addAll(items);
@@ -738,10 +966,12 @@ public final class SecureContext {
 			PolicySection copy = new PolicySection(name);
 			copy.extendsRules.addAll(extendsRules);
 			copy.redact.addAll(redact);
+			copy.redactRegex.addAll(redactRegex);
 			copy.unredact.addAll(unredact);
 			copy.headers.addAll(headers);
 			copy.unheaders.addAll(unheaders);
 			copy.filter.addAll(filter);
+			copy.filterList.addAll(filterList);
 			copy.headersFilter.addAll(headersFilter);
 			copy.unsecret.addAll(unsecret);
 			return copy;
@@ -783,6 +1013,30 @@ public final class SecureContext {
 			if (!trimmed.isEmpty()) {
 				result.add(trimmed);
 			}
+		}
+	}
+
+	/**
+	 * Indicates that creating a cached value failed earlier.
+	 *
+	 * <p>
+	 * Framework adapters can catch this exception and mark dependent tests as
+	 * skipped.
+	 * </p>
+	 */
+	public static final class CachedFailureException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		private CachedFailureException(String key, Throwable cause) {
+			super("Cached value failed: " + key, cause);
+		}
+	}
+
+	private static final class CachedFailure {
+		private final Throwable error;
+
+		private CachedFailure(Throwable error) {
+			this.error = error;
 		}
 	}
 }

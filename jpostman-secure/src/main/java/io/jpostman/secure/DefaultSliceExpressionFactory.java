@@ -44,6 +44,11 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 
 		String value = expression.trim();
 
+		SliceExpressionFactory regex = regexExpressionWithPrefixSuffix(value, expression);
+		if (regex != null) {
+			return regex;
+		}
+
 		if (!value.startsWith("[") || !value.endsWith("]")) {
 			throw new IllegalArgumentException("Invalid slice expression: " + expression);
 		}
@@ -52,10 +57,6 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 
 		if (body.isEmpty()) {
 			throw new IllegalArgumentException("Empty slice expression: " + expression);
-		}
-
-		if (body.startsWith(RedactionPolicy.REGEX_PREFIX)) {
-			return regexExpression(body.substring(RedactionPolicy.REGEX_PREFIX.length()).trim(), expression);
 		}
 
 		if (!body.contains(":")) {
@@ -131,7 +132,22 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 		return mask + visible;
 	}
 
-	private static SliceExpressionFactory regexExpression(String regex, String expression) {
+	private static SliceExpressionFactory regexExpressionWithPrefixSuffix(String value, String expression) {
+		String marker = "[" + RedactionPolicy.REGEX_PREFIX;
+		int start = value.indexOf(marker);
+		if (start < 0) {
+			return null;
+		}
+
+		int end = value.indexOf(']', start);
+		if (end < 0) {
+			throw new IllegalArgumentException("Invalid regex slice expression: " + expression);
+		}
+
+		String prefix = value.substring(0, start);
+		String regex = value.substring(start + marker.length(), end).trim();
+		String suffix = value.substring(end + 1);
+
 		if (regex.isEmpty()) {
 			throw new IllegalArgumentException("regex slice expression cannot be blank: " + expression);
 		}
@@ -154,7 +170,9 @@ public class DefaultSliceExpressionFactory implements SliceExpressionFactory {
 					return mask;
 				}
 
-				return matcher.groupCount() > 0 && matcher.group(1) != null ? matcher.group(1) : matcher.group();
+				String visible = matcher.groupCount() > 0 && matcher.group(1) != null ? matcher.group(1)
+						: matcher.group();
+				return prefix + visible + suffix;
 			}
 		};
 	}

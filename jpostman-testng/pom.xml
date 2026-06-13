@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.jpostman</groupId>
+        <artifactId>jpostman-parent</artifactId>
+        <version>1.1.0</version>
+    </parent>
+
+    <artifactId>jpostman-testng</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JPostman TestNG</name>
+    <description>TestNG assertion support for JPostman secure API tests.</description>
+	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-testng</url>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.jpostman</groupId>
+            <artifactId>jpostman-secure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>7.12.0</version>
+        </dependency>
+    </dependencies>
+</project>
