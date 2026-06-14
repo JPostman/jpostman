@@ -35,7 +35,7 @@ public final class TestNgSoftAssertions extends TestNgAssertions {
 	}
 
 	/**
-	 * Verifies all collected soft assertions using the expected status code.
+	 * Verifies all collected soft assertions and returns the test context.
 	 *
 	 * <p>
 	 * The expected status code is added only when no status code assertion was
@@ -43,13 +43,15 @@ public final class TestNgSoftAssertions extends TestNgAssertions {
 	 * </p>
 	 *
 	 * @param statusCode expected status code
+	 * @return current test context
 	 */
 	@Override
-	public void verify(int statusCode) {
+	public TestNgContext verify(int statusCode) {
 		if (!statusCodeAsserted) {
 			statusCode(statusCode);
 		}
 		assertAll();
+		return context;
 	}
 
 	/**

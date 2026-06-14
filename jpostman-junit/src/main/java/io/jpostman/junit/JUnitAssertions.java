@@ -294,31 +294,33 @@ public class JUnitAssertions {
 	}
 
 	/**
-	 * Verifies status code {@code 200}.
+	 * Verifies status code {@code 200} and returns the test context.
 	 *
 	 * <p>
-	 * In hard mode, this fails immediately on status code mismatch. In soft mode,
-	 * this verifies all collected soft assertions and adds the default status code
-	 * assertion only when no status code assertion was already collected.
+	 * This allows assertion chains to finish back on the context.
 	 * </p>
+	 *
+	 * @return current test context
 	 */
-	public void verify() {
-		verify(200);
+	public JUnitContext verify() {
+		return verify(200);
 	}
 
 	/**
-	 * Verifies the expected status code.
+	 * Verifies the expected status code and returns the test context.
 	 *
 	 * <p>
 	 * In hard mode, this fails immediately on status code mismatch. In soft mode,
-	 * this verifies all collected soft assertions and adds the expected status code
+	 * collected soft assertions are verified and the expected status code is added
 	 * only when no status code assertion was already collected.
 	 * </p>
 	 *
 	 * @param statusCode expected status code
+	 * @return current test context
 	 */
-	public void verify(int statusCode) {
+	public JUnitContext verify(int statusCode) {
 		statusCode(statusCode);
+		return context;
 	}
 
 	/**

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2
+
+### Changed
+
+- Updated JUnit and TestNG assertion `verify()` methods to return the current context after verification.
+
 ## 1.1.1
 
 ### Added
