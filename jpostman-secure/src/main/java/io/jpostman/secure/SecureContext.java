@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -824,6 +825,16 @@ public final class SecureContext {
 	public SecureContext response(ApiExecutor executor) {
 		this.from(executor.response());
 		return this;
+	}
+
+	/**
+	 * Executes the response using the current context.
+	 *
+	 * @param executor function that receives this context and returns the API response
+	 * @return this context with the response stored
+	 */
+	public SecureContext response(Function<SecureContext, ApiResponse> executor) {
+	    return response(executor.apply(this));
 	}
 
 	/**

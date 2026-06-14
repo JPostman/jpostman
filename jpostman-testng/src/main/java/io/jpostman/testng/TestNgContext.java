@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.testng.SkipException;
@@ -534,6 +535,17 @@ public final class TestNgContext {
 	public TestNgContext response(ApiExecutor executor) {
 		secure.response(executor);
 		return this;
+	}
+
+	/**
+	 * Executes the response using the current test context.
+	 *
+	 * @param executor function that receives this context and returns the API
+	 *                 response
+	 * @return this context with the response stored
+	 */
+	public TestNgContext response(Function<TestNgContext, ApiResponse> executor) {
+		return response(executor.apply(this));
 	}
 
 	/**

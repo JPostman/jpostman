@@ -6,7 +6,7 @@
 
 	<groupId>io.github.jpostman</groupId>
 	<artifactId>jpostman-parent</artifactId>
-	<version>1.1.0</version>
+	<version>1.1.1</version>
 	<packaging>pom</packaging>
 
 	<name>JPostman Parent</name>
@@ -21,11 +21,11 @@
 		<module>jpostman-playwright</module>
 		<module>jpostman-unirest</module>
 		<module>jpostman-secure</module>
+		<module>jpostman-testng</module>
+		<module>jpostman-junit</module>
 		<module>jpostman-github</module>
 		<module>jpostman-kubernetes</module>
 		<module>jpostman-vault</module>
-		<module>jpostman-testng</module>
-		<module>jpostman-junit</module>
 		<module>jpostman-examples</module>
 	</modules>
 

@@ -53,7 +53,7 @@ public class SecureTest {
 
 	@Test
 	public void redactionPolicyCanUseCustomSliceExpressionFactory() {
-		ApiResponse response = new ApiResponse(200, "{\"creditCard\":\"1234-4567-7890-0987\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"creditCard\":\"1234-4567-7890-0987\"}");
 		RedactionPolicy policy = RedactionPolicy.builder().sliceExpressionFactory(new DefaultSliceExpressionFactory() {
 			@Override
 			public String mask(SliceExpressionFactory parsed, String source, String mask) {
@@ -97,7 +97,7 @@ public class SecureTest {
 
 	@Test
 	public void secureResponseMasksConfiguredHeadersWithoutChangingRequestPlaceholderBehavior() {
-		ApiResponse response = new ApiResponse(200, "{\"token\":\"abc123\",\"trace\":\"trace-secret\"}", new byte[0],
+		ApiResponse response = response(200, "{\"token\":\"abc123\",\"trace\":\"trace-secret\"}",
 				Map.of("Set-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 
 		SecureResponse secureResponse = SecureResponse.from(response)
@@ -113,7 +113,7 @@ public class SecureTest {
 
 	@Test
 	public void secureContextHeaderAddsProtectedResponseHeader() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+		ApiResponse response = response(200, "{\"status\":\"ok\"}",
 				Map.of("X-Session-Id", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 		SecureContext secure = SecureContext.create().headers("X-Session-Id");
 		SecureResponse secureResponse = secure.from(response);
@@ -129,7 +129,7 @@ public class SecureTest {
 
 	@Test
 	public void secureContextHeaderFilterShowsOnlySelectedResponseHeaders() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+		ApiResponse response = response(200, "{\"status\":\"ok\"}",
 				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 
 		SecureContext secure = SecureContext.create().headers("X-Cookie").headersFilter("X-Cookie");
@@ -249,10 +249,10 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsKnownValuesAndProtectedKeys() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"accessToken\":\"abc123\",\"username\":\"testuser\",\"apiKey\":\"key-1\","
 						+ "\"token\":\"ABCD\",\"ssn\":\"999-999-9999\",\"creditCard\":\"1234-4567-7890-0987\"}",
-				new byte[0], Map.of("Authorization", Params.asList("Bearer abc123")));
+				Map.of("Authorization", Params.asList("Bearer abc123")));
 
 		SecureResponse secureResponse = SecureContext.create().from(response)
 				.redactionPolicy(RedactionPolicy.defaults()).redact("token", "ssn", "creditCard[-4:]");
@@ -286,8 +286,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseJsonPathProtectedKeys() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}", new byte[0], Map.of());
+		ApiResponse response = response(200,
+				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}");
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/key2/subkey");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"key1\": {\n    \"subkey\": \"value\"\n  }"));
@@ -296,8 +296,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsJsonParentPath() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}", new byte[0], Map.of());
+		ApiResponse response = response(200,
+				"{\"key1\": {\"subkey\": \"value\"},\n\"key2\": {\"subkey\": \"value\"}\n}");
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/key2");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"key1\": {\n    \"subkey\": \"value\"\n  }"));
@@ -306,8 +306,7 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsJsonArrayParentPath() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"users\":[{\"name\":\"sam\"},{\"name\":\"bob\"}],\"status\":\"ok\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"users\":[{\"name\":\"sam\"},{\"name\":\"bob\"}],\"status\":\"ok\"}");
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/users");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"users\": \"" + SecureValue.DEFAULT_MASK + "\""));
@@ -316,8 +315,7 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsJsonArrayChildPath() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"users\":[{\"name\":\"sam\"},{\"name\":\"bob\"}],\"status\":\"ok\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"users\":[{\"name\":\"sam\"},{\"name\":\"bob\"}],\"status\":\"ok\"}");
 		SecureResponse secureResponse = SecureResponse.from(response).redact("/users/0/name");
 		String log = secureResponse.log(true);
 		assertTrue(log.contains("\"users\": [\n    {\n      \"name\": \"********\"\n    },\n"
@@ -327,11 +325,11 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseSupportsSliceRedactionRules() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"index0\":\"ABCDE\",\"range13\":\"ABCDE\",\"range0Minus1\":\"ABCDE\","
 						+ "\"keepLastByEnd\":\"1234-4567-7890-0987\",\"keepLastByStart\":\"1234-4567-7890-0987\","
 						+ "\"singleNegativeIndex\":\"1234-4567-7890-0987\"}",
-				new byte[0], Map.of());
+				Map.of());
 		String log = SecureResponse.from(response).redact("index0[0]", "range13[1:3]", "range0Minus1[0:-1]",
 				"keepLastByEnd[:-4]", "keepLastByStart[-4:]", "singleNegativeIndex[-4]").log();
 		assertTrue(log.contains("\"index0\": \"********A\""));
@@ -372,12 +370,12 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsWildcardJsonPathUnderProductsOnly() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
 						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
 						+ "\"orders\":["
 						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
 				.redact("/products/*/reviews");
@@ -395,12 +393,12 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsAllReviewsWithDoubleStarPath() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
 						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
 						+ "\"orders\":["
 						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
 				.redact("/**/reviews");
@@ -411,8 +409,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsWildcardJsonPathWithSlice() {
-		ApiResponse response = new ApiResponse(200, "{\"products\":[{\"id\":1,\"cardNumber\":\"1234-4567-7890-0987\"},"
-				+ "{\"id\":2,\"cardNumber\":\"1111-2222-3333-4444\"}]}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"products\":[{\"id\":1,\"cardNumber\":\"1234-4567-7890-0987\"},"
+				+ "{\"id\":2,\"cardNumber\":\"1111-2222-3333-4444\"}]}");
 
 		SecureResponse secureResponse = SecureResponse.from(response).redactionPolicy(RedactionPolicy.defaults())
 				.redact("/products/*/cardNumber[-4:]");
@@ -423,8 +421,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsCaseInsensitiveRegexKeyRules() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"accessToken\":\"abc123\",\"id_token\":\"id123\",\"username\":\"sam\"}", new byte[0], Map.of());
+		ApiResponse response = response(200,
+				"{\"accessToken\":\"abc123\",\"id_token\":\"id123\",\"username\":\"sam\"}");
 
 		SecureResponse secureResponse = SecureResponse.from(response)
 				.redactionPolicy(RedactionPolicy.builder().protectRule("regex:(?i).*token.*").build());
@@ -444,12 +442,12 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsRegexJsonPathRules() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
 						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
 						+ "\"orders\":["
 						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response)
 				.redactionPolicy(RedactionPolicy.builder().protectRule("regex:/products/\\d+/reviews").build());
@@ -465,12 +463,12 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseRedactsRegexJsonPathForSingleDigitProductIndexes() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"
 						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\",\"reviewerEmail\":\"b@test.com\"}]}],"
 						+ "\"orders\":["
 						+ "{\"id\":10,\"reviews\":[{\"comment\":\"keep\",\"reviewerEmail\":\"order@test.com\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 
 		SecureResponse secureResponse = SecureResponse.from(response)
 				.redactionPolicy(RedactionPolicy.builder().protectRule("regex:/products/[0-9]/reviews").build());
@@ -488,9 +486,9 @@ public class SecureTest {
 
 	@Test
 	public void redactionPolicyCanRemoveRegexJsonPathRule() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 		RedactionPolicy policy = RedactionPolicy.builder().protectRule("regex:/products/[0-9]/reviews").build()
 				.removeRules("regex:/products/[0-9]/reviews");
 		String log = SecureResponse.from(response).redactionPolicy(policy).log(true);
@@ -508,8 +506,8 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseExistsSupportsSimpleJsonPath() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"accessToken\":\"abc123\",\"products\":[{\"id\":1,\"title\":\"Phone\"}]}", new byte[0], Map.of());
+		ApiResponse response = response(200,
+				"{\"accessToken\":\"abc123\",\"products\":[{\"id\":1,\"title\":\"Phone\"}]}");
 		SecureResponse secureResponse = SecureResponse.from(response);
 		assertTrue(secureResponse.exists("accessToken"));
 		assertTrue(secureResponse.exists("products[0].id"));
@@ -518,10 +516,10 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseExistsSupportsWildcardJsonPathRules() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\"}]},"
 						+ "{\"id\":2,\"reviews\":[{\"comment\":\"good\"}]}],\"orders\":[{\"id\":10,\"comments\":[]}]}",
-				new byte[0], Map.of());
+				Map.of());
 		SecureResponse secureResponse = SecureResponse.from(response);
 		assertTrue(secureResponse.exists("/products/*/reviews"));
 		assertTrue(secureResponse.exists("/**/reviews"));
@@ -529,10 +527,10 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseExistsSupportsRegexRules() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"token\":\"abc123\",\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\"}]}],"
 						+ "\"orders\":[{\"id\":10,\"reviews\":[{\"comment\":\"keep\"}]}]}",
-				new byte[0], Map.of());
+				Map.of());
 		SecureResponse secureResponse = SecureResponse.from(response);
 		assertTrue(secureResponse.exists("regex:.*token.*"));
 		assertTrue(secureResponse.exists("regex:/products/\\d+/reviews"));
@@ -565,7 +563,7 @@ public class SecureTest {
 		assertEquals(login.build().getHeader().get("Authorization"), "Bearer real-token");
 		assertTrue(login.log(false).contains("\"username\": \"********\""));
 
-		ApiResponse response = new ApiResponse(200, "{\"id\":1,\"token\":\"abc\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"id\":1,\"token\":\"abc\"}");
 		assertEquals(first.from(response).filtered(), "{\n  \"id\": 1\n}");
 		assertEquals(first.statusCode(), 200);
 		assertTrue(first.exists("id"));
@@ -666,7 +664,7 @@ public class SecureTest {
 						+ "  API-KEY                             = ********\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
 						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"\"\n}");
-		ApiResponse response = new ApiResponse(200, "{\"creditCard\":\"1234-4567-7890-0987\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"creditCard\":\"1234-4567-7890-0987\"}");
 		secure.from(response);
 		assertEquals(secure.log(),
 				"\n********** SecureRequest: **********\n"
@@ -685,11 +683,11 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponseFiltersNestedWildcardPaths() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"[{\"id\":29,\"title\":\"Juice\",\"rating\":1,\"reviews\":["
 						+ "{\"rating\":2,\"comment\":\"Excellent quality!\",\"date\":\"2025-04-30T09:41:02.053Z\"},"
 						+ "{\"rating\":3,\"comment\":\"Would buy again!\",\"date\":\"2025-04-30T09:41:02.053Z\"}]}]",
-				new byte[0], Map.of());
+				Map.of());
 		SecureContext secure = SecureContext.create().filter("id", "title", "/reviews/*/date", "/**/rating");
 		SecureResponse secureResponse = secure.from(response);
 		assertEquals(secureResponse.filtered(),
@@ -701,19 +699,19 @@ public class SecureTest {
 
 	@Test
 	public void secureApiResponsePathsReturnsValuesForRecursiveWildcardRule() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"title\":\"Essence Mascara Lash Princess\"},"
 						+ "{\"id\":2,\"title\":\"Eyeshadow Palette\"},{\"id\":3,\"title\":\"Powder Canister\"}]}",
-				new byte[0], Map.of());
+				Map.of());
 		SecureResponse res = SecureResponse.from(response);
 		assertEquals(res.paths("/**/id"), Params.asList(1, 2, 3));
 	}
 
 	@Test
 	public void regexpSliceCanDisplayOnlyPhoneCountryCode() {
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\",\"otherPhone\":\"+12 555-1234\"}",
-				new byte[0], Map.of());
+				Map.of());
 
 		// Match fields by key name using a regex rule.
 		SecureResponse secureResponse = SecureResponse.from(response).redact("regex:(?i).*phone.*");
@@ -761,8 +759,7 @@ public class SecureTest {
 	@Test
 	public void policySplitKeepsRegexpCommasInsideSliceRules() throws Exception {
 		String policy = "[default]\nredact=phone[regex:^\\+\\d{1,2}],backupPhone[regex:^\\+\\d{1,2}]\n";
-		ApiResponse response = new ApiResponse(200,
-				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}");
 
 		SecureContext secure = SecureContext.create()
 				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
@@ -778,9 +775,9 @@ public class SecureTest {
 	@Test
 	public void iniPolicyCanUseRedactRegexWithValueExpressions() throws Exception {
 		String policy = "[default]\nredactRegex=(?i).*phone.* -> [:3],(?i).*mobile.* -> [regex:^\\+\\d{1,2}],other -> [regex:^\\+\\S+]\n";
-		ApiResponse response = new ApiResponse(200,
+		ApiResponse response = response(200,
 				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\",\"mobile\":\"+1 555-1234\",\"other\":\"+1 123-4567\"}",
-				new byte[0], Map.of());
+				Map.of());
 
 		SecureContext secure = SecureContext.create()
 				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
@@ -804,8 +801,7 @@ public class SecureTest {
 
 	@Test
 	public void redactionPolicyCanRemoveRegexKeySliceRule() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\"}");
 
 		RedactionPolicy policy = RedactionPolicy.defaults().addRegexRule("(?i).*phone.*", "[:3]")
 				.removeRules("regex:(?i).*phone.*");
@@ -817,7 +813,7 @@ public class SecureTest {
 
 	@Test
 	public void secureContextHeaderFilterReplacesExistingRules() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+		ApiResponse response = response(200, "{\"status\":\"ok\"}",
 				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 		SecureContext secure = SecureContext.create().headersFilter("X-Cookie", "X-Trace-Id").headersFilter("X-Cookie");
 
@@ -830,8 +826,7 @@ public class SecureTest {
 
 	@Test
 	public void secureResponsePathsSupportsExactFieldNamesAfterRuleRefactor() {
-		ApiResponse response = new ApiResponse(200,
-				"{\"products\":[{\"id\":1,\"title\":\"A\"},{\"id\":2,\"title\":\"B\"}]}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"products\":[{\"id\":1,\"title\":\"A\"},{\"id\":2,\"title\":\"B\"}]}");
 
 		SecureResponse secureResponse = SecureResponse.from(response);
 
@@ -840,7 +835,7 @@ public class SecureTest {
 
 	@Test
 	public void secureHeadersCanUseRegexRulesAndUnheaders() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0],
+		ApiResponse response = response(200, "{\"status\":\"ok\"}",
 				Map.of("X-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 
 		SecureContext secure = SecureContext.create().headers("regex:.*cookie.*").headersFilter("regex:^x-.*");
@@ -888,8 +883,8 @@ public class SecureTest {
 		assertTrue(login.redactionPolicy().isProtectedKey("username"));
 		assertFalse(base.redactionPolicy().isProtectedKey("username"));
 
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of("Date", List.of("Mon"),
-				"Set-Cookie", List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
+		ApiResponse response = response(200, "{\"status\":\"ok\"}", Map.of("Date", List.of("Mon"), "Set-Cookie",
+				List.of("refreshToken=jwt-value"), "X-Trace-Id", List.of("trace-secret")));
 
 		String loginLog = login.from(response).log(true);
 		assertTrue(loginLog.contains("Date                                = [Mon]"), loginLog);
@@ -905,7 +900,7 @@ public class SecureTest {
 
 	@Test
 	public void shouldCreateSecureResponseFromApiExecutor() {
-		ApiResponse response = new ApiResponse(200, "{\"status\":\"ok\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"status\":\"ok\"}");
 		ApiExecutor executor = () -> response;
 		SecureResponse secureResponse = SecureContext.create().from(executor);
 		assertEquals(secureResponse.statusCode(), 200);
@@ -947,7 +942,7 @@ public class SecureTest {
 
 	@Test
 	public void redactRegexCanUsePrefixAndSuffixAroundRegexValueExpression() {
-		ApiResponse response = new ApiResponse(200, "{\"title\":\"Manager\"}", new byte[0], Map.of());
+		ApiResponse response = response(200, "{\"title\":\"Manager\"}");
 
 		assertTrue(SecureContext.create().redactRegex("title", "[regex:\\S+]").from(response).pretty()
 				.contains("\"title\": \"Manager\""));
@@ -967,10 +962,10 @@ public class SecureTest {
 		String policy = "[default]\nfilterList=/**/reviews[0],/**/reviews/*/rating,/**/reviews/*/reviewerName\n"
 				+ "redact=regex:(?i).*email.*\n";
 
-		ApiResponse response = new ApiResponse(200, "{\"products\":[{\"id\":1,\"title\":\"Mascara\",\"reviews\":["
+		ApiResponse response = response(200, "{\"products\":[{\"id\":1,\"title\":\"Mascara\",\"reviews\":["
 				+ "{\"rating\":3,\"comment\":\"Would not recommend!\",\"reviewerName\":\"Eleanor\",\"reviewerEmail\":\"e@example.com\"},"
 				+ "{\"rating\":4,\"comment\":\"Very satisfied!\",\"reviewerName\":\"Lucas\",\"reviewerEmail\":\"l@example.com\"}"
-				+ "]}]}", new byte[0], Map.of());
+				+ "]}]}");
 
 		SecureContext secure = SecureContext.create()
 				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
@@ -997,6 +992,22 @@ public class SecureTest {
 		assertTrue(filtered.contains("\"reviewerName\": \"Lucas\""), filtered);
 		assertFalse(filtered.contains("Very satisfied!"), filtered);
 		assertFalse(filtered.contains("l@example.com"), filtered);
+	}
+
+	@Test
+	public void responseCanUseCurrentContextFunction() {
+		ApiResponse response = response(200, "{\"accessToken\":\"abc123\"}");
+		SecureContext cxt = SecureContext.create().request(loginRequest()).response(ctx -> response);
+		assertTrue(cxt.exists("accessToken"), "Access token not found");
+		assertEquals(cxt.response().statusCode(), 200);
+	}
+
+	private static ApiResponse response(int statusCode, String body) {
+		return response(statusCode, body, Map.of());
+	}
+
+	private static ApiResponse response(int statusCode, String body, Map<String, List<String>> headers) {
+		return new ApiResponse(statusCode, body, new byte[0], headers);
 	}
 
 	private static Request loginRequest() {

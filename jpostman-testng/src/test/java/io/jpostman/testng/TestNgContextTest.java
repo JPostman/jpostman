@@ -164,10 +164,10 @@ public class TestNgContextTest {
 		String policy = "[default]\nfilterList=/**/reviews[0],/**/reviews/*/rating,/**/reviews/*/reviewerName\n"
 				+ "redact=regex:(?i).*email.*\n";
 
-		ApiResponse response = new ApiResponse(200, "{\"products\":[{\"id\":1,\"title\":\"Mascara\",\"reviews\":["
+		ApiResponse response = response(200, "{\"products\":[{\"id\":1,\"title\":\"Mascara\",\"reviews\":["
 				+ "{\"rating\":3,\"comment\":\"Would not recommend!\",\"reviewerName\":\"Eleanor\",\"reviewerEmail\":\"e@example.com\"},"
 				+ "{\"rating\":4,\"comment\":\"Very satisfied!\",\"reviewerName\":\"Lucas\",\"reviewerEmail\":\"l@example.com\"}"
-				+ "]}]}", new byte[0], Map.of());
+				+ "]}]}");
 
 		TestNgContext cxt = TestNgContext.create()
 				.loadPolicy(new ByteArrayInputStream(policy.getBytes(StandardCharsets.UTF_8)));
@@ -234,6 +234,14 @@ public class TestNgContextTest {
 
 		assertEquals(secure.cache().get("token"), null);
 		assertEquals(secure.cache().size(), 0);
+	}
+
+	@Test
+	public void responseCanUseCurrentContextFunction() {
+		ApiResponse response = response(200, "{\"accessToken\":\"abc123\"}");
+		TestNgContext cxt = TestNgContext.create().request(request()).response(ctx -> response);
+		cxt.asserts().exists("accessToken", "Access token not found");
+		assertEquals(cxt.response().statusCode(), 200);
 	}
 
 	private static ApiResponse response(int statusCode, String body) {
