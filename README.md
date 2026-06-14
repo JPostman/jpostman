@@ -12,9 +12,11 @@
 
 ---
 
-[JPostman API Documentation](https://jpostman.github.io/jpostman/)
+[JPostmanApi on YouTube](https://www.youtube.com/@JPostmanApi)
 
 [JPostman Wiki](https://github.com/JPostman/jpostman/wiki)
+
+[JPostman API Documentation](https://jpostman.github.io/jpostman/)
 
 **JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
 
@@ -30,6 +32,8 @@ This repository is one GitHub project with multiple Maven modules:
 |---|---|
 | [`jpostman-core/`](https://jpostman.github.io/jpostman/io/jpostman/package-summary.html) | Framework-neutral parser, model, templates, and `ApiResponse` |
 | [`jpostman-secure/`](https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html) | Secret-safe request and response helpers |
+| [`jpostman-testng/`](https://jpostman.github.io/jpostman/io/jpostman/testng/package-summary.html) | TestNG context, secure assertions, response verification, and reusable cache helpers |
+| [`jpostman-junit/`](https://jpostman.github.io/jpostman/io/jpostman/junit/package-summary.html) | JUnit 5 context, secure assertions, response verification, and failure printing support |
 | [`jpostman-httpclient/`](https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html) | Optional Java 11 HttpClient executor |
 | [`jpostman-restassured/`](https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html) | Optional REST Assured executor adapter |
 | [`jpostman-playwright/`](https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html) | Optional Playwright APIRequestContext executor adapter |
@@ -56,8 +60,6 @@ Watch this short video showing how to export a Postman collection and environmen
 <a href="https://www.youtube.com/watch?v=UxFjeONEq60" target="_blank">
   <img src="https://img.youtube.com/vi/UxFjeONEq60/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
 </a>
-
-JPostmanApi: https://www.youtube.com/@JPostmanApi
 
 ---
 
@@ -127,6 +129,102 @@ Response response = RestAssuredExecutor.execute(request, given())
         .statusCode(200)
         .extract()
         .response();
+```
+
+---
+
+## Fluent TestNG and JUnit Contexts
+
+JPostman TestNG and JUnit contexts can keep request setup, response execution, assertions, verification, and cached values in one fluent flow.
+
+### TestNG example
+
+```java
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
+import io.jpostman.Collection;
+import io.jpostman.JPostman;
+import io.jpostman.JPostman.Context;
+import io.jpostman.restassured.RestAssuredExecutor;
+import io.jpostman.testng.TestNgContext;
+
+public class DemoTestNgTest {
+
+    private Collection col;
+    private TestNgContext base;
+
+    @BeforeClass
+    public void init() throws Exception {
+        Context ctx = JPostman.load(getClass().getResourceAsStream("DummyJSON.postman_collection.json"),
+                getClass().getResourceAsStream("DummyJSON.postman_environment.json"));
+
+        col = ctx.getCollection(); // Load Postman collection
+        base = TestNgContext.create().secret(ctx.getEnvironment()) // Protect environment values
+                .load(getClass().getResourceAsStream("demo_test_rule.ini")); // Load masking rules
+    }
+
+    private String accessToken() {
+        return base.cache(() -> { // Cache token for reuse
+            TestNgContext ctx = base.request(col.getRequest("Login user and get tokens"))
+                    .response(c -> RestAssuredExecutor.execute(c.request()))
+                    .asserts().exists("accessToken", "Access token not found")
+                    .verify(); // Verify status 200 by default
+            return String.valueOf(ctx.path("accessToken"));
+        });
+    }
+
+    @Test
+	public void getAccessToken() {
+		accessToken();
+	}
+}
+```
+
+### JUnit example
+
+```java
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import io.jpostman.Collection;
+import io.jpostman.JPostman;
+import io.jpostman.JPostman.Context;
+import io.jpostman.restassured.RestAssuredExecutor;
+import io.jpostman.junit.JPostmanJUnit;
+import io.jpostman.junit.JUnitContext;
+
+@JPostmanJUnit(printFailures = true) // Use PER_CLASS lifecycle and print assertion failures
+public class DemoJUnitTest {
+
+    private Collection col;
+    private JUnitContext base;
+
+    @BeforeAll
+    public void init() throws Exception {
+        Context ctx = JPostman.load(getClass().getResourceAsStream("DummyJSON.postman_collection.json"),
+                getClass().getResourceAsStream("DummyJSON.postman_environment.json"));
+
+        col = ctx.getCollection(); // Load Postman collection
+        base = JUnitContext.create().secret(ctx.getEnvironment()) // Protect environment values
+                .load(getClass().getResourceAsStream("demo_test_rule.ini")); // Load masking rules
+    }
+
+    private String accessToken() {
+        return base.cache(() -> { // Cache token for reuse
+            JUnitContext ctx = base.request(col.getRequest("Login user and get tokens"))
+                    .response(c -> RestAssuredExecutor.execute(c.request()))
+                    .asserts().exists("accessToken", "Access token not found")
+                    .verify(); // Verify status 200 by default
+            return String.valueOf(ctx.path("accessToken"));
+        });
+    }
+
+    @Test
+	public void getAccessToken() {
+		accessToken();
+	}
+}
 ```
 
 ---
@@ -420,14 +518,3 @@ This means `url().set("KEY", value)` was used, but the query parameter does not 
 
 Final request-level resolution uses Handlebars behavior. If a template variable is missing from the supplied map or environment, it renders as an empty value.
 
----
-
-## Recommended Usage
-
-- Keep request definitions in Postman.
-- Use `build(environment)` for request-wide `{{KEY}}` resolution.
-- Use `.url(...)`, `.headers(...)`, `.auth(...)`, and `.body(...)` for targeted overrides.
-- Use `.map(...)` for normal local token replacement.
-- Use `.json(...)` for unquoted raw JSON placeholders that need JSON-safe string values.
-- Use `.get(key)` for enabled values and `.raw(key)` when disabled values should also be readable.
-- Choose exactly one optional executor module for your test framework.
