@@ -133,6 +133,19 @@ Response response = RestAssuredExecutor.execute(request, given())
 
 ---
 
+## Execute with Playwright
+
+```java
+import io.jpostman.ApiResponse;
+import io.jpostman.playwright.PlaywrightExecutor;
+
+try (PlaywrightExecutor executor = new PlaywrightExecutor()) {
+    ApiResponse response = executor.execute(request);
+}
+```
+
+---
+
 ## Fluent TestNG and JUnit Contexts
 
 JPostman TestNG and JUnit contexts can keep request setup, response execution, assertions, verification, and cached values in one fluent flow.
@@ -224,19 +237,6 @@ public class DemoJUnitTest {
 	public void getAccessToken() {
 		accessToken();
 	}
-}
-```
-
----
-
-## Execute with Playwright
-
-```java
-import io.jpostman.ApiResponse;
-import io.jpostman.playwright.PlaywrightExecutor;
-
-try (PlaywrightExecutor executor = new PlaywrightExecutor()) {
-    ApiResponse response = executor.execute(request);
 }
 ```
 
