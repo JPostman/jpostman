@@ -538,14 +538,29 @@ public final class JUnitContext {
 	}
 
 	/**
-	 * Executes the response using the current test context.
+	 * Builds the response from the current JUnit context.
 	 *
-	 * @param executor function that receives this context and returns the API
-	 *                 response
-	 * @return this context with the response stored
+	 * <p>
+	 * The function may return either an {@link ApiResponse} or an
+	 * {@link ApiExecutor}. This allows fluent response execution from the current
+	 * request.
+	 * </p>
+	 *
+	 * @param executor function that receives this context
+	 * @return this JUnit context
 	 */
-	public JUnitContext response(Function<JUnitContext, ApiResponse> executor) {
-		return response(executor.apply(this));
+	public JUnitContext response(Function<JUnitContext, ?> executor) {
+		Object result = executor.apply(this);
+
+		if (result instanceof ApiResponse) {
+			return response((ApiResponse) result);
+		}
+
+		if (result instanceof ApiExecutor) {
+			return response((ApiExecutor) result);
+		}
+
+		throw new IllegalArgumentException("Response function must return ApiResponse or ApiExecutor");
 	}
 
 	/**

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3
+
+### Changed
+
+- Updated JUnit and TestNG response function handling to support both direct API responses and configurable API executors.
+
 ## 1.1.2
 
 ### Changed
