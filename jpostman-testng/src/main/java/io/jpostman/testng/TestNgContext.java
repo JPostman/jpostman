@@ -118,9 +118,10 @@ public final class TestNgContext {
 	 * If soft assertions were collected, all soft assertions are verified.
 	 * Otherwise, a hard status code assertion is performed.
 	 * </p>
+	 * @return this context
 	 */
-	public void verify() {
-		verify(200);
+	public TestNgContext verify() {
+		return verify(200);
 	}
 
 	/**
@@ -133,11 +134,12 @@ public final class TestNgContext {
 	 * </p>
 	 *
 	 * @param statusCode expected status code
+	 * @return this context
 	 */
-	public void verify(int statusCode) {
+	public TestNgContext verify(int statusCode) {
 		if (assertions == null) {
 			asserts().verify(statusCode);
-			return;
+			return this;
 		}
 
 		TestNgAssertions current = assertions;
@@ -145,6 +147,31 @@ public final class TestNgContext {
 			assertions = null;
 		}
 		current.verify(statusCode);
+		return this;
+	}
+
+	/**
+	 * Reads a cached value by key.
+	 *
+	 * @param key cache key
+	 * @param <T> expected value type
+	 * @return cached value
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T cache(String key) {
+		return (T) secure.cache().get(key);
+	}
+
+	/**
+	 * Stores a value in the shared cache and returns this context.
+	 *
+	 * @param key   cache key
+	 * @param value cached value
+	 * @return this context
+	 */
+	public TestNgContext cache(String key, Object value) {
+		secure.cache().put(key, value);
+		return this;
 	}
 
 	/**
@@ -205,18 +232,6 @@ public final class TestNgContext {
 	 */
 	public Map<String, Object> cache() {
 		return secure.cache();
-	}
-
-	/**
-	 * Reads a cached value by key.
-	 *
-	 * @param key cache key
-	 * @param <T> expected value type
-	 * @return cached value
-	 */
-	@SuppressWarnings("unchecked")
-	public <T> T cache(String key) {
-		return (T) secure.cache().get(key);
 	}
 
 	/**

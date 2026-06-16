@@ -235,6 +235,9 @@ public class TestNgContextTest {
 
 		assertEquals(secure.cache().get("token"), null);
 		assertEquals(secure.cache().size(), 0);
+
+		secure.cache("new-key", "new-value");
+		assertEquals(secure.cache("new-key"), "new-value");
 	}
 
 	@Test

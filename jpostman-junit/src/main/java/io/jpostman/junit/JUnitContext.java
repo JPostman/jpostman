@@ -118,9 +118,10 @@ public final class JUnitContext {
 	 * If soft assertions were collected, all soft assertions are verified.
 	 * Otherwise, a hard status code assertion is performed.
 	 * </p>
+	 * @return this context
 	 */
-	public void verify() {
-		verify(200);
+	public JUnitContext verify() {
+		return verify(200);
 	}
 
 	/**
@@ -133,11 +134,12 @@ public final class JUnitContext {
 	 * </p>
 	 *
 	 * @param statusCode expected status code
+	 * @return this context
 	 */
-	public void verify(int statusCode) {
+	public JUnitContext verify(int statusCode) {
 		if (assertions == null) {
 			asserts().verify(statusCode);
-			return;
+			return this;
 		}
 
 		JUnitAssertions current = assertions;
@@ -145,17 +147,7 @@ public final class JUnitContext {
 			assertions = null;
 		}
 		current.verify(statusCode);
-	}
-
-	/**
-	 * Returns a cached value using the calling method name as the cache key.
-	 *
-	 * @param supplier value supplier used when the key is not cached
-	 * @param <T>      value type
-	 * @return cached value
-	 */
-	public <T> T cache(Supplier<T> supplier) {
-		return cache(SecureContext.callerMethodName(2), supplier);
+		return this;
 	}
 
 	/**
@@ -168,6 +160,29 @@ public final class JUnitContext {
 	@SuppressWarnings("unchecked")
 	public <T> T cache(String key) {
 		return (T) secure.cache().get(key);
+	}
+
+	/**
+	 * Stores a value in the shared cache and returns this context.
+	 *
+	 * @param key   cache key
+	 * @param value cached value
+	 * @return this context
+	 */
+	public JUnitContext cache(String key, Object value) {
+		secure.cache().put(key, value);
+		return this;
+	}
+
+	/**
+	 * Returns a cached value using the calling method name as the cache key.
+	 *
+	 * @param supplier value supplier used when the key is not cached
+	 * @param <T>      value type
+	 * @return cached value
+	 */
+	public <T> T cache(Supplier<T> supplier) {
+		return cache(SecureContext.callerMethodName(2), supplier);
 	}
 
 	/**
