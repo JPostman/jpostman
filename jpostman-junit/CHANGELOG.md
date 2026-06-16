@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4
+
+### Added
+
+- Added typed `.cache(String key)` helper for reading cached values without accessing the cache map directly.
+
+### Changed
+
+- Updated `.path(...)` to use a generic return type for cleaner typed response value access.
+- Updated `.paths(...)` to use a generic list return type for cleaner typed response list access.
+
 ## 1.1.3
 
 ### Changed

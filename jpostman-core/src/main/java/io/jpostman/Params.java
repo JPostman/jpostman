@@ -3,6 +3,7 @@ package io.jpostman;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -188,6 +189,47 @@ public class Params<T> {
 	}
 
 	/**
+	 * Creates a copy of environment values and overrides matching keys with
+	 * non-empty system property values.
+	 *
+	 * @param env environment containing default values
+	 * @param keys keys allowed to be overridden; when null or empty, all keys are checked
+	 * @return copied values with system property overrides
+	 */
+	public static Map<String, String> props(Environment env, Set<String> keys) {
+	    return props(env.getParams(), keys);
+	}
+
+	/**
+	 * Creates a copy of the supplied values and overrides matching keys with
+	 * non-empty system property values.
+	 *
+	 * @param values default values
+	 * @param keys keys allowed to be overridden; when null or empty, all keys are checked
+	 * @return copied values with system property overrides
+	 */
+	public static Map<String, String> props(Map<String, String> values, Set<String> keys) {
+	    Map<String, String> result = new LinkedHashMap<>();
+	    if (values != null) {
+	        result.putAll(values);
+	    }
+
+	    Set<String> overrideKeys = keys;
+	    if (overrideKeys == null || overrideKeys.isEmpty()) {
+	        overrideKeys = result.keySet();
+	    }
+
+	    for (String key : overrideKeys) {
+	        String value = System.getProperty(key);
+	        if (value != null && !value.isEmpty()) {
+	            result.put(key, value);
+	        }
+	    }
+
+	    return result;
+	}
+
+	/**
 	 * Creates a copy of the supplied values and overrides matching keys with
 	 * non-empty system property values.
 	 *
@@ -195,19 +237,7 @@ public class Params<T> {
 	 * @return copied values with system property overrides
 	 */
 	public static Map<String, String> props(Map<String, String> values) {
-		Map<String, String> result = new LinkedHashMap<>();
-		if (values != null) {
-			result.putAll(values);
-		}
-
-		for (String key : result.keySet()) {
-			String value = System.getProperty(key);
-			if (value != null && !value.isEmpty()) {
-				result.put(key, value);
-			}
-		}
-
-		return result;
+	    return props(values, null);
 	}
 
 	/**

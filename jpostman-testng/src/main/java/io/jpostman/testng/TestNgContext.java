@@ -208,6 +208,18 @@ public final class TestNgContext {
 	}
 
 	/**
+	 * Reads a cached value by key.
+	 *
+	 * @param key cache key
+	 * @param <T> expected value type
+	 * @return cached value
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T cache(String key) {
+		return (T) secure.cache().get(key);
+	}
+
+	/**
 	 * Loads secure rules from an input stream.
 	 *
 	 * @param input input stream containing secure rules
@@ -582,24 +594,27 @@ public final class TestNgContext {
 	}
 
 	/**
-	 * Returns a value from the current secure response.
+	 * Reads a value from the current secure response using a simple path.
 	 *
 	 * @param path response path
-	 * @return response value
+	 * @param <T>  expected return type
+	 * @return selected response value
 	 */
-	public Object path(String path) {
-		return secure.path(path);
+	@SuppressWarnings("unchecked")
+	public <T> T path(String path) {
+		return (T) secure.path(path);
 	}
 
 	/**
-	 * Returns all values matching the given path rule from the current secure
-	 * response.
+	 * Reads all values from the current secure response that match a path rule.
 	 *
-	 * @param path response path rule
+	 * @param rule response path rule
+	 * @param <T>  expected item type
 	 * @return matching response values
 	 */
-	public List<Object> paths(String path) {
-		return secure.paths(path);
+	@SuppressWarnings("unchecked")
+	public <T> List<T> paths(String rule) {
+		return (List<T>) secure.paths(rule);
 	}
 
 	/**

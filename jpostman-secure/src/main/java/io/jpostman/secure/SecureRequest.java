@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import io.jpostman.Environment;
 import io.jpostman.Request;
 import io.jpostman.RequestProvider;
+import io.jpostman.Request.RequestBuilder;
 
 /**
  * Provides a secure wrapper around a request.
@@ -185,7 +186,16 @@ public final class SecureRequest implements RequestProvider {
 	@Override
 	public Request build() {
 		Environment env = new Environment("jpostman-secure").builder().resolve(resolveValues()).end();
-		return request.builder().build(env);
+		return builder().build(env);
+	}
+
+	/**
+	 * Creates a builder from the wrapped request.
+	 *
+	 * @return request builder
+	 */
+	public RequestBuilder builder() {
+		return request.builder();
 	}
 
 	/**

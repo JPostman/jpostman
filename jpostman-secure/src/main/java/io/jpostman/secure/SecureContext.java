@@ -739,6 +739,18 @@ public final class SecureContext {
 	}
 
 	/**
+	 * Reads a cached value by key.
+	 *
+	 * @param key cache key
+	 * @param <T> expected value type
+	 * @return cached value
+	 */
+	@SuppressWarnings("unchecked")
+	public <T> T cache(String key) {
+		return (T) cache.get(key);
+	}
+
+	/**
 	 * Creates a copy of this secure context.
 	 *
 	 * <p>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.4
+
+### Added
+
+- Added `Params.props(Environment, Set<String>)` to copy environment values and override selected keys with non-empty Java system properties.
+- Added `Params.props(Map<String, String>, Set<String>)` to control which keys can be overridden by system properties.
+- Added support for checking all existing keys when the override key set is `null` or empty.
+
 ## 1.0.3
 
 ### Added

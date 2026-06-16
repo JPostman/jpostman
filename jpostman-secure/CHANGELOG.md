@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.4
+
+### Added
+
+- Added typed `SecureContext.cache(String key)` helper for reading cached values without accessing the cache map directly.
+- Added `SecureRequest.builder()` to expose the wrapped request builder.
+
 ## 1.1.1
 
 ### Added

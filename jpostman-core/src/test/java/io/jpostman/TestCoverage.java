@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -283,12 +284,22 @@ public class TestCoverage {
 			Map<String, String> source = Map.of("PARAMS_TOKEN", "default-token", "PARAMS_EMPTY", "default-empty",
 					"PARAMS_NAME", "default-name");
 
-			Map<String, String> result = Params.props(source);
+			Map<String, String> result = Params.props(source, null);
 
 			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
 			assertEquals(result.get("PARAMS_EMPTY"), "default-empty");
 			assertEquals(result.get("PARAMS_NAME"), "default-name");
 			assertEquals(source.get("PARAMS_TOKEN"), "default-token");
+
+			result = Params.props(source, Set.of("PARAMS_EMPTY"));
+
+			assertEquals(result.get("PARAMS_TOKEN"), "default-token");
+			assertEquals(result.get("PARAMS_EMPTY"), "default-empty");
+			assertEquals(result.get("PARAMS_NAME"), "default-name");
+
+			Environment env = new Environment("Test Env");
+			assertEquals(Params.props(env, Set.of()).size(), 0);
+
 			assertEquals(Params.props(null).size(), 0);
 		} finally {
 			System.clearProperty("PARAMS_TOKEN");

@@ -597,6 +597,7 @@ public class SecureTest {
 		assertEquals(third, "new-value");
 		assertEquals(calls.get(), 2);
 
+		assertEquals(secure.cache("token"), "abc123");
 		assertEquals(secure.cache().get("token"), "abc123");
 		assertEquals(secure.cache().get("cacheCanUseExplicitKeyAndReuseValue"), "new-value");
 
