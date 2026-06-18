@@ -11,7 +11,7 @@ import org.testng.asserts.SoftAssert;
  * {@link #assertAll()} fails.
  * </p>
  */
-public final class TestNgSoftAssertions extends TestNgAssertions {
+public final class TestNgSoftAssertions extends TestNgAssertions<TestNgSoftAssertions> {
 
 	private final SoftAssert softAssert = new SoftAssert();
 
@@ -25,7 +25,7 @@ public final class TestNgSoftAssertions extends TestNgAssertions {
 	}
 
 	@Override
-	protected TestNgAssertions assertWithLog(Runnable assertion) {
+	protected TestNgSoftAssertions assertWithLog(Runnable assertion) {
 		try {
 			assertion.run();
 		} catch (AssertionError error) {

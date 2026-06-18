@@ -13,7 +13,7 @@ import io.jpostman.secure.SecureResponse;
  * execution hook and verify collected failures later.
  * </p>
  */
-public class JUnitAssertions {
+public class JUnitAssertions<T extends JUnitAssertions<T>> {
 
 	protected final JUnitContext context;
 	protected final boolean includeLog;
@@ -24,8 +24,22 @@ public class JUnitAssertions {
 		this.includeLog = includeLog;
 	}
 
+	@SuppressWarnings("unchecked")
+	protected T self() {
+		return (T) this;
+	}
+
 	boolean soft() {
 		return false;
+	}
+
+	/**
+	 * Returns the owning context for continuing the fluent chain.
+	 *
+	 * @return owning JUnit context
+	 */
+	public JUnitContext context() {
+		return context;
 	}
 
 	/**
@@ -35,7 +49,7 @@ public class JUnitAssertions {
 	 * @param expected the expected value
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isEqual(Object actual, Object expected) {
+	public T isEqual(Object actual, Object expected) {
 		return isEqual(actual, expected, "Values should be equal");
 	}
 
@@ -47,7 +61,7 @@ public class JUnitAssertions {
 	 * @param message  custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isEqual(Object actual, Object expected, String message) {
+	public T isEqual(Object actual, Object expected, String message) {
 		return assertWithLog(() -> Assertions.assertEquals(expected, actual, message(message)));
 	}
 
@@ -58,7 +72,7 @@ public class JUnitAssertions {
 	 * @param expected the expected value
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNotEqual(Object actual, Object expected) {
+	public T isNotEqual(Object actual, Object expected) {
 		return isNotEqual(actual, expected, "Values should not be equal");
 	}
 
@@ -70,7 +84,7 @@ public class JUnitAssertions {
 	 * @param message  custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNotEqual(Object actual, Object expected, String message) {
+	public T isNotEqual(Object actual, Object expected, String message) {
 		return assertWithLog(() -> Assertions.assertNotEquals(expected, actual, message(message)));
 	}
 
@@ -80,7 +94,7 @@ public class JUnitAssertions {
 	 * @param condition the condition to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isTrue(boolean condition) {
+	public T isTrue(boolean condition) {
 		return isTrue(condition, "Condition should be true");
 	}
 
@@ -91,7 +105,7 @@ public class JUnitAssertions {
 	 * @param message   custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isTrue(boolean condition, String message) {
+	public T isTrue(boolean condition, String message) {
 		return assertWithLog(() -> Assertions.assertTrue(condition, message(message)));
 	}
 
@@ -101,7 +115,7 @@ public class JUnitAssertions {
 	 * @param condition the condition to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isFalse(boolean condition) {
+	public T isFalse(boolean condition) {
 		return isFalse(condition, "Condition should be false");
 	}
 
@@ -112,7 +126,7 @@ public class JUnitAssertions {
 	 * @param message   custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isFalse(boolean condition, String message) {
+	public T isFalse(boolean condition, String message) {
 		return assertWithLog(() -> Assertions.assertFalse(condition, message(message)));
 	}
 
@@ -122,7 +136,7 @@ public class JUnitAssertions {
 	 * @param value the value to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNull(Object value) {
+	public T isNull(Object value) {
 		return isNull(value, "Value should be null");
 	}
 
@@ -133,7 +147,7 @@ public class JUnitAssertions {
 	 * @param message custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNull(Object value, String message) {
+	public T isNull(Object value, String message) {
 		return assertWithLog(() -> Assertions.assertNull(value, message(message)));
 	}
 
@@ -143,7 +157,7 @@ public class JUnitAssertions {
 	 * @param value the value to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNotNull(Object value) {
+	public T isNotNull(Object value) {
 		return isNotNull(value, "Value should not be null");
 	}
 
@@ -154,7 +168,7 @@ public class JUnitAssertions {
 	 * @param message custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions isNotNull(Object value, String message) {
+	public T isNotNull(Object value, String message) {
 		return assertWithLog(() -> Assertions.assertNotNull(value, message(message)));
 	}
 
@@ -164,7 +178,7 @@ public class JUnitAssertions {
 	 * @param expected the expected status code
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions statusCode(int expected) {
+	public T statusCode(int expected) {
 		return statusCode(expected, null);
 	}
 
@@ -175,7 +189,7 @@ public class JUnitAssertions {
 	 * @param message  custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions statusCode(int expected, String message) {
+	public T statusCode(int expected, String message) {
 		statusCodeAsserted = true;
 		return assertWithLog(() -> {
 			SecureResponse response = requireResponse(message);
@@ -189,7 +203,7 @@ public class JUnitAssertions {
 	 * @param path the response path to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions exists(String path) {
+	public T exists(String path) {
 		return exists(path, null);
 	}
 
@@ -200,7 +214,7 @@ public class JUnitAssertions {
 	 * @param message custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions exists(String path, String message) {
+	public T exists(String path, String message) {
 		return assertWithLog(() -> {
 			SecureResponse response = requireResponse(message);
 			if (!response.exists(path)) {
@@ -215,7 +229,7 @@ public class JUnitAssertions {
 	 * @param path the response path to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions notExists(String path) {
+	public T notExists(String path) {
 		return notExists(path, null);
 	}
 
@@ -226,7 +240,7 @@ public class JUnitAssertions {
 	 * @param message custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions notExists(String path, String message) {
+	public T notExists(String path, String message) {
 		return assertWithLog(() -> {
 			SecureResponse response = requireResponse(message);
 			if (response.exists(path)) {
@@ -243,7 +257,7 @@ public class JUnitAssertions {
 	 * @param expected the expected value
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions pathEquals(String path, Object expected) {
+	public T pathEquals(String path, Object expected) {
 		return pathEquals(path, expected, null);
 	}
 
@@ -256,7 +270,7 @@ public class JUnitAssertions {
 	 * @param message  custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions pathEquals(String path, Object expected, String message) {
+	public T pathEquals(String path, Object expected, String message) {
 		return assertWithLog(() -> {
 			SecureResponse response = requireResponse(message);
 			if (!response.exists(path)) {
@@ -272,7 +286,7 @@ public class JUnitAssertions {
 	 * @param path the response path to check
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions pathNotNull(String path) {
+	public T pathNotNull(String path) {
 		return pathNotNull(path, null);
 	}
 
@@ -283,7 +297,7 @@ public class JUnitAssertions {
 	 * @param message custom failure message
 	 * @return this assertion helper
 	 */
-	public JUnitAssertions pathNotNull(String path, String message) {
+	public T pathNotNull(String path, String message) {
 		return assertWithLog(() -> {
 			SecureResponse response = requireResponse(message);
 			if (!response.exists(path)) {
@@ -329,13 +343,13 @@ public class JUnitAssertions {
 	 * @param assertion assertion to execute
 	 * @return this assertion helper
 	 */
-	protected JUnitAssertions assertWithLog(Runnable assertion) {
+	protected T assertWithLog(Runnable assertion) {
 		try {
 			assertion.run();
 		} catch (AssertionError error) {
 			throw wrap(error);
 		}
-		return this;
+		return self();
 	}
 
 	/**

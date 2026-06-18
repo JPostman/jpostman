@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- Added `context(Consumer<TestNgContext>)` to support custom context logic inside fluent method chains.
+- Added support for applying assertions, cache updates, and other context operations without breaking the fluent API flow.
+- Added `context()` to TestNG assertion classes to allow returning to the owning `TestNgContext` from an assertion chain.
+
+### Changed
+
+- Updated TestNG assertion chaining to preserve the concrete assertion type during fluent method calls.
+- Updated `TestNgAssertions` to use a self-type generic pattern for cleaner fluent API support.
+- Updated `TestNgSoftAssertions` so chained assertion methods return `TestNgSoftAssertions` instead of the base assertion type.
+
 ## 1.1.5
 
 ### Added

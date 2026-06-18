@@ -62,7 +62,10 @@ public class TestNgContextTest {
 				.isEqual(cxt.asString("accessToken"), "abc123").isNotEqual(cxt.asString("accessToken"), "bad")
 				.isTrue(true).isFalse(false).isNull(null).isNotNull(cxt.response());
 
-		cxt.verify();
+		cxt.context(c -> cxt.verify());
+		cxt.soft().context().verify(400);
+
+		cxt.soft(true).statusCode(400).exists("accessToken", "Access token not found").assertAll();
 
 		try {
 			cxt.soft(true).statusCode(400).exists("inactive").pathEquals("inactive", true)
@@ -201,15 +204,15 @@ public class TestNgContextTest {
 		TestNgContext secure = TestNgContext.create();
 		AtomicInteger calls = new AtomicInteger();
 
-		String first = secure.cache("token", () -> {
+		String first = secure.cache(() -> {
 			calls.incrementAndGet();
 			return "abc123";
-		});
+		}, "token");
 
-		String second = secure.cache("token", () -> {
+		String second = secure.cache(() -> {
 			calls.incrementAndGet();
 			return "new-value";
-		});
+		}, "token");
 
 		String third = secure.cache(() -> {
 			calls.incrementAndGet();

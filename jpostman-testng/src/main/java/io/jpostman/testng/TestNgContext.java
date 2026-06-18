@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -30,7 +31,7 @@ import io.jpostman.secure.SecureValues;
 public final class TestNgContext {
 
 	private final SecureContext secure;
-	private TestNgAssertions assertions;
+	private TestNgAssertions<?> assertions;
 
 	private TestNgContext(SecureContext secure) {
 		this.secure = secure == null ? SecureContext.create() : secure;
@@ -56,6 +57,24 @@ public final class TestNgContext {
 	}
 
 	/**
+	 * Applies custom logic to this context and returns this context.
+	 *
+	 * <p>
+	 * This is useful for adding custom assertions, cache updates, or other context
+	 * operations inside a fluent method chain.
+	 * </p>
+	 *
+	 * @param consumer custom context logic
+	 * @return this context
+	 */
+	public TestNgContext context(Consumer<TestNgContext> consumer) {
+		if (consumer != null) {
+			consumer.accept(this);
+		}
+		return this;
+	}
+
+	/**
 	 * Returns the wrapped secure context.
 	 *
 	 * @return secure context
@@ -69,7 +88,7 @@ public final class TestNgContext {
 	 *
 	 * @return hard assertions
 	 */
-	public TestNgAssertions asserts() {
+	public TestNgAssertions<?> asserts() {
 		return asserts(false);
 	}
 
@@ -79,8 +98,8 @@ public final class TestNgContext {
 	 * @param includeLog {@code true} to include the secure log on failure
 	 * @return hard assertions
 	 */
-	public TestNgAssertions asserts(boolean includeLog) {
-		assertions = new TestNgAssertions(this, includeLog);
+	public TestNgAssertions<?> asserts(boolean includeLog) {
+		assertions = new TestNgAssertions<>(this, includeLog);
 		return assertions;
 	}
 
@@ -118,6 +137,7 @@ public final class TestNgContext {
 	 * If soft assertions were collected, all soft assertions are verified.
 	 * Otherwise, a hard status code assertion is performed.
 	 * </p>
+	 * 
 	 * @return this context
 	 */
 	public TestNgContext verify() {
@@ -142,7 +162,7 @@ public final class TestNgContext {
 			return this;
 		}
 
-		TestNgAssertions current = assertions;
+		TestNgAssertions<?> current = assertions;
 		if (current.soft()) {
 			assertions = null;
 		}
@@ -163,26 +183,14 @@ public final class TestNgContext {
 	}
 
 	/**
-	 * Stores a value in the shared cache and returns this context.
-	 *
-	 * @param key   cache key
-	 * @param value cached value
-	 * @return this context
-	 */
-	public TestNgContext cache(String key, Object value) {
-		secure.cache().put(key, value);
-		return this;
-	}
-
-	/**
-	 * Returns a cached value using the calling method name as the cache key.
+	 * Returns a cached value using the caller method name as the cache key.
 	 *
 	 * @param supplier value supplier used when the key is not cached
 	 * @param <T>      value type
 	 * @return cached value
 	 */
 	public <T> T cache(Supplier<T> supplier) {
-		return cache(SecureContext.callerMethodName(2), supplier);
+		return cache(supplier, SecureContext.callerMethodName(2));
 	}
 
 	/**
@@ -192,17 +200,29 @@ public final class TestNgContext {
 	 * If creating the cached value failed earlier, the current test is skipped.
 	 * </p>
 	 *
-	 * @param key      cache key
 	 * @param supplier value supplier used when the key is not cached
+	 * @param key      cache key
 	 * @param <T>      value type
 	 * @return cached value
 	 */
-	public <T> T cache(String key, Supplier<T> supplier) {
+	public <T> T cache(Supplier<T> supplier, String key) {
 		try {
 			return secure.cache(key, supplier);
 		} catch (SecureContext.CachedFailureException e) {
 			throw new SkipException("Skipped because cached value failed: " + key, e);
 		}
+	}
+
+	/**
+	 * Stores a value in the shared cache and returns this context.
+	 *
+	 * @param key   cache key
+	 * @param value cached value
+	 * @return this context
+	 */
+	public TestNgContext cache(String key, Object value) {
+		secure.cache().put(key, value);
+		return this;
 	}
 
 	/**
@@ -697,7 +717,7 @@ public final class TestNgContext {
 		secure.print(resolve);
 	}
 
-	void resetSoft(TestNgAssertions current) {
+	void resetSoft(TestNgAssertions<?> current) {
 		if (assertions == current) {
 			assertions = null;
 		}

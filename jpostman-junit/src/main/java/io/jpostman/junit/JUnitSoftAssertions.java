@@ -15,7 +15,7 @@ import org.junit.jupiter.api.function.Executable;
  * {@link #assertAll()} fails.
  * </p>
  */
-public final class JUnitSoftAssertions extends JUnitAssertions {
+public final class JUnitSoftAssertions extends JUnitAssertions<JUnitSoftAssertions> {
 
 	private final List<AssertionError> failures = new ArrayList<>();
 
@@ -29,7 +29,7 @@ public final class JUnitSoftAssertions extends JUnitAssertions {
 	}
 
 	@Override
-	protected JUnitAssertions assertWithLog(Runnable assertion) {
+	protected JUnitSoftAssertions assertWithLog(Runnable assertion) {
 		try {
 			assertion.run();
 		} catch (AssertionError error) {

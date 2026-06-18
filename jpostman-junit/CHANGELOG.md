@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- Added `context(Consumer<JUnitContext>)` to support custom context logic inside fluent method chains.
+- Added support for applying assertions, cache updates, and other context operations without breaking the fluent API flow.
+- Added `context()` to JUnit assertion classes to allow returning to the owning `JUnitContext` from an assertion chain.
+
+### Changed
+
+- Updated JUnit assertion chaining to preserve the concrete assertion type during fluent method calls.
+- Updated `JUnitAssertions` to use a self-type generic pattern for cleaner fluent API support.
+- Updated `JUnitSoftAssertions` so chained assertion methods return `JUnitSoftAssertions` instead of the base assertion type.
+
 ## 1.1.5
 
 ### Added
