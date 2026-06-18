@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1
+
+### Changed
+
+- Replaced `AfterTestExecutionCallback` with JUnit exception handlers to support failures from both test methods and lifecycle methods.
+
+### Fixed
+
+- Fixed JUnit failure printing so secure logs are printed for failures raised during `@AfterEach` teardown.
+
 ## 1.2.0
 
 ### Added
@@ -18,7 +28,7 @@
 
 ### Added
 
-* Added `cache(String key, Object value)` to JUnit and TestNG contexts for storing shared cache values in fluent style.
+- Added `cache(String key, Object value)` to JUnit and TestNG contexts for storing shared cache values in fluent style.
 
 ## 1.1.4
 

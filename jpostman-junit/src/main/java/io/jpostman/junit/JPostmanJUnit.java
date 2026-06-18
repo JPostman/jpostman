@@ -5,12 +5,12 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
-import java.util.Optional;
 
 import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.extension.AfterTestExecutionCallback;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.LifecycleMethodExecutionExceptionHandler;
+import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 
 import io.jpostman.secure.JPostmanAssertionError;
 
@@ -37,28 +37,31 @@ public @interface JPostmanJUnit {
 	boolean printFailures() default false;
 
 	/**
-	 * Prints test failures to the console after test execution.
+	 * Prints test failures to the console.
 	 */
-	final class FailurePrinter implements AfterTestExecutionCallback {
+	final class FailurePrinter implements TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler {
 
 		@Override
-		public void afterTestExecution(ExtensionContext context) {
+		public void handleTestExecutionException(ExtensionContext context, Throwable error) throws Throwable {
+			printFailure(context, error);
+			throw error;
+		}
+
+		@Override
+		public void handleAfterEachMethodExecutionException(ExtensionContext context, Throwable error) throws Throwable {
+			printFailure(context, error);
+			throw error;
+		}
+
+		private void printFailure(ExtensionContext context, Throwable error) {
 			JPostmanJUnit annotation = context.getRequiredTestClass().getAnnotation(JPostmanJUnit.class);
 
 			boolean skipPrintFailures = Boolean.parseBoolean(System.getProperty("skipPrintFailures", "false"));
+
 			if (skipPrintFailures || annotation == null || !annotation.printFailures()) {
 				return;
 			}
 
-			Optional<Throwable> error = context.getExecutionException();
-			if (error.isEmpty()) {
-				return;
-			}
-
-			printFailure(context, error.get());
-		}
-
-		private void printFailure(ExtensionContext context, Throwable error) {
 			System.err.println();
 			System.err.println("********** JUnit Failure **********");
 			System.err.println(context.getDisplayName());

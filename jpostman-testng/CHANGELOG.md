@@ -18,7 +18,7 @@
 
 ### Added
 
-* Added `cache(String key, Object value)` to JUnit and TestNG contexts for storing shared cache values in fluent style.
+- Added `cache(String key, Object value)` to JUnit and TestNG contexts for storing shared cache values in fluent style.
 
 ## 1.1.4
 

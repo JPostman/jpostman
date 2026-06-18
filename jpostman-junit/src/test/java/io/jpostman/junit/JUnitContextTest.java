@@ -70,7 +70,7 @@ public class JUnitContextTest {
 
 		cxt.context(c -> cxt.verify());
 		cxt.soft().context().verify(400);
-		
+
 		cxt.soft(true).statusCode(400).exists("accessToken", "Access token not found").assertAll();
 
 		try {
@@ -217,7 +217,7 @@ public class JUnitContextTest {
 		String second = secure.cache(() -> {
 			calls.incrementAndGet();
 			return "new-value";
-		},"token");
+		}, "token");
 
 		String third = secure.cache(() -> {
 			calls.incrementAndGet();
@@ -253,8 +253,18 @@ public class JUnitContextTest {
 		AssertionError original = new AssertionError("Original failure");
 		JPostmanAssertionError error = JPostmanAssertionError.wrap(original, "secure log");
 
-		String output = captureErr(() -> new JPostmanJUnit.FailurePrinter()
-				.afterTestExecution(context(PrintingTest.class, "sampleTest()", error)));
+		String output = captureErr(() -> {
+			try {
+				new JPostmanJUnit.FailurePrinter()
+						.handleTestExecutionException(context(PrintingTest.class, "sampleTest()", error), error);
+			} catch (Throwable ignored1) {
+				try {
+					new JPostmanJUnit.FailurePrinter().handleAfterEachMethodExecutionException(
+							context(PrintingTest.class, "sampleTest()", error), error);
+				} catch (Throwable ignored2) {
+				}
+			}
+		});
 
 		assertTrue(output.contains("********** JUnit Failure **********"), output);
 		assertTrue(output.contains("sampleTest()"), output);
