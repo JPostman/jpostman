@@ -8,14 +8,18 @@ import org.testng.IInvokedMethodListener;
 import org.testng.ITestResult;
 
 /**
- * Thin TestNG adapter for optional JPostman annotation support.
+ * TestNG listener that connects TestNG test execution to the optional JPostman
+ * annotation engine.
  *
  * <p>
- * This class intentionally does not import {@code io.jpostman.annotations} so
- * {@code jpostman-testng} can compile and run without the annotation module.
- * When {@code jpostman-annotations} is present on the test classpath, the
- * annotation engine is loaded by class name and executes the shared annotation
- * runtime.
+ * This listener is registered through Java ServiceLoader. It only runs for
+ * classes annotated with {@link JPostmanTestNG}.
+ * </p>
+ *
+ * <p>
+ * This class intentionally does not directly import
+ * {@code io.jpostman.annotations.JPostmanAnnotationEngine}. The annotation
+ * module is optional, so the engine is loaded by class name.
  * </p>
  */
 public final class JPostmanTestNgAnnotationListener implements IInvokedMethodListener {
@@ -28,9 +32,15 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 			return;
 		}
 
+		Object testInstance = testResult.getInstance();
+
+		if (!isJPostmanTest(testInstance)) {
+			return;
+		}
+
 		try {
-			Object testInstance = testResult.getInstance();
 			Method testMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+
 			runAnnotationEngine(testInstance, testMethod);
 		} catch (RuntimeException e) {
 			throw e;
@@ -41,9 +51,19 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 
 	@Override
 	public void afterInvocation(IInvokedMethod invokedMethod, ITestResult testResult) {
-		if (invokedMethod.isTestMethod()) {
+		if (!invokedMethod.isTestMethod()) {
+			return;
+		}
+
+		Object testInstance = testResult.getInstance();
+
+		if (isJPostmanTest(testInstance)) {
 			TestNgContext.clearCurrent();
 		}
+	}
+
+	private boolean isJPostmanTest(Object testInstance) {
+		return testInstance != null && testInstance.getClass().isAnnotationPresent(JPostmanTestNG.class);
 	}
 
 	private void runAnnotationEngine(Object testInstance, Method testMethod) throws Exception {
@@ -52,8 +72,9 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 			Method run = engine.getMethod("runTestNg", Object.class, Method.class);
 			run.invoke(null, testInstance, testMethod);
 		} catch (ClassNotFoundException e) {
-			// Annotation module is optional. Without it, @JPostmanTestNG still supports
-			// the regular TestNG context/fluent API features.
+			// Annotation module is optional.
+			// Without it, @JPostmanTestNG is just a marker and normal TestNG usage still
+			// works.
 			TestNgContext.clearCurrent();
 		} catch (InvocationTargetException e) {
 			Throwable cause = e.getCause();

@@ -351,6 +351,8 @@ public void getCurrentAuthUser() {
 ## 9. Full JUnit Example
 
 ```java
+import org.junit.jupiter.api.Test;
+
 import io.jpostman.ApiExecutor;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
@@ -363,36 +365,25 @@ import io.jpostman.restassured.RestAssuredExecutor;
 @JPostmanJUnit(printFailures = true)
 public class DemoJUnitTest {
 
-    @JPostmanContext
-    private JUnitContext hello;
+	@JPostmanContext
+	private JUnitContext hello;
 
-    @JPostmanRequest(
-        request = "Login user and get tokens",
-        cache = "accessToken"
-    )
-    public String getToken() {
-        return hello.response(c -> RestAssuredExecutor.execute(c.request()))
-                .asserts(true)
-                    .exists("accessToken", "Access token not found")
-                    .verify()
-                .path("accessToken");
-    }
+	@JPostmanRequest(request = "Login user and get tokens")
+	public String getToken() {
+		return hello.response(c -> RestAssuredExecutor.execute(c.request())).asserts(true)
+				.exists("accessToken", "Access token not found").verify().path("accessToken");
+	}
 
-    @JPostmanResponse(
-        request = "Get current auth user",
-        dependsOn = "getToken",
-        executor = "auth",
-        verify = 200
-    )
-    public void getCurrentAuthUser() {
-    }
+	@JPostmanResponse(request = "Get current auth user", dependsOn = "getToken", executor = "auth", verify = 200)
+	@Test
+	public void getCurrentAuthUser() {
+		JUnitContext.current().print();
+	}
 
-    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
-    public ApiExecutor authExecutor(JUnitContext context, String methodName) {
-        return RestAssuredExecutor.apply(context.request())
-                .auth()
-                .oauth2(context.cache("accessToken"));
-    }
+	@JPostmanExecutor(name = "auth")
+	public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+		return RestAssuredExecutor.apply(context.request()).auth().oauth2(context.cache("getToken"));
+	}
 }
 ```
 
@@ -401,48 +392,39 @@ public class DemoJUnitTest {
 ## 10. Full TestNG Example
 
 ```java
+import org.testng.annotations.Test;
+
 import io.jpostman.ApiExecutor;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.restassured.RestAssuredExecutor;
 import io.jpostman.testng.JPostmanTestNG;
 import io.jpostman.testng.TestNgContext;
-import io.jpostman.restassured.RestAssuredExecutor;
 
-@JPostmanTestNG
+@JPostmanTestNG()
 public class DemoTestNgTest {
 
-    @JPostmanContext
-    private TestNgContext hello;
+	@JPostmanContext
+	private TestNgContext hello;
 
-    @JPostmanRequest(
-        request = "Login user and get tokens",
-        cache = "accessToken"
-    )
-    public String getToken() {
-        return hello.response(c -> RestAssuredExecutor.execute(c.request()))
-                .asserts(true)
-                    .exists("accessToken", "Access token not found")
-                    .verify()
-                .path("accessToken");
-    }
+	@JPostmanRequest(request = "Login user and get tokens")
+	public String getToken() {
+		return hello.response(c -> RestAssuredExecutor.execute(c.request())).asserts(true)
+				.exists("accessToken", "Access token not found").verify().path("accessToken");
+	}
 
-    @JPostmanResponse(
-        request = "Get current auth user",
-        dependsOn = "getToken",
-        executor = "auth",
-        verify = 200
-    )
-    public void getCurrentAuthUser() {
-    }
+	@JPostmanResponse(request = "Get current auth user", dependsOn = "getToken", executor = "auth", verify = 200)
+	@Test
+	public void getCurrentAuthUser() {
+		TestNgContext.current().print();
+	}
 
-    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
-    public ApiExecutor authExecutor(TestNgContext context, String methodName) {
-        return RestAssuredExecutor.apply(context.request())
-                .auth()
-                .oauth2(context.cache("accessToken"));
-    }
+	@JPostmanExecutor(name = "auth")
+	public ApiExecutor authExecutor(TestNgContext context, String methodName) {
+		return RestAssuredExecutor.apply(context.request()).auth().oauth2(context.cache("getToken"));
+	}
 }
 ```
 

@@ -262,8 +262,7 @@ public class TestNgContextTest {
 	public void jpostmanTestNgAnnotationListenerCanCallAllMethods() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 
-		java.lang.reflect.Method testMethod = TestNgContextTest.class
-				.getDeclaredMethod("jpostmanTestNgAnnotationListenerCanCallAllMethods");
+		java.lang.reflect.Method testMethod = JPostmanTestNgAnnotatedFixture.class.getDeclaredMethod("plain");
 
 		org.testng.ITestNGMethod testNgMethod = (org.testng.ITestNGMethod) Proxy.newProxyInstance(
 				org.testng.ITestNGMethod.class.getClassLoader(), new Class<?>[] { org.testng.ITestNGMethod.class },
@@ -287,14 +286,18 @@ public class TestNgContextTest {
 					}
 				});
 
+		JPostmanTestNgAnnotatedFixture fixture = new JPostmanTestNgAnnotatedFixture();
+
 		org.testng.ITestResult testResult = (org.testng.ITestResult) Proxy.newProxyInstance(
 				org.testng.ITestResult.class.getClassLoader(), new Class<?>[] { org.testng.ITestResult.class },
 				(proxy, method, args) -> {
 					if ("getInstance".equals(method.getName())) {
-						return this;
+						return fixture;
 					}
 					throw new UnsupportedOperationException(method.getName());
 				});
+
+		TestNgContext.clearCurrent();
 
 		listener.beforeInvocation(invokedMethod, testResult);
 
@@ -310,6 +313,13 @@ public class TestNgContextTest {
 
 		error = expectThrows(AssertionError.class, () -> TestNgContext.current());
 		assertTrue(error.getMessage().contains("No current TestNgContext"));
+	}
+
+	@JPostmanTestNG
+	private static final class JPostmanTestNgAnnotatedFixture {
+		@SuppressWarnings("unused")
+		public void plain() {
+		}
 	}
 
 	private static ApiResponse response(int statusCode, String body) {
