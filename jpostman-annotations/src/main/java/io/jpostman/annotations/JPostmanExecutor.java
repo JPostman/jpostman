@@ -14,8 +14,6 @@ import java.lang.annotation.Target;
 @Retention(RUNTIME)
 public @interface JPostmanExecutor {
 
-	String namespace() default "";
-
 	String name() default "";
 
 	String[] dependsOn() default {};

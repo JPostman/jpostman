@@ -43,23 +43,35 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 	}
 
 	@Override
-	public void loadRules(TestNgContext context, String rule) {
-		context.loadRules(rule);
+	public TestNgContext loadRules(TestNgContext context, String rule) {
+		return context.loadRules(rule);
 	}
 
 	@Override
-	public void request(TestNgContext context, Request request) {
-		context.request(request);
+	public TestNgContext filter(TestNgContext context, String... paths) {
+		if (paths == null || paths.length == 0) {
+			return context;
+		}
+		return context.filter(paths);
 	}
 
 	@Override
-	public void response(TestNgContext context, ApiExecutor executor) {
-		context.response(executor);
+	public TestNgContext request(TestNgContext context, Request request) {
+		return context.request(request);
 	}
 
 	@Override
-	public void verify(TestNgContext context, int statusCode) {
-		context.verify(statusCode);
+	public TestNgContext response(TestNgContext context, ApiExecutor executor) {
+		return context.response(executor);
+	}
+
+	@Override
+	public void verify(TestNgContext context, int statusCode, boolean soft, boolean log) {
+		if (soft) {
+			context.soft(log).statusCode(statusCode);
+			return;
+		}
+		context.verify().asserts(log).verify(statusCode);
 	}
 
 	@Override

@@ -86,8 +86,9 @@ public class JPostmanAnnotationCoverageTest {
 
 		contexts.put(null, prepared);
 
-		assertSame(prepared, contexts.resolve(""));
 		assertSame(prepared, contexts.resolve(null));
+		assertSame(prepared, contexts.resolve(""));
+		assertTrue(contexts.contains(""));
 	}
 
 	/**
@@ -171,10 +172,11 @@ public class JPostmanAnnotationCoverageTest {
 		ApiExecutor executor = () -> new ApiResponse(200, "{\"id\":1,\"firstName\":\"John\"}",
 				"{\"id\":1,\"firstName\":\"John\"}".getBytes(), Map.of());
 
-		framework.response(context, executor);
-		assertNotNull(context.response());
+		context = framework.filter(context, "id", "firstName");
+		context = framework.response(context, executor);
 
-		framework.verify(context, 200);
+		assertNotNull(context.response());
+		framework.verify(context, 200, false, false);
 
 		framework.clearCurrent();
 
@@ -209,6 +211,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		Environment environment = new Environment("test");
 		framework.secret(context, environment);
+		framework.filter(context, "id");
 
 		try (InputStream rules = new ByteArrayInputStream("[user]\nfilter=id\n".getBytes())) {
 			framework.load(context, rules);
@@ -229,7 +232,7 @@ public class JPostmanAnnotationCoverageTest {
 		framework.response(context, executor);
 		assertNotNull(context.response());
 
-		framework.verify(context, 200);
+		framework.verify(context, 200, true, true);
 
 		framework.clearCurrent();
 
@@ -309,7 +312,8 @@ public class JPostmanAnnotationCoverageTest {
 		runner.run(fixture, method);
 
 		assertNotNull(fixture.base);
-		assertNotNull(fixture.base.request());
+		assertNotNull(fixture.base.ctx().request());
+		assertNotNull(JUnitContext.current().request());
 	}
 
 	/**
@@ -333,7 +337,8 @@ public class JPostmanAnnotationCoverageTest {
 		runner.run(fixture, requestMethod);
 
 		assertNotNull(fixture.base);
-		assertNotNull(fixture.base.request());
+		assertNotNull(fixture.base.ctx().request());
+		assertNotNull(JUnitContext.current().request());
 
 		Method responseMethod = RequestFixture.class.getDeclaredMethod("getCurrentAuthUser");
 

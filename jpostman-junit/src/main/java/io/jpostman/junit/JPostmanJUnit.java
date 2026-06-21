@@ -34,7 +34,7 @@ public @interface JPostmanJUnit {
 	 *
 	 * @return {@code true} to print failures to the console
 	 */
-	boolean printFailures() default false;
+	boolean printFailures() default true;
 
 	/**
 	 * Prints test failures to the console.
@@ -48,12 +48,20 @@ public @interface JPostmanJUnit {
 		}
 
 		@Override
-		public void handleAfterEachMethodExecutionException(ExtensionContext context, Throwable error) throws Throwable {
+		public void handleBeforeEachMethodExecutionException(ExtensionContext context, Throwable error)
+				throws Throwable {
 			printFailure(context, error);
 			throw error;
 		}
 
-		private void printFailure(ExtensionContext context, Throwable error) {
+		@Override
+		public void handleAfterEachMethodExecutionException(ExtensionContext context, Throwable error)
+				throws Throwable {
+			printFailure(context, error);
+			throw error;
+		}
+
+		static void printFailure(ExtensionContext context, Throwable error) {
 			JPostmanJUnit annotation = context.getRequiredTestClass().getAnnotation(JPostmanJUnit.class);
 
 			boolean skipPrintFailures = Boolean.parseBoolean(System.getProperty("skipPrintFailures", "false"));
@@ -65,10 +73,14 @@ public @interface JPostmanJUnit {
 			System.err.println();
 			System.err.println("********** JUnit Failure **********");
 			System.err.println(context.getDisplayName());
-			System.err.println(error.getClass().getName() + ": " + nullToEmpty(error.getMessage()));
 
-			if (error instanceof JPostmanAssertionError) {
-				String secureLog = ((JPostmanAssertionError) error).secureLog();
+			Throwable root = rootCause(error);
+
+			System.err.println(root.getClass().getName() + ": " + nullToEmpty(root.getMessage()));
+
+			JPostmanAssertionError jpostmanError = findJPostmanAssertionError(error);
+			if (jpostmanError != null) {
+				String secureLog = jpostmanError.secureLog();
 				if (secureLog != null && !secureLog.isBlank()) {
 					System.err.println();
 					System.err.println(secureLog.trim());
@@ -79,7 +91,36 @@ public @interface JPostmanJUnit {
 			System.err.println();
 		}
 
-		private String nullToEmpty(String value) {
+		private static JPostmanAssertionError findJPostmanAssertionError(Throwable error) {
+			Throwable current = error;
+
+			while (current != null) {
+				if (current instanceof JPostmanAssertionError) {
+					return (JPostmanAssertionError) current;
+				}
+
+				for (Throwable suppressed : current.getSuppressed()) {
+					JPostmanAssertionError found = findJPostmanAssertionError(suppressed);
+					if (found != null) {
+						return found;
+					}
+				}
+
+				current = current.getCause();
+			}
+
+			return null;
+		}
+
+		private static Throwable rootCause(Throwable error) {
+			Throwable current = error;
+			while (current.getCause() != null) {
+				current = current.getCause();
+			}
+			return current;
+		}
+
+		private static String nullToEmpty(String value) {
 			return value == null ? "" : value;
 		}
 	}

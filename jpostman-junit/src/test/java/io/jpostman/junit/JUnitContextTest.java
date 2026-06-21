@@ -58,6 +58,7 @@ public class JUnitContextTest {
 
 		JUnitContext.setCurrent(cxt);
 		assertEquals(JUnitContext.current(), cxt);
+		assertEquals(JUnitContext.current(), cxt.ctx());
 		JUnitContext.clearCurrent();
 		error = assertThrows(AssertionError.class, () -> JUnitContext.current());
 		assertEquals(error.getMessage(), "No current JUnitContext is available.");
@@ -260,15 +261,23 @@ public class JUnitContextTest {
 		JPostmanAssertionError error = JPostmanAssertionError.wrap(original, "secure log");
 
 		String output = captureErr(() -> {
+			JPostmanJUnit.FailurePrinter printer = new JPostmanJUnit.FailurePrinter();
+
 			try {
-				new JPostmanJUnit.FailurePrinter()
-						.handleTestExecutionException(context(PrintingTest.class, "sampleTest()", error), error);
-			} catch (Throwable ignored1) {
-				try {
-					new JPostmanJUnit.FailurePrinter().handleAfterEachMethodExecutionException(
-							context(PrintingTest.class, "sampleTest()", error), error);
-				} catch (Throwable ignored2) {
-				}
+				printer.handleTestExecutionException(context(PrintingTest.class, "sampleTest()", error), error);
+			} catch (Throwable ignored) {
+			}
+
+			try {
+				printer.handleBeforeEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
+						error);
+			} catch (Throwable ignored) {
+			}
+
+			try {
+				printer.handleAfterEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
+						error);
+			} catch (Throwable ignored) {
 			}
 		});
 

@@ -89,6 +89,20 @@ public final class JUnitContext {
 		CURRENT.remove();
 	}
 
+	/**
+	 * Returns the current context for this test thread.
+	 *
+	 * <p>
+	 * This is a short instance helper for annotation-based tests. It delegates to
+	 * {@link #current()} so parallel tests use the ThreadLocal context.
+	 * </p>
+	 *
+	 * @return current JUnit context
+	 */
+	public JUnitContext ctx() {
+		return current();
+	}
+
 	private JUnitContext(SecureContext secure) {
 		this.secure = secure == null ? SecureContext.create() : secure;
 	}

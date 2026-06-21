@@ -43,23 +43,36 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 	}
 
 	@Override
-	public void loadRules(JUnitContext context, String rule) {
-		context.loadRules(rule);
+	public JUnitContext loadRules(JUnitContext context, String rule) {
+		return context.loadRules(rule);
 	}
 
 	@Override
-	public void request(JUnitContext context, Request request) {
-		context.request(request);
+	public JUnitContext filter(JUnitContext context, String... paths) {
+		if (paths == null || paths.length == 0) {
+			return context;
+		}
+		return context.filter(paths);
 	}
 
 	@Override
-	public void response(JUnitContext context, ApiExecutor executor) {
-		context.response(executor);
+	public JUnitContext request(JUnitContext context, Request request) {
+		return context.request(request);
 	}
 
 	@Override
-	public void verify(JUnitContext context, int statusCode) {
-		context.verify(statusCode);
+	public JUnitContext response(JUnitContext context, ApiExecutor executor) {
+		return context.response(executor);
+	}
+
+	@Override
+	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log) {
+		if (soft) {
+			context.soft(log).statusCode(statusCode);
+			return;
+		}
+
+		context.asserts(log).verify(statusCode);
 	}
 
 	@Override

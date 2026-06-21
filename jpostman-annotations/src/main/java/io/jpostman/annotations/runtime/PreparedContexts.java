@@ -20,6 +20,10 @@ final class PreparedContexts<C> {
 		values.put(key, context);
 	}
 
+	boolean contains(String namespace) {
+		return values.containsKey(normalize(namespace));
+	}
+
 	PreparedContext<C> resolve(String namespace) {
 		String key = normalize(namespace);
 		PreparedContext<C> context = values.get(key);

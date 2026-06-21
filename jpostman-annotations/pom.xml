@@ -7,12 +7,12 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.2.3</version>
+		<version>1.2.4</version>
 	</parent>
 
 	<artifactId>jpostman-annotations</artifactId>
 	<packaging>jar</packaging>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 
 	<name>JPostman Annotations</name>
 	<description>Annotation-based execution support for JPostman JUnit and
@@ -23,12 +23,12 @@
 		<dependency>
 			<groupId>io.github.jpostman</groupId>
 			<artifactId>jpostman-junit</artifactId>
-			<version>${project.parent.version}</version>
+			<version>${project.parent.version}</version><!--$NO-MVN-MAN-VER$-->
 		</dependency>
 		<dependency>
 			<groupId>io.github.jpostman</groupId>
 			<artifactId>jpostman-testng</artifactId>
-			<version>${project.parent.version}</version>
+			<version>${project.parent.version}</version><!--$NO-MVN-MAN-VER$-->
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>

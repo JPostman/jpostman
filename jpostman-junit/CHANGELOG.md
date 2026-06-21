@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.4
+
+### Added
+
+- Added `JUnitContext.ctx()` instance helper for annotation-based JUnit tests.
+- Added JUnit failure printing support for `beforeEach` and `afterEach` lifecycle failures.
+
+### Changed
+
+- Changed `@JPostmanJUnit(printFailures)` default from `false` to `true`.
+
 ## 1.2.2
 
 ### Added

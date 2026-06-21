@@ -13,9 +13,11 @@ import java.util.Properties;
 import io.jpostman.ApiExecutor;
 import io.jpostman.Collection;
 import io.jpostman.JPostman;
+import io.jpostman.Request;
 import io.jpostman.JPostman.Context;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanLoadedContext;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
@@ -33,35 +35,55 @@ public final class JPostmanAnnotationRunner<C> {
 
 	public void run(Object testInstance, Method testMethod) throws Exception {
 		PreparedContexts<C> prepared = prepareContexts(testInstance);
+
+		// Inject loaded core contexts even when the test class only uses
+		// @JPostmanLoadedContext and does not declare a JUnitContext/TestNgContext.
+		injectLoadedContexts(testInstance, prepared);
+
+		JPostmanRequest requestAnnotation = testMethod.getAnnotation(JPostmanRequest.class);
+		JPostmanResponse responseAnnotation = testMethod.getAnnotation(JPostmanResponse.class);
+
+		// Plain test method.
+		// The test may only use @JPostmanLoadedContext to access
+		// collection/environment.
+		// In that case, injectLoadedContexts(...) already did the work, so do not
+		// resolve a JUnit/TestNG context.
+		if (requestAnnotation == null && responseAnnotation == null) {
+			framework.clearCurrent();
+			return;
+		}
+
 		if (prepared.isEmpty()) {
 			framework.clearCurrent();
 			return;
 		}
 
-		JPostmanRequest requestAnnotation = testMethod.getAnnotation(JPostmanRequest.class);
-		JPostmanResponse responseAnnotation = testMethod.getAnnotation(JPostmanResponse.class);
-
 		String currentNamespace = "";
 		if (requestAnnotation != null) {
 			currentNamespace = requestAnnotation.namespace();
-		} else if (responseAnnotation != null) {
+		} else {
 			currentNamespace = responseAnnotation.namespace();
 		}
 
 		PreparedContext<C> current = prepared.resolve(currentNamespace);
-		framework.setCurrent(current.context);
+		C currentContext = current.context;
+		framework.setCurrent(currentContext);
 
 		if (requestAnnotation != null) {
-			applyRequest(current.context, current.collection, requestAnnotation);
+			currentContext = applyRequest(currentContext, current.collection, requestAnnotation);
+			framework.setCurrent(currentContext);
 			runDependencies(testInstance, prepared, requestAnnotation.dependsOn());
-			applyRequest(current.context, current.collection, requestAnnotation);
+			currentContext = applyRequest(currentContext, current.collection, requestAnnotation);
+			framework.setCurrent(currentContext);
 		}
 
 		if (responseAnnotation != null) {
-			applyRequest(current.context, current.collection, responseAnnotation);
+			currentContext = applyRequest(currentContext, current.collection, responseAnnotation);
+			framework.setCurrent(currentContext);
 			runDependencies(testInstance, prepared, responseAnnotation.dependsOn());
-			applyRequest(current.context, current.collection, responseAnnotation);
-			executeResponse(testInstance, prepared, responseAnnotation, testMethod.getName());
+			currentContext = applyRequest(currentContext, current.collection, responseAnnotation);
+			framework.setCurrent(currentContext);
+			executeResponse(testInstance, prepared, currentContext, responseAnnotation, testMethod.getName());
 		}
 	}
 
@@ -122,7 +144,51 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 		}
 
-		return new PreparedContext<>(ctx, loaded.getCollection());
+		return new PreparedContext<>(ctx, loaded);
+	}
+
+	private void injectLoadedContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
+		Class<?> testClass = testInstance.getClass();
+
+		Class<?> current = testClass;
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				JPostmanLoadedContext annotation = field.getAnnotation(JPostmanLoadedContext.class);
+				if (annotation == null) {
+					continue;
+				}
+
+				if (!JPostman.Context.class.isAssignableFrom(field.getType())) {
+					throw new IllegalStateException(
+							"@JPostmanLoadedContext field must be JPostman.Context: " + field.getName());
+				}
+
+				JPostman.Context loaded;
+
+				if (contexts.contains(annotation.namespace())) {
+					loaded = contexts.resolve(annotation.namespace()).loaded;
+				} else {
+					Properties properties = loadProperties(annotation.config(), testClass);
+					String namespace = annotation.namespace();
+					String collectionLocation = firstNonBlank(annotation.collection(),
+							property(properties, "collection", namespace));
+					String environmentLocation = firstNonBlank(annotation.environment(),
+							property(properties, "environment", namespace));
+
+					if (collectionLocation.isBlank()) {
+						throw new IllegalStateException("JPostman collection is required for field " + field.getName()
+								+ ". Configure @JPostmanLoadedContext(collection=...) or property "
+								+ propertyKey("collection", namespace));
+					}
+
+					loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
+				}
+
+				field.setAccessible(true);
+				field.set(testInstance, loaded);
+			}
+			current = current.getSuperclass();
+		}
 	}
 
 	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)
@@ -227,7 +293,8 @@ public final class JPostmanAnnotationRunner<C> {
 			return;
 		}
 
-		applyRequest(ctx, collection, dependencyAnnotation);
+		ctx = applyRequest(ctx, collection, dependencyAnnotation);
+		framework.setCurrent(ctx);
 		Object value = invoke(testInstance, dependencyMethod);
 
 		if (dependencyMethod.getReturnType() != Void.TYPE) {
@@ -235,42 +302,48 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
-	private void applyRequest(C ctx, Collection collection, JPostmanRequest annotation) {
+	private C applyRequest(C context, Collection collection, JPostmanRequest annotation) {
+		C result = context;
+
 		if (!annotation.rule().isBlank()) {
-			framework.loadRules(ctx, annotation.rule());
+			result = framework.loadRules(result, annotation.rule());
 		}
 
-		if (!annotation.folder().isBlank()) {
-			framework.request(ctx, collection.getFolder(annotation.folder()).getRequest(annotation.request()));
-		} else {
-			framework.request(ctx, collection.getRequest(annotation.request()));
-		}
+		return framework.request(result, request(collection, annotation.folder(), annotation.request()));
 	}
 
-	private void applyRequest(C ctx, Collection collection, JPostmanResponse annotation) {
+	private C applyRequest(C context, Collection collection, JPostmanResponse annotation) {
+		C result = context;
+
 		if (!annotation.rule().isBlank()) {
-			framework.loadRules(ctx, annotation.rule());
+			result = framework.loadRules(result, annotation.rule());
 		}
 
-		if (!annotation.folder().isBlank()) {
-			framework.request(ctx, collection.getFolder(annotation.folder()).getRequest(annotation.request()));
-		} else {
-			framework.request(ctx, collection.getRequest(annotation.request()));
+		if (annotation.filter().length > 0) {
+			result = framework.filter(result, annotation.filter());
 		}
+
+		return framework.request(result, request(collection, annotation.folder(), annotation.request()));
 	}
 
-	private void executeResponse(Object testInstance, PreparedContexts<C> resolver, JPostmanResponse annotation,
+	private Request request(Collection collection, String folder, String request) {
+		if (folder == null || folder.isBlank()) {
+			return collection.getRequest(request);
+		}
+		return collection.getFolder(folder).getRequest(request);
+	}
+
+	private void executeResponse(Object testInstance, PreparedContexts<C> resolver, C ctx, JPostmanResponse annotation,
 			String methodName) throws Exception {
 
-		C ctx = resolver.context(annotation.namespace());
-		Collection collection = resolver.collection(annotation.namespace());
-
-		Method executor = findExecutor(testInstance.getClass(), annotation.executor(), annotation.namespace());
+		Method executor = findExecutor(testInstance.getClass(), annotation.executor());
 		JPostmanExecutor executorAnnotation = executor.getAnnotation(JPostmanExecutor.class);
 
+		Collection collection = resolver.collection(annotation.namespace());
 		for (String dependencyName : executorAnnotation.dependsOn()) {
 			runDependency(testInstance, resolver, dependencyName);
-			applyRequest(ctx, collection, annotation);
+			ctx = applyRequest(ctx, collection, annotation);
+			framework.setCurrent(ctx);
 		}
 
 		Object result;
@@ -288,15 +361,14 @@ public final class JPostmanAnnotationRunner<C> {
 			throw new IllegalStateException("JPostman executor must return ApiExecutor: " + executor.getName());
 		}
 
-		framework.response(ctx, (ApiExecutor) result);
-		framework.verify(ctx, annotation.verify());
+		ctx = framework.response(ctx, (ApiExecutor) result);
+		framework.setCurrent(ctx);
+		framework.verify(ctx, annotation.verify(), annotation.soft(), annotation.log());
 	}
 
-	private Method findExecutor(Class<?> type, String requestedName, String responseNamespace) {
-		List<Method> unnamedExactNamespace = new ArrayList<>();
-		List<Method> unnamedGeneric = new ArrayList<>();
-		List<Method> allExactNamespace = new ArrayList<>();
-		List<Method> allGeneric = new ArrayList<>();
+	private Method findExecutor(Class<?> type, String requestedName) {
+		List<Method> unnamed = new ArrayList<>();
+		List<Method> all = new ArrayList<>();
 
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
@@ -310,30 +382,18 @@ public final class JPostmanAnnotationRunner<C> {
 				method.setAccessible(true);
 
 				String executorName = annotation.name().isBlank() ? method.getName() : annotation.name();
-				boolean namespaceExact = !annotation.namespace().isBlank()
-						&& annotation.namespace().equals(responseNamespace);
-				boolean namespaceGeneric = annotation.namespace().isBlank();
-
-				if (!namespaceExact && !namespaceGeneric) {
-					continue;
-				}
 
 				if (!requestedName.isBlank() && requestedName.equals(executorName)) {
 					return method;
 				}
 
-				if (namespaceExact) {
-					allExactNamespace.add(method);
-					if (annotation.name().isBlank()) {
-						unnamedExactNamespace.add(method);
-					}
-				} else {
-					allGeneric.add(method);
-					if (annotation.name().isBlank()) {
-						unnamedGeneric.add(method);
-					}
+				all.add(method);
+
+				if (annotation.name().isBlank()) {
+					unnamed.add(method);
 				}
 			}
+
 			current = current.getSuperclass();
 		}
 
@@ -341,32 +401,22 @@ public final class JPostmanAnnotationRunner<C> {
 			throw new IllegalStateException("JPostman executor not found: " + requestedName);
 		}
 
-		for (Method method : unnamedExactNamespace) {
-			if ("defaultExecutor".equals(method.getName())) {
-				return method;
-			}
-		}
-		for (Method method : unnamedGeneric) {
+		for (Method method : unnamed) {
 			if ("defaultExecutor".equals(method.getName())) {
 				return method;
 			}
 		}
 
-		if (unnamedExactNamespace.size() == 1) {
-			return unnamedExactNamespace.get(0);
+		if (unnamed.size() == 1) {
+			return unnamed.get(0);
 		}
-		if (unnamedGeneric.size() == 1) {
-			return unnamedGeneric.get(0);
-		}
-		if (allExactNamespace.size() == 1) {
-			return allExactNamespace.get(0);
-		}
-		if (allGeneric.size() == 1) {
-			return allGeneric.get(0);
+
+		if (all.size() == 1) {
+			return all.get(0);
 		}
 
 		throw new IllegalStateException(
-				"Default JPostman executor not found. Add @JPostmanExecutor or specify executor = name.");
+				"Default JPostman executor not found. Add one unnamed @JPostmanExecutor or specify executor = name.");
 	}
 
 	private void validateExecutorMethod(Method method) {

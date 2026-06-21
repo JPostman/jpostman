@@ -53,6 +53,7 @@ public class TestNgContextTest {
 
 		TestNgContext.setCurrent(cxt);
 		assertEquals(TestNgContext.current(), cxt);
+		assertEquals(TestNgContext.current(), cxt.ctx());
 		TestNgContext.clearCurrent();
 		error = expectThrows(AssertionError.class, () -> TestNgContext.current());
 		assertEquals(error.getMessage(), "No current TestNgContext is available.");

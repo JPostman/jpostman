@@ -21,50 +21,59 @@ import org.junit.jupiter.api.extension.ParameterResolver;
  * </p>
  */
 public final class JPostmanJUnitAnnotationExtension
-        implements BeforeEachCallback, AfterEachCallback, ParameterResolver {
+		implements BeforeEachCallback, AfterEachCallback, ParameterResolver {
 
-    private static final String ENGINE_CLASS = "io.jpostman.annotations.JPostmanAnnotationEngine";
+	private static final String ENGINE_CLASS = "io.jpostman.annotations.JPostmanAnnotationEngine";
 
-    @Override
-    public void beforeEach(ExtensionContext context) throws Exception {
-        Object testInstance = context.getRequiredTestInstance();
-        Method testMethod = context.getRequiredTestMethod();
-        runAnnotationEngine(testInstance, testMethod);
-    }
+	@Override
+	public void beforeEach(ExtensionContext context) throws Exception {
+		Object testInstance = context.getRequiredTestInstance();
+		Method testMethod = context.getRequiredTestMethod();
 
-    @Override
-    public void afterEach(ExtensionContext context) {
-        JUnitContext.clearCurrent();
-    }
+		try {
+			runAnnotationEngine(testInstance, testMethod);
+		} catch (Exception error) {
+			JPostmanJUnit.FailurePrinter.printFailure(context, error);
+			throw error;
+		} catch (Error error) {
+			JPostmanJUnit.FailurePrinter.printFailure(context, error);
+			throw error;
+		}
+	}
 
-    @Override
-    public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext context) {
-        return JUnitContext.class.isAssignableFrom(parameterContext.getParameter().getType());
-    }
+	@Override
+	public void afterEach(ExtensionContext context) {
+		JUnitContext.clearCurrent();
+	}
 
-    @Override
-    public Object resolveParameter(ParameterContext parameterContext, ExtensionContext context) {
-        return JUnitContext.current();
-    }
+	@Override
+	public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext context) {
+		return JUnitContext.class.isAssignableFrom(parameterContext.getParameter().getType());
+	}
 
-    private void runAnnotationEngine(Object testInstance, Method testMethod) throws Exception {
-        try {
-            Class<?> engine = Class.forName(ENGINE_CLASS);
-            Method run = engine.getMethod("runJUnit", Object.class, Method.class);
-            run.invoke(null, testInstance, testMethod);
-        } catch (ClassNotFoundException e) {
-            // Annotation module is optional. Without it, @JPostmanJUnit still supports
-            // the regular JUnit context/fluent API features.
-            JUnitContext.clearCurrent();
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof Exception) {
-                throw (Exception) cause;
-            }
-            if (cause instanceof Error) {
-                throw (Error) cause;
-            }
-            throw e;
-        }
-    }
+	@Override
+	public Object resolveParameter(ParameterContext parameterContext, ExtensionContext context) {
+		return JUnitContext.current();
+	}
+
+	private void runAnnotationEngine(Object testInstance, Method testMethod) throws Exception {
+		try {
+			Class<?> engine = Class.forName(ENGINE_CLASS);
+			Method run = engine.getMethod("runJUnit", Object.class, Method.class);
+			run.invoke(null, testInstance, testMethod);
+		} catch (ClassNotFoundException e) {
+			// Annotation module is optional. Without it, @JPostmanJUnit still supports
+			// the regular JUnit context/fluent API features.
+			JUnitContext.clearCurrent();
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof Exception) {
+				throw (Exception) cause;
+			}
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw e;
+		}
+	}
 }

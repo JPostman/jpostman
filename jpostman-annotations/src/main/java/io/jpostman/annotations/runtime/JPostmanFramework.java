@@ -24,13 +24,15 @@ public interface JPostmanFramework<C> {
 
 	void load(C context, InputStream rules) throws Exception;
 
-	void loadRules(C context, String rule);
+	C loadRules(C context, String rule);
 
-	void request(C context, io.jpostman.Request request);
+	C filter(C context, String... paths);
 
-	void response(C context, ApiExecutor executor);
+	C request(C context, io.jpostman.Request request);
 
-	void verify(C context, int statusCode);
+	C response(C context, ApiExecutor executor);
+
+	void verify(C context, int statusCode, boolean soft, boolean log);
 
 	Object cache(C context, String key);
 

@@ -1,12 +1,17 @@
 # Changelog
 
+## 1.2.4
+
+### Added
+- Added test coverage to verify that `ctx()` delegates to `TestNgContext.current()`.
+
 ## 1.2.3
 
 ### Added
 
-* Added automatic TestNG listener registration through Java ServiceLoader.
-* Added `META-INF/services/org.testng.ITestNGListener` to register `JPostmanTestNgAnnotationListener`.
-* Added support for using only `@JPostmanTestNG` on TestNG test classes without also adding `@Listeners(...)`.
+- Added automatic TestNG listener registration through Java ServiceLoader.
+- Added `META-INF/services/org.testng.ITestNGListener` to register `JPostmanTestNgAnnotationListener`.
+- Added support for using only `@JPostmanTestNG` on TestNG test classes without also adding `@Listeners(...)`.
 
 ## 1.2.2
 
