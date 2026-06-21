@@ -34,6 +34,7 @@ This repository is one GitHub project with multiple Maven modules:
 | [`jpostman-secure/`](https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html) | Secret-safe request and response helpers |
 | [`jpostman-testng/`](https://jpostman.github.io/jpostman/io/jpostman/testng/package-summary.html) | TestNG context, secure assertions, response verification, and reusable cache helpers |
 | [`jpostman-junit/`](https://jpostman.github.io/jpostman/io/jpostman/junit/package-summary.html) | JUnit 5 context, secure assertions, response verification, and failure printing support |
+| [`jpostman-annotations/`](https://github.com/JPostman/jpostman/tree/main/jpostman-annotations) | Optional annotation-based execution support for JPostman JUnit and TestNG tests |
 | [`jpostman-httpclient/`](https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html) | Optional Java 11 HttpClient executor |
 | [`jpostman-restassured/`](https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html) | Optional REST Assured executor adapter |
 | [`jpostman-playwright/`](https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html) | Optional Playwright APIRequestContext executor adapter |
@@ -63,458 +64,402 @@ Watch this short video showing how to export a Postman collection and environmen
 
 ---
 
-## Basic Usage
+## Basic Usage: JPostman Annotations
 
-```java
-Collection collection = Collection.load(
-        getClass().getClassLoader().getResourceAsStream("DummyJSON.postman_collection.json"));
+JPostman annotations make API tests easy to read.
 
-Environment environment = Environment.load(
-        getClass().getClassLoader().getResourceAsStream("DummyJSON.postman_environment.json"));
+You keep the API request in Postman.  
+You export the collection and environment.  
+Then your Java test only says what request to run.
 
-Request template = collection.getRequest("Login user and get tokens");
-Request request = template.builder().build(environment);
-```
-
-`build(environment)` resolves remaining `{{variable}}` templates using enabled environment values.
+No manual collection loading.  
+No repeated setup code.  
+No duplicated URLs, headers, bodies, or tokens.
 
 ---
 
-## Execute with Java HttpClient
+## 1. Add `jpostman.properties`
 
-```java
-import io.jpostman.ApiResponse;
-import io.jpostman.executor.HttpClientExecutor;
+Place your exported Postman files under test resources:
 
-ApiResponse response = HttpClientExecutor.execute(request);
-
-int status = response.statusCode();
-String token = response.path("accessToken");
+```text
+src/test/resources/DummyJSON.postman_collection.json
+src/test/resources/DummyJSON.postman_environment.json
 ```
 
-For a shared cookie/session flow:
+Create:
 
-```java
-HttpClientExecutor executor = HttpClientExecutor.create();
-
-ApiResponse login = executor.setRequest(loginRequest).response();
-ApiResponse user = executor.setRequest(userRequest).response();
+```text
+src/test/resources/jpostman.properties
 ```
+
+Add only the collection and environment:
+
+```properties
+collection=classpath:DummyJSON.postman_collection.json
+environment=classpath:DummyJSON.postman_environment.json
+```
+
+That is enough to start.
 
 ---
 
-## Execute with REST Assured
+## 2. Simple JUnit Test
 
-Use JPostman's framework-neutral response:
-
-```java
-import io.jpostman.ApiResponse;
-import io.jpostman.restassured.RestAssuredExecutor;
-
-ApiResponse response = RestAssuredExecutor
-        .apply(request)
-        .auth()
-        .oauth2(token)
-        .response();
-```
-
-Or keep the native REST Assured style:
+This is the smallest annotation example.
 
 ```java
-import static io.restassured.RestAssured.given;
-import io.jpostman.restassured.RestAssuredExecutor;
-
-Response response = RestAssuredExecutor.execute(request, given())
-        .then()
-        .statusCode(200)
-        .extract()
-        .response();
-```
-
----
-
-## Execute with Playwright
-
-```java
-import io.jpostman.ApiResponse;
-import io.jpostman.playwright.PlaywrightExecutor;
-
-try (PlaywrightExecutor executor = new PlaywrightExecutor()) {
-    ApiResponse response = executor.execute(request);
-}
-```
-
----
-
-## Fluent TestNG and JUnit Contexts
-
-JPostman TestNG and JUnit contexts can keep request setup, response execution, assertions, verification, and cached values in one fluent flow.
-
-### TestNG example
-
-```java
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
-import io.jpostman.Collection;
-import io.jpostman.JPostman;
-import io.jpostman.JPostman.Context;
-import io.jpostman.restassured.RestAssuredExecutor;
-import io.jpostman.testng.TestNgContext;
-
-public class DemoTestNgTest {
-
-    private Collection col;
-    private TestNgContext base;
-
-    @BeforeClass
-    public void init() throws Exception {
-        Context ctx = JPostman.load(getClass().getResourceAsStream("DummyJSON.postman_collection.json"),
-                getClass().getResourceAsStream("DummyJSON.postman_environment.json"));
-
-        col = ctx.getCollection(); // Load Postman collection
-        base = TestNgContext.create().secret(ctx.getEnvironment()) // Protect environment values
-                .load(getClass().getResourceAsStream("demo_test_rule.ini")); // Load masking rules
-    }
-
-    private String accessToken() {
-        return base.cache(() -> { // Cache token for reuse
-            TestNgContext ctx = base.request(col.getRequest("Login user and get tokens"))
-                    .response(c -> RestAssuredExecutor.execute(c.request()))
-                    .asserts().exists("accessToken", "Access token not found")
-                    .verify(); // Verify status 200 by default
-            return String.valueOf(ctx.path("accessToken"));
-        });
-    }
-
-    @Test
-	public void getAccessToken() {
-		accessToken();
-	}
-}
-```
-
-### JUnit example
-
-```java
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-
-import io.jpostman.Collection;
-import io.jpostman.JPostman;
-import io.jpostman.JPostman.Context;
-import io.jpostman.restassured.RestAssuredExecutor;
+import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.junit.JPostmanJUnit;
 import io.jpostman.junit.JUnitContext;
+import io.jpostman.ApiExecutor;
+import io.jpostman.restassured.RestAssuredExecutor;
 
-@JPostmanJUnit(printFailures = true) // Use PER_CLASS lifecycle and print assertion failures
+@JPostmanJUnit
 public class DemoJUnitTest {
 
-    private Collection col;
-    private JUnitContext base;
+    @JPostmanContext
+    private JUnitContext hello;
 
-    @BeforeAll
-    public void init() throws Exception {
-        Context ctx = JPostman.load(getClass().getResourceAsStream("DummyJSON.postman_collection.json"),
-                getClass().getResourceAsStream("DummyJSON.postman_environment.json"));
-
-        col = ctx.getCollection(); // Load Postman collection
-        base = JUnitContext.create().secret(ctx.getEnvironment()) // Protect environment values
-                .load(getClass().getResourceAsStream("demo_test_rule.ini")); // Load masking rules
-    }
-
-    private String accessToken() {
-        return base.cache(() -> { // Cache token for reuse
-            JUnitContext ctx = base.request(col.getRequest("Login user and get tokens"))
-                    .response(c -> RestAssuredExecutor.execute(c.request()))
-                    .asserts().exists("accessToken", "Access token not found")
-                    .verify(); // Verify status 200 by default
-            return String.valueOf(ctx.path("accessToken"));
-        });
-    }
-
-    @Test
-	public void getAccessToken() {
-		accessToken();
+    @JPostmanExecutor
+	public ApiExecutor defaultExecutor(JUnitContext ctx) {
+		return RestAssuredExecutor.apply(ctx.request());
 	}
+
+    @JPostmanResponse(request = "Get current auth user")
+    public void getCurrentAuthUser() {
+    }
+}
+```
+
+The test method is empty because JPostman does the work.
+
+JPostman will:
+
+```text
+1. Load the Postman collection
+2. Find the request by name
+3. Build the request
+4. Execute the request
+5. Verify the status code
+```
+
+---
+
+## 3. Simple TestNG Test
+
+The same idea works with TestNG.
+
+```java
+import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.testng.JPostmanTestNG;
+import io.jpostman.testng.TestNgContext;
+import io.jpostman.ApiExecutor;
+import io.jpostman.restassured.RestAssuredExecutor;
+
+@JPostmanTestNG
+public class DemoTestNgTest {
+
+    @JPostmanContext
+    private TestNgContext hello;
+
+    @JPostmanExecutor
+	public ApiExecutor defaultExecutor(TestNgContext ctx) {
+		return RestAssuredExecutor.apply(ctx.request());
+	}
+
+    @JPostmanResponse(request = "Get current auth user")
+    public void getCurrentAuthUser() {
+    }
 }
 ```
 
 ---
 
-## Supported Postman Request Parts
+## 4. Add Rules Only When Needed
 
-JPostman parses and applies common Postman request components:
+If you want secure filtering or response rules, add a rules file:
 
-- Collection folders and requests
-- URLs and enabled URL query parameters
-- Enabled headers
-- Auth parameters
-- Raw JSON bodies
-- Raw text, XML, and template bodies
-- Environment variables
-- Postman-style template replacement such as `{{base_url}}`, `{{username}}`, `{{password}}`, and `{{accessToken}}`
+```text
+src/test/resources/demo_test_rule.ini
+```
 
-Disabled Postman headers, query parameters, and environment variables are preserved internally but skipped during normal execution and variable resolution.
+Then update `jpostman.properties`:
+
+```properties
+collection=classpath:DummyJSON.postman_collection.json
+environment=classpath:DummyJSON.postman_environment.json
+rules=classpath:demo_test_rule.ini
+```
+
+Now you can use `rule = "user"` in the test:
+
+```java
+@JPostmanResponse(
+    request = "Get current auth user",
+    rule = "user",
+    verify = 200
+)
+public void getCurrentAuthUser() {
+}
+```
+
+Rules are optional.  
+Use `rule = "..."` only when you want to apply a named rule section.
 
 ---
 
-## Fluent Request Overrides
+## 5. Get a Value from a Response
 
-Override only the values needed for a test:
+Sometimes you need to read a value from one API response and reuse it later.
 
-```java
-Request request = template.builder()
-        .url(u -> u.set("text", "Hello World"))
-        .headers(h -> h.add("X-Test", "123"))
-        .auth(a -> a.set("token", "my-token"))
-        .body(b -> b.set("username", "emilys"))
-        .build(environment);
-```
-
-Use `add(...)` to create or overwrite a value. Use `set(...)` when the key must already exist in the Postman export.
-
-Nested style is also supported:
+A common example is a login request that returns an access token.
 
 ```java
-Request request = template.builder()
-        .url()
-            .set("text", "Hello World")
-        .end()
-        .build(environment);
-```
-
----
-
-## Body Handling
-
-### JSON body field mutation
-
-Use `body().set(...)` and `body().add(...)` for top-level JSON object fields.
-
-Postman raw JSON body:
-
-```json
-{
-    "username": "{{username}}",
-    "password": "{{password}}"
+@JPostmanRequest(request = "Login user and get tokens")
+public String getToken() {
+    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
+            .asserts(true)
+                .exists("accessToken", "Access token not found")
+                .verify()
+            .path("accessToken");
 }
 ```
 
-Builder:
+This method:
 
-```java
-Request request = template.builder()
-        .body()
-            .set("username", "emilys")
-            .add("age", 21)
-        .build(environment);
-```
-
-Final body:
-
-```json
-{
-    "username": "emilys",
-    "password": "resolved-from-environment",
-    "age": 21
-}
-```
-
-### Deferred JSON body mutation
-
-JPostman can queue `body().set(...)` and `body().add(...)` when the raw body is not valid JSON yet because of an unquoted template token.
-
-Postman raw body:
-
-```json
-{
-    "username": {{TOKEN}},
-    "password": "{{password}}"
-}
-```
-
-Builder:
-
-```java
-Request request = template.builder()
-        .body()
-            .set("password", "emilyspass")
-            .add("age", 21)
-            .json("TOKEN", "emilys")
-        .build();
-```
-
-Final body:
-
-```json
-{
-    "username": "emilys",
-    "password": "emilyspass",
-    "age": 21
-}
-```
-
-If the body never becomes a JSON object, `add(...)` or `set(...)` throws an error explaining that a JSON object body is required.
-
-### Raw text and XML body templates
-
-For raw text or XML bodies, use template resolution instead of JSON field mutation.
-
-```xml
-<id>{{USER_ID}}</id>
-```
-
-```java
-Environment environment = new Environment("Test Env")
-        .builder()
-        .add("USER_ID", "42")
-        .end();
-
-Request request = template.builder().build(environment);
-```
-
-Resolved body:
-
-```xml
-<id>42</id>
-```
-
-`body().set(...)` means “update a JSON object field,” not “replace any template variable.”
-
----
-
-## Local Template Values with `map(...)` and `json(...)`
-
-Local request-part values are resolved before `build(environment)`, so they have higher priority than environment values. Tokens not provided locally remain available for final environment resolution.
-
-Use `map(...)` for normal template replacement:
-
-```java
-Request request = template.builder()
-        .url()
-            .set("q", "find")
-            .map("TOKEN", "login")
-        .build(environment);
-```
-
-For JSON bodies, use `map(...)` when the placeholder is already inside quotes:
-
-```json
-{
-    "age": "{{age}}"
-}
-```
-
-```java
-Request request = template.builder()
-        .body()
-            .map("age", 25)
-        .build();
-```
-
-Final body:
-
-```json
-{
-    "age": "25"
-}
-```
-
-Use `json(...)` when a raw JSON body has unquoted template placeholders and string values must become JSON-safe strings:
-
-```json
-{
-    "username": {{username}},
-    "age": {{age}},
-    "active": {{active}}
-}
-```
-
-```java
-Request request = template.builder()
-        .body()
-            .json("username", "emmy", "age", 25, "active", true)
-        .build();
-```
-
-Final body:
-
-```json
-{
-    "username": "emmy",
-    "age": 25,
-    "active": true
-}
-```
-
-Rule of thumb:
-
-```json
-"username": "{{username}}"
-```
-
-Use `map(...)`.
-
-```json
-"username": {{username}}
-```
-
-Use `json(...)`.
-
----
-
-## Reusable Variable Helpers
-
-Use `Params.asMap(...)` and `Params.asJson(...)` when you want reusable local variables without Java's `Map.of(...)` entry limit.
-
-```java
-Map<String, Object> params = Params.asMap("key", "value");
-Map<String, Object> jsonParams = Params.asJson("username", "emmy", "age", 25);
-```
-
-Use `Params.asList(...)` for mutable list values and `Params.copy(...)` to merge maps. Later maps override duplicate keys and `null` maps are ignored.
-
-```java
-Map<String, Object> merged = Params.copy(defaults, overrides);
-List<String> roles = Params.asList("admin", "tester");
+```text
+1. Loads the Postman request named "Login user and get tokens"
+2. Executes it with REST Assured
+3. Checks that accessToken exists
+4. Verifies the response
+5. Returns the accessToken value
 ```
 
 ---
 
-## Enabled vs Raw Parameter Values
+## 6. Cache the Token
 
-Most request builders use enabled values only. Disabled Postman entries are preserved, but skipped during normal request preparation.
-
-Use `get(...)` when you want the active value only:
-
+Caching is optional. If `cache` is not provided, `JPostman` stores the returned value using the method name.
 ```java
-String token = environment.get("accessToken");
+@JPostmanRequest(request = "Login user and get tokens")
+public String getToken() {
+    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
+            .asserts(true)
+                .exists("accessToken", "Access token not found")
+                .verify()
+            .path("accessToken");
+}
 ```
 
-Use `raw(...)` when you want the stored value even if the entry is disabled:
+In this example, the returned token is stored with the default cache key: 
+```java
+context.cache("getToken")
+```
+
+If you want a custom cache key, add `cache = "apiAccessToken"`.
+```java
+@JPostmanRequest(
+    request = "Login user and get tokens",
+    cache = "apiAccessToken"
+)
+public String getToken() {
+    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
+            .asserts(true)
+                .exists("accessToken", "Access token not found")
+                .verify()
+            .path("accessToken");
+}
+```
+
+Now the returned token is stored with this cache key:
+```java
+context.cache("apiAccessToken")
+```
+
+Now other requests can reuse the token from the JPostman cache.
+
+---
+
+## 7. Use `dependsOn`
+
+Use `dependsOn` when one API call must run before another.
 
 ```java
-String token = environment.raw("accessToken");
+@JPostmanExecutor(name = "auth", dependsOn ="getToken")
+public ApiExecutor authExecutor(JUnitContext ctx) {
+    return RestAssuredExecutor.apply(ctx.request()).auth().oauth2(hello.cache("getToken"));
+}
+
+@JPostmanResponse(request = "Get current auth user", executor = "auth")
+public void getCurrentAuthUser() {
+}
+```
+
+Before running `getCurrentAuthUser`, JPostman runs `getToken`.
+
+Because `getToken` caches the value as `accessToken`, the next request can use it.
+
+For one dependency, use:
+
+```java
+dependsOn = "getToken"
+```
+
+For multiple dependencies, use:
+
+```java
+dependsOn = { "getToken", "prepareUser" }
 ```
 
 ---
 
-## Troubleshooting
+## 8. Add an Executor for Auth
 
-### `Body builder add/set requires a JSON object body`
+The executor controls how the request is sent.
 
-This means `body().add(...)` or `body().set(...)` was used on a body that did not become a JSON object. For XML/text, use environment or part-level template resolution instead of JSON field mutation.
+Here the executor adds the cached access token before sending the request.
 
-### `Body key not found: 'KEY'`
+```java
+@JPostmanExecutor(name = "auth", dependsOn = "getToken")
+public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+    return RestAssuredExecutor.apply(context.request())
+            .auth()
+            .oauth2(context.cache("accessToken"));
+}
+```
 
-This means `body().set("KEY", value)` was used, but the resolved JSON body did not contain that field. Use `add(...)` if you want to create a new field.
+The test method stays clean:
 
-### `URL query parameter not found: 'KEY'`
+```java
+@JPostmanResponse(
+    folder = "Product", 
+    request = "Get all products", 
+    rule = "product"
+    dependsOn = "getToken",
+    executor = "auth",
+    verify = 200
+)
+public void getCurrentAuthUser() {
+}
+```
 
-This means `url().set("KEY", value)` was used, but the query parameter does not exist in the Postman URL/query list. Use `url().add(...)` if you want to create a new query parameter.
+---
 
-### Unknown template variables become empty
+## 9. Full JUnit Example
 
-Final request-level resolution uses Handlebars behavior. If a template variable is missing from the supplied map or environment, it renders as an empty value.
+```java
+import io.jpostman.ApiExecutor;
+import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanRequest;
+import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.junit.JPostmanJUnit;
+import io.jpostman.junit.JUnitContext;
+import io.jpostman.restassured.RestAssuredExecutor;
 
+@JPostmanJUnit(printFailures = true)
+public class DemoJUnitTest {
+
+    @JPostmanContext
+    private JUnitContext hello;
+
+    @JPostmanRequest(
+        request = "Login user and get tokens",
+        cache = "accessToken"
+    )
+    public String getToken() {
+        return hello.response(c -> RestAssuredExecutor.execute(c.request()))
+                .asserts(true)
+                    .exists("accessToken", "Access token not found")
+                    .verify()
+                .path("accessToken");
+    }
+
+    @JPostmanResponse(
+        request = "Get current auth user",
+        dependsOn = "getToken",
+        executor = "auth",
+        verify = 200
+    )
+    public void getCurrentAuthUser() {
+    }
+
+    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
+    public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+        return RestAssuredExecutor.apply(context.request())
+                .auth()
+                .oauth2(context.cache("accessToken"));
+    }
+}
+```
+
+---
+
+## 10. Full TestNG Example
+
+```java
+import io.jpostman.ApiExecutor;
+import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanRequest;
+import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.testng.JPostmanTestNG;
+import io.jpostman.testng.TestNgContext;
+import io.jpostman.restassured.RestAssuredExecutor;
+
+@JPostmanTestNG
+public class DemoTestNgTest {
+
+    @JPostmanContext
+    private TestNgContext hello;
+
+    @JPostmanRequest(
+        request = "Login user and get tokens",
+        cache = "accessToken"
+    )
+    public String getToken() {
+        return hello.response(c -> RestAssuredExecutor.execute(c.request()))
+                .asserts(true)
+                    .exists("accessToken", "Access token not found")
+                    .verify()
+                .path("accessToken");
+    }
+
+    @JPostmanResponse(
+        request = "Get current auth user",
+        dependsOn = "getToken",
+        executor = "auth",
+        verify = 200
+    )
+    public void getCurrentAuthUser() {
+    }
+
+    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
+    public ApiExecutor authExecutor(TestNgContext context, String methodName) {
+        return RestAssuredExecutor.apply(context.request())
+                .auth()
+                .oauth2(context.cache("accessToken"));
+    }
+}
+```
+
+---
+
+## Why This Is Easy
+
+Without annotations, each test needs setup code.
+
+With annotations, the test focuses on the API flow:
+
+```text
+Login
+Get token
+Use token
+Call protected API
+Verify result
+```
+
+JPostman keeps Postman as the source of truth and lets Java tests stay small.
