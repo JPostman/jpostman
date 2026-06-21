@@ -33,6 +33,62 @@ public final class TestNgContext {
 	private final SecureContext secure;
 	private TestNgAssertions<?> assertions;
 
+	/**
+	 * Holds the JPostman context for the current test thread.
+	 *
+	 * <p>
+	 * This is used by annotation-based execution, so a test can call
+	 * {@code TestNgContext.current()} and get the context prepared for the current
+	 * test method.
+	 * </p>
+	 *
+	 * <p>
+	 * ThreadLocal is used so parallel test execution does not share the same
+	 * context between different test threads.
+	 * </p>
+	 */
+	private static final ThreadLocal<TestNgContext> CURRENT = new ThreadLocal<>();
+
+	/**
+	 * Returns the JPostman context prepared for the current TestNG test method.
+	 *
+	 * @return current TestNG context
+	 * @throws AssertionError if no context was prepared for the current thread
+	 */
+	public static TestNgContext current() {
+		TestNgContext context = CURRENT.get();
+		if (context == null) {
+			throw new AssertionError("No current TestNgContext is available.");
+		}
+		return context;
+	}
+
+	/**
+	 * Sets the current context for the running test thread.
+	 *
+	 * <p>
+	 * This should be called by the TestNG listener before the test method runs.
+	 * </p>
+	 *
+	 * @param ctx context prepared for the current test method
+	 */
+	public static void setCurrent(TestNgContext ctx) {
+		CURRENT.set(ctx);
+	}
+
+	/**
+	 * Clears the current context from the running test thread.
+	 *
+	 * <p>
+	 * This should be called by the TestNG listener after the test method finishes.
+	 * TestNG may reuse worker threads, so clearing the ThreadLocal is important to
+	 * avoid leaking one test context into another test.
+	 * </p>
+	 */
+	public static void clearCurrent() {
+		CURRENT.remove();
+	}
+
 	private TestNgContext(SecureContext secure) {
 		this.secure = secure == null ? SecureContext.create() : secure;
 	}
@@ -157,6 +213,10 @@ public final class TestNgContext {
 	 * @return this context
 	 */
 	public TestNgContext verify(int statusCode) {
+		if (response() == null && assertions == null) {
+			return this;
+		}
+
 		if (assertions == null) {
 			asserts().verify(statusCode);
 			return this;

@@ -55,6 +55,12 @@ public class JUnitContextTest {
 		cxt.soft().assertAll();
 		AssertionError error = assertThrows(AssertionError.class, () -> cxt.asserts(true).exists("refreshToken"));
 		assertEquals(error.getMessage(), "Path not found: refreshToken\n");
+
+		JUnitContext.setCurrent(cxt);
+		assertEquals(JUnitContext.current(), cxt);
+		JUnitContext.clearCurrent();
+		error = assertThrows(AssertionError.class, () -> JUnitContext.current());
+		assertEquals(error.getMessage(), "No current JUnitContext is available.");
 	}
 
 	@Test
@@ -278,6 +284,59 @@ public class JUnitContextTest {
 		JUnitContext cxt = JUnitContext.create().request(request()).response(ctx -> response);
 		assertTrue(cxt.exists("accessToken"), "Access token not found");
 		assertEquals(cxt.response().statusCode(), 200);
+	}
+
+	@Test
+	public void jpostmanJUnitAnnotationExtensionCanCallAllMethods() throws Exception {
+		JPostmanJUnitAnnotationExtension extension = new JPostmanJUnitAnnotationExtension();
+
+		java.lang.reflect.Method testMethod = JUnitContextTest.class
+				.getDeclaredMethod("jpostmanJUnitAnnotationExtensionCanCallAllMethods");
+
+		ExtensionContext extensionContext = (ExtensionContext) Proxy.newProxyInstance(
+				ExtensionContext.class.getClassLoader(), new Class<?>[] { ExtensionContext.class },
+				(proxy, method, args) -> {
+					switch (method.getName()) {
+					case "getRequiredTestInstance":
+						return this;
+					case "getRequiredTestMethod":
+						return testMethod;
+					default:
+						throw new UnsupportedOperationException(method.getName());
+					}
+				});
+
+		extension.beforeEach(extensionContext);
+
+		assertThrows(AssertionError.class, () -> JUnitContext.current());
+
+		java.lang.reflect.Parameter parameter = JUnitContextTest.class
+				.getDeclaredMethod("jpostmanJUnitAnnotationExtensionParameter", JUnitContext.class).getParameters()[0];
+
+		org.junit.jupiter.api.extension.ParameterContext parameterContext = (org.junit.jupiter.api.extension.ParameterContext) Proxy
+				.newProxyInstance(org.junit.jupiter.api.extension.ParameterContext.class.getClassLoader(),
+						new Class<?>[] { org.junit.jupiter.api.extension.ParameterContext.class },
+						(proxy, method, args) -> {
+							if ("getParameter".equals(method.getName())) {
+								return parameter;
+							}
+							throw new UnsupportedOperationException(method.getName());
+						});
+
+		assertTrue(extension.supportsParameter(parameterContext, extensionContext));
+
+		JUnitContext cxt = JUnitContext.create();
+		JUnitContext.setCurrent(cxt);
+
+		assertEquals(cxt, extension.resolveParameter(parameterContext, extensionContext));
+
+		extension.afterEach(extensionContext);
+
+		assertThrows(AssertionError.class, () -> JUnitContext.current());
+	}
+
+	@SuppressWarnings("unused")
+	private static void jpostmanJUnitAnnotationExtensionParameter(JUnitContext context) {
 	}
 
 	@JPostmanJUnit(printFailures = true)

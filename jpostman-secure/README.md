@@ -25,7 +25,8 @@ Benefits:
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-secure</artifactId>
-    <version>1.0.1</version>
+    <version>REPLACE_WITH_LATEST_VERSION</version>
+    <scope>test</scope>
 </dependency>
 ```
 

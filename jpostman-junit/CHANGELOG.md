@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.2
+
+### Added
+
+- Added optional JPostman annotation support hook for JUnit through `JPostmanJUnitAnnotationExtension`.
+- Added `JUnitContext.current()`, `JUnitContext.setCurrent(...)`, and `JUnitContext.clearCurrent()` to support per-thread current context access during annotation-based execution.
+
+### Changed
+
+- Updated `@JPostmanJUnit` to register both the existing failure printer and the optional annotation extension.
+- Updated `JUnitSoftAssertions.assertAll()` to return the owning `JUnitContext`, allowing fluent chaining after soft assertion verification.
+
 ## 1.2.1
 
 ### Changed

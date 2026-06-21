@@ -1,0 +1,22 @@
+{
+  "info": {
+    "name": "Annotation Test Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login user and get tokens",
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/auth/login"
+      }
+    },
+    {
+      "name": "Get current auth user",
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/auth/me"
+      }
+    }
+  ]
+}

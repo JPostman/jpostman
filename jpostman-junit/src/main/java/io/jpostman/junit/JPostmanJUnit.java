@@ -26,7 +26,7 @@ import io.jpostman.secure.JPostmanAssertionError;
 @Target(TYPE)
 @Retention(RUNTIME)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@ExtendWith(JPostmanJUnit.FailurePrinter.class)
+@ExtendWith({ JPostmanJUnit.FailurePrinter.class, JPostmanJUnitAnnotationExtension.class })
 public @interface JPostmanJUnit {
 
 	/**

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.2
+
+### Added
+
+- Added optional JPostman annotation support hook for TestNG through JPostmanTestNgAnnotationListener.
+- Added TestNgContext.current(), TestNgContext.setCurrent(...), and TestNgContext.clearCurrent() to support per-thread current context access during annotation-based execution.
+- Added tests for the optional TestNG annotation listener and current context lifecycle.
+
+### Changed
+
+- Updated @JPostmanTestNG to register the optional annotation listener.
+- Updated TestNgSoftAssertions.assertAll() to return the owning TestNgContext, allowing fluent chaining after soft assertion verification.
+
 ## 1.2.0
 
 ### Added

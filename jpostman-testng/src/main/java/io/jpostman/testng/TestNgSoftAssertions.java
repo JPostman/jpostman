@@ -62,7 +62,7 @@ public final class TestNgSoftAssertions extends TestNgAssertions<TestNgSoftAsser
 	 * compatibility with TestNG {@code SoftAssert} style.
 	 * </p>
 	 */
-	public void assertAll() {
+	public TestNgContext assertAll() {
 		try {
 			softAssert.assertAll();
 		} catch (AssertionError error) {
@@ -70,5 +70,6 @@ public final class TestNgSoftAssertions extends TestNgAssertions<TestNgSoftAsser
 		} finally {
 			context.resetSoft(this);
 		}
+		return context;
 	}
 }

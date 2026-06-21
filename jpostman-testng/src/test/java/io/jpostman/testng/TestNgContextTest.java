@@ -8,6 +8,7 @@ import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import java.io.ByteArrayInputStream;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -49,6 +50,12 @@ public class TestNgContextTest {
 		cxt.soft().assertAll();
 		AssertionError error = expectThrows(AssertionError.class, () -> cxt.asserts(true).exists("refreshToken"));
 		assertEquals(error.getMessage(), "Path not found: refreshToken\n");
+
+		TestNgContext.setCurrent(cxt);
+		assertEquals(TestNgContext.current(), cxt);
+		TestNgContext.clearCurrent();
+		error = expectThrows(AssertionError.class, () -> TestNgContext.current());
+		assertEquals(error.getMessage(), "No current TestNgContext is available.");
 	}
 
 	@Test
@@ -249,6 +256,60 @@ public class TestNgContextTest {
 		TestNgContext cxt = TestNgContext.create().request(request()).response(ctx -> response);
 		cxt.asserts().exists("accessToken", "Access token not found");
 		assertEquals(cxt.response().statusCode(), 200);
+	}
+
+	@Test
+	public void jpostmanTestNgAnnotationListenerCanCallAllMethods() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+
+		java.lang.reflect.Method testMethod = TestNgContextTest.class
+				.getDeclaredMethod("jpostmanTestNgAnnotationListenerCanCallAllMethods");
+
+		org.testng.ITestNGMethod testNgMethod = (org.testng.ITestNGMethod) Proxy.newProxyInstance(
+				org.testng.ITestNGMethod.class.getClassLoader(), new Class<?>[] { org.testng.ITestNGMethod.class },
+				(proxy, method, args) -> {
+					if ("getConstructorOrMethod".equals(method.getName())) {
+						return new org.testng.internal.ConstructorOrMethod(testMethod);
+					}
+					throw new UnsupportedOperationException(method.getName());
+				});
+
+		org.testng.IInvokedMethod invokedMethod = (org.testng.IInvokedMethod) Proxy.newProxyInstance(
+				org.testng.IInvokedMethod.class.getClassLoader(), new Class<?>[] { org.testng.IInvokedMethod.class },
+				(proxy, method, args) -> {
+					switch (method.getName()) {
+					case "isTestMethod":
+						return true;
+					case "getTestMethod":
+						return testNgMethod;
+					default:
+						throw new UnsupportedOperationException(method.getName());
+					}
+				});
+
+		org.testng.ITestResult testResult = (org.testng.ITestResult) Proxy.newProxyInstance(
+				org.testng.ITestResult.class.getClassLoader(), new Class<?>[] { org.testng.ITestResult.class },
+				(proxy, method, args) -> {
+					if ("getInstance".equals(method.getName())) {
+						return this;
+					}
+					throw new UnsupportedOperationException(method.getName());
+				});
+
+		listener.beforeInvocation(invokedMethod, testResult);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> TestNgContext.current());
+		assertTrue(error.getMessage().contains("No current TestNgContext"));
+
+		TestNgContext cxt = TestNgContext.create();
+		TestNgContext.setCurrent(cxt);
+
+		assertEquals(TestNgContext.current(), cxt);
+
+		listener.afterInvocation(invokedMethod, testResult);
+
+		error = expectThrows(AssertionError.class, () -> TestNgContext.current());
+		assertTrue(error.getMessage().contains("No current TestNgContext"));
 	}
 
 	private static ApiResponse response(int statusCode, String body) {

@@ -11,7 +11,8 @@ This keeps failed API assertions easier to troubleshoot while still masking prot
 <dependency>
     <groupId>io.github.jpostman</groupId>
     <artifactId>jpostman-testng</artifactId>
-    <version>1.0.6</version>
+    <version>REPLACE_WITH_LATEST_VERSION</version>
+    <scope>test</scope>
 </dependency>
 ```
 

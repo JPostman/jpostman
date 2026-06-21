@@ -66,7 +66,7 @@ public final class JUnitSoftAssertions extends JUnitAssertions<JUnitSoftAssertio
 	 * compatibility with JUnit {@code assertAll} style.
 	 * </p>
 	 */
-	public void assertAll() {
+	public JUnitContext assertAll() {
 		try {
 			List<Executable> executables = new ArrayList<>();
 			for (AssertionError failure : failures) {
@@ -80,5 +80,6 @@ public final class JUnitSoftAssertions extends JUnitAssertions<JUnitSoftAssertio
 		} finally {
 			context.resetSoft(this);
 		}
+		return context;
 	}
 }

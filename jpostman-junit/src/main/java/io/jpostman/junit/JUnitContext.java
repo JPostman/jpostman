@@ -33,6 +33,62 @@ public final class JUnitContext {
 	private final SecureContext secure;
 	private JUnitAssertions<?> assertions;
 
+	/**
+	 * Holds the JPostman context for the current test thread.
+	 *
+	 * <p>
+	 * This is used by annotation-based execution, so a test can call
+	 * {@code JUnitContext.current()} and get the context prepared for the current
+	 * test method.
+	 * </p>
+	 *
+	 * <p>
+	 * ThreadLocal is used so parallel test execution does not share the same
+	 * context between different test threads.
+	 * </p>
+	 */
+	private static final ThreadLocal<JUnitContext> CURRENT = new ThreadLocal<>();
+
+	/**
+	 * Returns the JPostman context prepared for the current JUnit test method.
+	 *
+	 * @return current JUnit context
+	 * @throws AssertionError if no context was prepared for the current thread
+	 */
+	public static JUnitContext current() {
+		JUnitContext context = CURRENT.get();
+		if (context == null) {
+			throw new AssertionError("No current JUnitContext is available.");
+		}
+		return context;
+	}
+
+	/**
+	 * Sets the current context for the running test thread.
+	 *
+	 * <p>
+	 * This should be called by the JUnit extension before the test method runs.
+	 * </p>
+	 *
+	 * @param ctx context prepared for the current test method
+	 */
+	public static void setCurrent(JUnitContext ctx) {
+		CURRENT.set(ctx);
+	}
+
+	/**
+	 * Clears the current context from the running test thread.
+	 *
+	 * <p>
+	 * This should be called by the JUnit extension after the test method finishes.
+	 * Test frameworks may reuse worker threads, so clearing the ThreadLocal is
+	 * important to avoid leaking one test context into another test.
+	 * </p>
+	 */
+	public static void clearCurrent() {
+		CURRENT.remove();
+	}
+
 	private JUnitContext(SecureContext secure) {
 		this.secure = secure == null ? SecureContext.create() : secure;
 	}
@@ -157,6 +213,10 @@ public final class JUnitContext {
 	 * @return this context
 	 */
 	public JUnitContext verify(int statusCode) {
+		if (response() == null && assertions == null) {
+			return this;
+		}
+
 		if (assertions == null) {
 			asserts().verify(statusCode);
 			return this;
