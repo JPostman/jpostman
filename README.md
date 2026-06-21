@@ -66,15 +66,9 @@ Watch this short video showing how to export a Postman collection and environmen
 
 ## Basic Usage: JPostman Annotations
 
-JPostman annotations make API tests easy to read.
+JPostman annotations keep API tests focused on the flow, not setup code.
 
-You keep the API request in Postman.  
-You export the collection and environment.  
-Then your Java test only says what request to run.
-
-No manual collection loading.  
-No repeated setup code.  
-No duplicated URLs, headers, bodies, or tokens.
+You keep requests in Postman, export the collection and environment, and let JPostman prepare and execute the request from Java.
 
 ---
 
@@ -93,108 +87,155 @@ Create:
 src/test/resources/jpostman.properties
 ```
 
-Add only the collection and environment:
+Add the collection and environment:
 
 ```properties
 collection=classpath:DummyJSON.postman_collection.json
 environment=classpath:DummyJSON.postman_environment.json
 ```
 
-That is enough to start.
+Rules are optional. Add them only when you need secure filtering or masking:
+
+```properties
+rules=classpath:demo_test_rule.ini
+```
+
+classpath: means the file is loaded from the Java test resources folder, usually:
+
+```properties
+src/test/resources/demo_test_rule.ini
+```
+
+You can also use a regular file path:
+
+```properties
+rules=src/test/resources/demo_test_rule.ini
+```
+
+or an absolute path:
+
+```properties
+rules=/path/to/demo_test_rule.ini
+```
+---
+
+## 2. Context Annotations
+
+Use `@JPostmanContext` when you need direct access to the loaded Postman collection or environment.
+
+```java
+import io.jpostman.JPostman;
+import io.jpostman.annotations.JPostmanContext;
+
+@JPostmanContext
+private JPostman.Context ctx;
+```
+
+Example:
+
+```java
+@Test
+public void printPostmanFiles() {
+    ctx.getCollection().print();
+    ctx.getEnvironment().print();
+}
+```
+
+Use `@JPostmanTestContext` for the active JUnit or TestNG execution context.
+
+```java
+import io.jpostman.annotations.JPostmanTestContext;
+import io.jpostman.junit.JUnitContext;
+
+@JPostmanTestContext
+private JUnitContext api;
+```
+
+The test context is used to execute requests, verify responses, read cache values, and print the active response.
+
+```java
+api.ctx().verify().print();
+```
 
 ---
 
-## 2. Simple JUnit Test
+## 3. Simple JUnit Test
 
-This is the smallest annotation example.
+This is the smallest JUnit annotation example.
 
 ```java
-import io.jpostman.annotations.JPostmanContext;
+import org.junit.jupiter.api.Test;
+
+import io.jpostman.ApiExecutor;
+import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.junit.JPostmanJUnit;
 import io.jpostman.junit.JUnitContext;
-import io.jpostman.ApiExecutor;
 import io.jpostman.restassured.RestAssuredExecutor;
 
 @JPostmanJUnit
 public class DemoJUnitTest {
 
-    @JPostmanContext
-    private JUnitContext hello;
+    @JPostmanTestContext
+    private JUnitContext api;
 
     @JPostmanExecutor
-	public ApiExecutor defaultExecutor(JUnitContext ctx) {
-		return RestAssuredExecutor.apply(ctx.request());
-	}
+    public ApiExecutor defaultExecutor(JUnitContext context) {
+        return RestAssuredExecutor.apply(context.request());
+    }
 
     @JPostmanResponse(request = "Get current auth user")
+    @Test
     public void getCurrentAuthUser() {
+        api.ctx().print();
     }
 }
 ```
 
-The test method is empty because JPostman does the work.
-
-JPostman will:
-
-```text
-1. Load the Postman collection
-2. Find the request by name
-3. Build the request
-4. Execute the request
-5. Verify the status code
-```
+JPostman will load the collection, find the request by name, execute it, and verify the response status.
 
 ---
 
-## 3. Simple TestNG Test
+## 4. Simple TestNG Test
 
 The same idea works with TestNG.
 
 ```java
-import io.jpostman.annotations.JPostmanContext;
+import org.testng.annotations.Test;
+
+import io.jpostman.ApiExecutor;
+import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
+import io.jpostman.restassured.RestAssuredExecutor;
 import io.jpostman.testng.JPostmanTestNG;
 import io.jpostman.testng.TestNgContext;
-import io.jpostman.ApiExecutor;
-import io.jpostman.restassured.RestAssuredExecutor;
 
 @JPostmanTestNG
 public class DemoTestNgTest {
 
-    @JPostmanContext
-    private TestNgContext hello;
+    @JPostmanTestContext
+    private TestNgContext api;
 
     @JPostmanExecutor
-	public ApiExecutor defaultExecutor(TestNgContext ctx) {
-		return RestAssuredExecutor.apply(ctx.request());
-	}
+    public ApiExecutor defaultExecutor(TestNgContext context) {
+        return RestAssuredExecutor.apply(context.request());
+    }
 
     @JPostmanResponse(request = "Get current auth user")
+    @Test
     public void getCurrentAuthUser() {
+        api.ctx().print();
     }
 }
 ```
 
 ---
 
-## 4. Add Rules Only When Needed
+## 5. Rules and Response Filters
 
-If you want secure filtering or response rules, add a rules file:
-
-```text
-src/test/resources/demo_test_rule.ini
-```
-
-Then update `jpostman.properties`:
-
-```properties
-collection=classpath:DummyJSON.postman_collection.json
-environment=classpath:DummyJSON.postman_environment.json
-rules=classpath:demo_test_rule.ini
-```
-
-Now you can use `rule = "user"` in the test:
+Use `rule` when you want to apply a named secure rule section.
 
 ```java
 @JPostmanResponse(
@@ -202,113 +243,102 @@ Now you can use `rule = "user"` in the test:
     rule = "user",
     verify = 200
 )
+@Test
 public void getCurrentAuthUser() {
 }
 ```
 
-Rules are optional.  
-Use `rule = "..."` only when you want to apply a named rule section.
-
----
-
-## 5. Get a Value from a Response
-
-Sometimes you need to read a value from one API response and reuse it later.
-
-A common example is a login request that returns an access token.
+Use `filter` when you want to keep only selected fields from the response.
 
 ```java
-@JPostmanRequest(request = "Login user and get tokens")
-public String getToken() {
-    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
-            .asserts(true)
-                .exists("accessToken", "Access token not found")
-                .verify()
-            .path("accessToken");
+@JPostmanResponse(
+    request = "Get current auth user",
+    rule = "user",
+    filter = { "id", "firstName", "lastName", "gender" },
+    verify = 200
+)
+@Test
+public void getCurrentAuthUser() {
 }
 ```
 
-This method:
+Rules and filters are optional. Use them only when a test needs secure output or a smaller response view.
+
+---
+
+## 6. Executors
+
+Executors control how the prepared request is sent.
+
+Default executor:
+
+```java
+@JPostmanExecutor
+public ApiExecutor defaultExecutor(JUnitContext context) {
+    return RestAssuredExecutor.apply(context.request());
+}
+```
+
+Named executor with authentication:
+
+```java
+@JPostmanExecutor(name = "auth", dependsOn = "getToken")
+public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+    return RestAssuredExecutor.apply(context.request())
+            .auth()
+            .oauth2(context.cache("getToken"));
+}
+```
+
+Then use the executor by name:
+
+```java
+@JPostmanResponse(
+    request = "Get current auth user",
+    executor = "auth",
+    verify = 200
+)
+@Test
+public void getCurrentAuthUser() {
+}
+```
+
+---
+
+## 7. Cache and Dependencies
+
+Use `@JPostmanRequest` for a helper request that returns a value, such as a token.
+
+If `cache` is not provided, JPostman stores the returned value using the method name.
 
 ```text
-1. Loads the Postman request named "Login user and get tokens"
-2. Executes it with REST Assured
-3. Checks that accessToken exists
-4. Verifies the response
-5. Returns the accessToken value
+getToken() -> api.cache("getToken")
 ```
 
----
+Use a custom cache key when you want a different name.
 
-## 6. Cache the Token
-
-Caching is optional. If `cache` is not provided, `JPostman` stores the returned value using the method name.
-```java
-@JPostmanRequest(request = "Login user and get tokens")
-public String getToken() {
-    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
-            .asserts(true)
-                .exists("accessToken", "Access token not found")
-                .verify()
-            .path("accessToken");
-}
-```
-
-In this example, the returned token is stored with the default cache key: 
-```java
-context.cache("getToken")
-```
-
-If you want a custom cache key, add `cache = "apiAccessToken"`.
 ```java
 @JPostmanRequest(
     request = "Login user and get tokens",
-    cache = "apiAccessToken"
+    cache = "accessToken"
 )
-public String getToken() {
-    return hello.response(c -> RestAssuredExecutor.execute(c.request()))
-            .asserts(true)
-                .exists("accessToken", "Access token not found")
-                .verify()
-            .path("accessToken");
-}
 ```
 
-Now the returned token is stored with this cache key:
-```java
-context.cache("apiAccessToken")
-```
-
-Now other requests can reuse the token from the JPostman cache.
-
----
-
-## 7. Use `dependsOn`
-
-Use `dependsOn` when one API call must run before another.
+Then read it with:
 
 ```java
-@JPostmanExecutor(name = "auth", dependsOn ="getToken")
-public ApiExecutor authExecutor(JUnitContext ctx) {
-    return RestAssuredExecutor.apply(ctx.request()).auth().oauth2(hello.cache("getToken"));
-}
-
-@JPostmanResponse(request = "Get current auth user", executor = "auth")
-public void getCurrentAuthUser() {
-}
+context.cache("accessToken")
 ```
 
-Before running `getCurrentAuthUser`, JPostman runs `getToken`.
-
-Because `getToken` caches the value as `accessToken`, the next request can use it.
-
-For one dependency, use:
+Use `dependsOn` when one request must run before another.
 
 ```java
-dependsOn = "getToken"
+@JPostmanExecutor(name = "auth", dependsOn = "getToken")
 ```
 
-For multiple dependencies, use:
+Before the `auth` executor runs, JPostman runs `getToken` and stores the returned token in cache.
+
+For multiple dependencies:
 
 ```java
 dependsOn = { "getToken", "prepareUser" }
@@ -316,132 +346,86 @@ dependsOn = { "getToken", "prepareUser" }
 
 ---
 
-## 8. Add an Executor for Auth
-
-The executor controls how the request is sent.
-
-Here the executor adds the cached access token before sending the request.
-
-```java
-@JPostmanExecutor(name = "auth", dependsOn = "getToken")
-public ApiExecutor authExecutor(JUnitContext context, String methodName) {
-    return RestAssuredExecutor.apply(context.request())
-            .auth()
-            .oauth2(context.cache("accessToken"));
-}
-```
-
-The test method stays clean:
-
-```java
-@JPostmanResponse(
-    folder = "Product", 
-    request = "Get all products", 
-    rule = "product"
-    dependsOn = "getToken",
-    executor = "auth",
-    verify = 200
-)
-public void getCurrentAuthUser() {
-}
-```
-
----
-
-## 9. Full JUnit Example
+## 8. Full JUnit Example
 
 ```java
 import org.junit.jupiter.api.Test;
 
 import io.jpostman.ApiExecutor;
+import io.jpostman.JPostman;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.junit.JPostmanJUnit;
 import io.jpostman.junit.JUnitContext;
 import io.jpostman.restassured.RestAssuredExecutor;
 
-@JPostmanJUnit(printFailures = true)
+@JPostmanJUnit
 public class DemoJUnitTest {
 
-	@JPostmanContext
-	private JUnitContext hello;
+    @JPostmanContext
+    private JPostman.Context ctx;
 
-	@JPostmanRequest(request = "Login user and get tokens")
-	public String getToken() {
-		return hello.response(c -> RestAssuredExecutor.execute(c.request())).asserts(true)
-				.exists("accessToken", "Access token not found").verify().path("accessToken");
-	}
+    @JPostmanTestContext
+    private JUnitContext api;
 
-	@JPostmanResponse(request = "Get current auth user", dependsOn = "getToken", executor = "auth", verify = 200)
-	@Test
-	public void getCurrentAuthUser() {
-		JUnitContext.current().print();
-	}
+    @Test
+    public void printLoadedContext() {
+        ctx.getCollection().print();
+        ctx.getEnvironment().print();
+    }
 
-	@JPostmanExecutor(name = "auth")
-	public ApiExecutor authExecutor(JUnitContext context, String methodName) {
-		return RestAssuredExecutor.apply(context.request()).auth().oauth2(context.cache("getToken"));
-	}
-}
-```
+    @JPostmanExecutor
+    public ApiExecutor defaultExecutor(JUnitContext context) {
+        return RestAssuredExecutor.apply(context.request());
+    }
 
----
+    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
+    public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+        return RestAssuredExecutor.apply(context.request())
+                .auth()
+                .oauth2(context.cache("getToken"));
+    }
 
-## 10. Full TestNG Example
+    @JPostmanRequest(request = "Login user and get tokens")
+    public String getToken() {
+        return api.response(c -> RestAssuredExecutor.execute(c.request()))
+                .asserts(true)
+                    .exists("accessToken", "Access token not found")
+                    .verify()
+                .path("accessToken");
+    }
 
-```java
-import org.testng.annotations.Test;
+    @JPostmanResponse(
+        request = "Get current auth user",
+        rule = "user",
+        filter = { "id", "firstName", "lastName", "gender" },
+        executor = "auth",
+        verify = 200,
+        soft = true,
+        log = true
+    )
+    @Test
+    public void getCurrentAuthUser() {
+        api.ctx().verify().print();
+    }
 
-import io.jpostman.ApiExecutor;
-import io.jpostman.annotations.JPostmanContext;
-import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanRequest;
-import io.jpostman.annotations.JPostmanResponse;
-import io.jpostman.restassured.RestAssuredExecutor;
-import io.jpostman.testng.JPostmanTestNG;
-import io.jpostman.testng.TestNgContext;
-
-@JPostmanTestNG()
-public class DemoTestNgTest {
-
-	@JPostmanContext
-	private TestNgContext hello;
-
-	@JPostmanRequest(request = "Login user and get tokens")
-	public String getToken() {
-		return hello.response(c -> RestAssuredExecutor.execute(c.request())).asserts(true)
-				.exists("accessToken", "Access token not found").verify().path("accessToken");
-	}
-
-	@JPostmanResponse(request = "Get current auth user", dependsOn = "getToken", executor = "auth", verify = 200)
-	@Test
-	public void getCurrentAuthUser() {
-		TestNgContext.current().print();
-	}
-
-	@JPostmanExecutor(name = "auth")
-	public ApiExecutor authExecutor(TestNgContext context, String methodName) {
-		return RestAssuredExecutor.apply(context.request()).auth().oauth2(context.cache("getToken"));
-	}
+    @JPostmanResponse(
+        folder = "Product",
+        request = "Get all products",
+        rule = "product"
+    )
+    @Test
+    public void getAllProducts() {
+        api.ctx().print();
+    }
 }
 ```
 
 ---
 
 ## Why This Is Easy
-
-Without annotations, each test needs setup code.
-
-With annotations, the test focuses on the API flow:
-
-```text
-Login
-Get token
-Use token
-Call protected API
-Verify result
-```
 
 JPostman keeps Postman as the source of truth and lets Java tests stay small.

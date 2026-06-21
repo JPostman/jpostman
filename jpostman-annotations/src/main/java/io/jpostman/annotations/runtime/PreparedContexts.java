@@ -15,7 +15,7 @@ final class PreparedContexts<C> {
 	void put(String namespace, PreparedContext<C> context) {
 		String key = normalize(namespace);
 		if (values.containsKey(key)) {
-			throw new IllegalStateException("Duplicate @JPostmanContext namespace: " + key);
+			throw new IllegalStateException("Duplicate @JPostmanTestContext namespace: " + key);
 		}
 		values.put(key, context);
 	}
@@ -28,7 +28,7 @@ final class PreparedContexts<C> {
 		String key = normalize(namespace);
 		PreparedContext<C> context = values.get(key);
 		if (context == null) {
-			throw new IllegalStateException("No @JPostmanContext found for namespace: " + key);
+			throw new IllegalStateException("No @JPostmanTestContext found for namespace: " + key);
 		}
 		return context;
 	}

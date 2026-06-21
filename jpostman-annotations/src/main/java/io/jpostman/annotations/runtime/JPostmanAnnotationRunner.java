@@ -15,9 +15,9 @@ import io.jpostman.Collection;
 import io.jpostman.JPostman;
 import io.jpostman.Request;
 import io.jpostman.JPostman.Context;
-import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanLoadedContext;
+import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
@@ -37,14 +37,14 @@ public final class JPostmanAnnotationRunner<C> {
 		PreparedContexts<C> prepared = prepareContexts(testInstance);
 
 		// Inject loaded core contexts even when the test class only uses
-		// @JPostmanLoadedContext and does not declare a JUnitContext/TestNgContext.
+		// @JPostmanContext and does not declare a JUnitContext/TestNgContext.
 		injectLoadedContexts(testInstance, prepared);
 
 		JPostmanRequest requestAnnotation = testMethod.getAnnotation(JPostmanRequest.class);
 		JPostmanResponse responseAnnotation = testMethod.getAnnotation(JPostmanResponse.class);
 
 		// Plain test method.
-		// The test may only use @JPostmanLoadedContext to access
+		// The test may only use @JPostmanContext to access
 		// collection/environment.
 		// In that case, injectLoadedContexts(...) already did the work, so do not
 		// resolve a JUnit/TestNG context.
@@ -93,12 +93,12 @@ public final class JPostmanAnnotationRunner<C> {
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
 			for (Field field : current.getDeclaredFields()) {
-				if (!field.isAnnotationPresent(JPostmanContext.class)
+				if (!field.isAnnotationPresent(JPostmanTestContext.class)
 						|| !framework.contextType().isAssignableFrom(field.getType())) {
 					continue;
 				}
 
-				JPostmanContext annotation = field.getAnnotation(JPostmanContext.class);
+				JPostmanTestContext annotation = field.getAnnotation(JPostmanTestContext.class);
 				String namespace = annotation.namespace();
 
 				PreparedContext<C> context = createContext(annotation, testInstance.getClass(), field);
@@ -113,7 +113,7 @@ public final class JPostmanAnnotationRunner<C> {
 		return prepared;
 	}
 
-	private PreparedContext<C> createContext(JPostmanContext annotation, Class<?> testClass, Field field)
+	private PreparedContext<C> createContext(JPostmanTestContext annotation, Class<?> testClass, Field field)
 			throws Exception {
 
 		Properties properties = loadProperties(annotation.config(), testClass);
@@ -127,11 +127,11 @@ public final class JPostmanAnnotationRunner<C> {
 
 		if (collectionLocation.isBlank()) {
 			throw new IllegalStateException("JPostman collection is required for field " + field.getName()
-					+ ". Configure @JPostmanContext(collection=...) or property "
+					+ ". Configure @JPostmanTestContext(collection=...) or property "
 					+ propertyKey("collection", namespace));
 		}
 
-		Context loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
+		Context loaded = loadJPostmanTestContext(collectionLocation, environmentLocation, testClass);
 
 		C ctx = framework.create();
 		if (loaded.getEnvironment() != null) {
@@ -153,14 +153,14 @@ public final class JPostmanAnnotationRunner<C> {
 		Class<?> current = testClass;
 		while (current != null && current != Object.class) {
 			for (Field field : current.getDeclaredFields()) {
-				JPostmanLoadedContext annotation = field.getAnnotation(JPostmanLoadedContext.class);
+				JPostmanContext annotation = field.getAnnotation(JPostmanContext.class);
 				if (annotation == null) {
 					continue;
 				}
 
 				if (!JPostman.Context.class.isAssignableFrom(field.getType())) {
 					throw new IllegalStateException(
-							"@JPostmanLoadedContext field must be JPostman.Context: " + field.getName());
+							"@JPostmanContext field must be JPostman.Context: " + field.getName());
 				}
 
 				JPostman.Context loaded;
@@ -177,11 +177,11 @@ public final class JPostmanAnnotationRunner<C> {
 
 					if (collectionLocation.isBlank()) {
 						throw new IllegalStateException("JPostman collection is required for field " + field.getName()
-								+ ". Configure @JPostmanLoadedContext(collection=...) or property "
+								+ ". Configure @JPostmanContext(collection=...) or property "
 								+ propertyKey("collection", namespace));
 					}
 
-					loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
+					loaded = loadJPostmanTestContext(collectionLocation, environmentLocation, testClass);
 				}
 
 				field.setAccessible(true);
@@ -191,7 +191,7 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
-	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)
+	private Context loadJPostmanTestContext(String collectionLocation, String environmentLocation, Class<?> testClass)
 			throws Exception {
 
 		try (InputStream collection = open(collectionLocation, testClass)) {

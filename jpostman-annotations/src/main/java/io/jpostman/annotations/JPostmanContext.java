@@ -7,7 +7,12 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Injects a JPostman framework context into a test class field.
+ * Injects the loaded JPostman core context.
+ *
+ * <p>
+ * Use this when the test needs direct access to the loaded Postman collection
+ * or environment.
+ * </p>
  */
 @Target(FIELD)
 @Retention(RUNTIME)

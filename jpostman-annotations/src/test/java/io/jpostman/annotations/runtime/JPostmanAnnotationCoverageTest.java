@@ -24,7 +24,7 @@ import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostmanAnnotationEngine;
-import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
@@ -95,7 +95,7 @@ public class JPostmanAnnotationCoverageTest {
 	 * Verifies duplicate namespace validation.
 	 *
 	 * <p>
-	 * The annotation runtime should fail fast if two @JPostmanContext fields use
+	 * The annotation runtime should fail fast if two @JPostmanTestContext fields use
 	 * the same namespace.
 	 * </p>
 	 */
@@ -108,7 +108,7 @@ public class JPostmanAnnotationCoverageTest {
 		IllegalStateException error = assertThrows(IllegalStateException.class,
 				() -> contexts.put("product", new PreparedContext<>(JUnitContext.create(), null)));
 
-		assertEquals("Duplicate @JPostmanContext namespace: product", error.getMessage());
+		assertEquals("Duplicate @JPostmanTestContext namespace: product", error.getMessage());
 	}
 
 	/**
@@ -125,7 +125,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		IllegalStateException error = assertThrows(IllegalStateException.class, () -> contexts.resolve("missing"));
 
-		assertEquals("No @JPostmanContext found for namespace: missing", error.getMessage());
+		assertEquals("No @JPostmanTestContext found for namespace: missing", error.getMessage());
 	}
 
 	/**
@@ -243,7 +243,7 @@ public class JPostmanAnnotationCoverageTest {
 	/**
 	 * Verifies JPostmanAnnotationRunner behavior when a JUnit test class has no
 	 * 
-	 * @JPostmanContext fields.
+	 * @JPostmanTestContext fields.
 	 *
 	 *                  <p>
 	 *                  Responsibility: the runner should clear the current JUnit
@@ -270,7 +270,7 @@ public class JPostmanAnnotationCoverageTest {
 	/**
 	 * Verifies JPostmanAnnotationRunner behavior when a TestNG test class has no
 	 * 
-	 * @JPostmanContext fields.
+	 * @JPostmanTestContext fields.
 	 *
 	 *                  <p>
 	 *                  Responsibility: the runner should clear the current TestNG
@@ -448,7 +448,7 @@ public class JPostmanAnnotationCoverageTest {
 	private static final class RequestFixture {
 
 		/** Default namespace context injected by the annotation runner. */
-		@JPostmanContext
+		@JPostmanTestContext
 		private JUnitContext base;
 
 		private int loginCount;
@@ -503,7 +503,7 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	private static final class ProductFixture {
 
-		@JPostmanContext(namespace = "product")
+		@JPostmanTestContext(namespace = "product")
 		private JUnitContext product;
 
 		@JPostmanRequest(namespace = "product", request = "Login user and get tokens")
