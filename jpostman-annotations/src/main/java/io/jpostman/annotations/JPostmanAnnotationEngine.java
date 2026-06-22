@@ -7,18 +7,55 @@ import io.jpostman.annotations.runtime.JUnitPostmanFramework;
 import io.jpostman.annotations.runtime.TestNgPostmanFramework;
 
 /**
- * Public entry point for JPostman annotation execution.
+ * Public entry point for JPostman annotation setup and execution.
+ *
+ * <p>
+ * Framework integrations call this class from JUnit or TestNG lifecycle hooks.
+ * The engine keeps annotation behavior in the {@code jpostman-annotations}
+ * module while framework modules provide only the small lifecycle bridge.
+ * </p>
  */
 public final class JPostmanAnnotationEngine {
 
+	/**
+	 * Creates an annotation engine instance.
+	 *
+	 * <p>
+	 * The engine currently exposes static entry points, so callers normally do not
+	 * need to instantiate this class.
+	 * </p>
+	 */
 	public JPostmanAnnotationEngine() {
 	}
 
 	/**
-	 * Runs annotation support for a JUnit test method.
+	 * Prepares JPostman annotation support for a JUnit test instance.
 	 *
-	 * @param testInstance test instance
-	 * @param testMethod   current test method
+	 * <p>
+	 * This injects fields such as {@link JPostmanContext} and
+	 * {@link JPostmanTestContext} before JUnit lifecycle methods, including
+	 * {@code @BeforeAll}, access them.
+	 * </p>
+	 *
+	 * @param testInstance JUnit test instance to prepare
+	 * @throws Exception when collection, environment, rules, or field injection
+	 *                   fails
+	 */
+	public static void setupJUnit(Object testInstance) throws Exception {
+		new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).setup(testInstance);
+	}
+
+	/**
+	 * Runs JPostman annotation support for a JUnit test method.
+	 *
+	 * <p>
+	 * This executes annotations such as {@link JPostmanRequest},
+	 * {@link JPostmanResponse}, and {@link JPostmanExecutor} around the supplied
+	 * JUnit test method.
+	 * </p>
+	 *
+	 * @param testInstance JUnit test instance
+	 * @param testMethod   current JUnit test method
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod) throws Exception {
@@ -26,10 +63,33 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
-	 * Runs annotation support for a TestNG test method.
+	 * Prepares JPostman annotation support for a TestNG test instance.
 	 *
-	 * @param testInstance test instance
-	 * @param testMethod   current test method
+	 * <p>
+	 * This injects fields such as {@link JPostmanContext} and
+	 * {@link JPostmanTestContext} before TestNG configuration methods, including
+	 * {@code @BeforeClass}, access them.
+	 * </p>
+	 *
+	 * @param testInstance TestNG test instance to prepare
+	 * @throws Exception when collection, environment, rules, or field injection
+	 *                   fails
+	 */
+	public static void setupTestNg(Object testInstance) throws Exception {
+		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).setup(testInstance);
+	}
+
+	/**
+	 * Runs JPostman annotation support for a TestNG test method.
+	 *
+	 * <p>
+	 * This executes annotations such as {@link JPostmanRequest},
+	 * {@link JPostmanResponse}, and {@link JPostmanExecutor} around the supplied
+	 * TestNG test method.
+	 * </p>
+	 *
+	 * @param testInstance TestNG test instance
+	 * @param testMethod   current TestNG test method
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod) throws Exception {

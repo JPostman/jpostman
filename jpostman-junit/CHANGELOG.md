@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.5
+
+### Added
+
+- Added TestNgContext.hasKey(String key) to check whether a plain or protected value key exists.
+
 ## 1.2.4
 
 ### Added

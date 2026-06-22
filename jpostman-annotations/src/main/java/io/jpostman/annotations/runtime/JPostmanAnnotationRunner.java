@@ -13,13 +13,13 @@ import java.util.Properties;
 import io.jpostman.ApiExecutor;
 import io.jpostman.Collection;
 import io.jpostman.JPostman;
-import io.jpostman.Request;
 import io.jpostman.JPostman.Context;
-import io.jpostman.annotations.JPostmanTestContext;
-import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.Request;
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
 
 /**
  * Shared annotation execution flow for JUnit and TestNG.
@@ -27,12 +27,53 @@ import io.jpostman.annotations.JPostmanResponse;
  * @param <C> framework context type
  */
 public final class JPostmanAnnotationRunner<C> {
+	private static final Object VOID_DEPENDENCY_MARKER = new Object();
+
 	private final JPostmanFramework<C> framework;
 
+	/**
+	 * Creates a runner for the supplied framework bridge.
+	 *
+	 * @param framework framework bridge used to perform context operations
+	 */
 	public JPostmanAnnotationRunner(JPostmanFramework<C> framework) {
 		this.framework = framework;
 	}
 
+	/**
+	 * Prepares a test instance before framework lifecycle methods run.
+	 *
+	 * <p>
+	 * This injects {@code @JPostmanContext} and {@code @JPostmanTestContext} fields
+	 * and sets the current framework context when one is available.
+	 * </p>
+	 *
+	 * @param testInstance test instance to prepare
+	 * @throws Exception when context preparation or field injection fails
+	 */
+	public void setup(Object testInstance) throws Exception {
+		PreparedContexts<C> prepared = prepareContexts(testInstance);
+		injectLoadedContexts(testInstance, prepared);
+
+		if (!prepared.isEmpty()) {
+			C current = prepared.contains("") ? prepared.context("") : prepared.firstContext();
+			framework.setCurrent(current);
+		}
+	}
+
+	/**
+	 * Runs JPostman annotations for a single test method.
+	 *
+	 * <p>
+	 * This handles request preparation, response execution, dependencies, named
+	 * executors, verification, filtering, cache updates, and current context
+	 * management for the supplied test method.
+	 * </p>
+	 *
+	 * @param testInstance test instance that owns the method
+	 * @param testMethod   test method to process
+	 * @throws Exception when annotation execution fails
+	 */
 	public void run(Object testInstance, Method testMethod) throws Exception {
 		PreparedContexts<C> prepared = prepareContexts(testInstance);
 
@@ -71,17 +112,21 @@ public final class JPostmanAnnotationRunner<C> {
 
 		if (requestAnnotation != null) {
 			currentContext = applyRequest(currentContext, current.collection, requestAnnotation);
+			prepared.update(currentNamespace, currentContext);
 			framework.setCurrent(currentContext);
 			runDependencies(testInstance, prepared, requestAnnotation.dependsOn());
-			currentContext = applyRequest(currentContext, current.collection, requestAnnotation);
+			currentContext = applyRequest(prepared.context(currentNamespace), current.collection, requestAnnotation);
+			prepared.update(currentNamespace, currentContext);
 			framework.setCurrent(currentContext);
 		}
 
 		if (responseAnnotation != null) {
 			currentContext = applyRequest(currentContext, current.collection, responseAnnotation);
+			prepared.update(currentNamespace, currentContext);
 			framework.setCurrent(currentContext);
 			runDependencies(testInstance, prepared, responseAnnotation.dependsOn());
-			currentContext = applyRequest(currentContext, current.collection, responseAnnotation);
+			currentContext = applyRequest(prepared.context(currentNamespace), current.collection, responseAnnotation);
+			prepared.update(currentNamespace, currentContext);
 			framework.setCurrent(currentContext);
 			executeResponse(testInstance, prepared, currentContext, responseAnnotation, testMethod.getName());
 		}
@@ -101,8 +146,11 @@ public final class JPostmanAnnotationRunner<C> {
 				JPostmanTestContext annotation = field.getAnnotation(JPostmanTestContext.class);
 				String namespace = annotation.namespace();
 
-				PreparedContext<C> context = createContext(annotation, testInstance.getClass(), field);
 				field.setAccessible(true);
+				C existingContext = framework.contextType().cast(field.get(testInstance));
+
+				PreparedContext<C> context = createContext(annotation, testInstance.getClass(), field, testInstance,
+						existingContext);
 				field.set(testInstance, context.context);
 
 				prepared.put(namespace, context);
@@ -113,8 +161,8 @@ public final class JPostmanAnnotationRunner<C> {
 		return prepared;
 	}
 
-	private PreparedContext<C> createContext(JPostmanTestContext annotation, Class<?> testClass, Field field)
-			throws Exception {
+	private PreparedContext<C> createContext(JPostmanTestContext annotation, Class<?> testClass, Field field,
+			Object testInstance, C existingContext) throws Exception {
 
 		Properties properties = loadProperties(annotation.config(), testClass);
 
@@ -131,20 +179,20 @@ public final class JPostmanAnnotationRunner<C> {
 					+ propertyKey("collection", namespace));
 		}
 
-		Context loaded = loadJPostmanTestContext(collectionLocation, environmentLocation, testClass);
+		Context loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
 
-		C ctx = framework.create();
-		if (loaded.getEnvironment() != null) {
+		C ctx = existingContext == null ? framework.create() : existingContext;
+		if (existingContext == null && loaded.getEnvironment() != null) {
 			framework.secret(ctx, loaded.getEnvironment());
 		}
 
-		if (!rulesLocation.isBlank()) {
+		if (existingContext == null && !rulesLocation.isBlank()) {
 			try (InputStream input = open(rulesLocation, testClass)) {
 				framework.load(ctx, input);
 			}
 		}
 
-		return new PreparedContext<>(ctx, loaded);
+		return new PreparedContext<>(ctx, loaded, testInstance, field);
 	}
 
 	private void injectLoadedContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
@@ -181,7 +229,7 @@ public final class JPostmanAnnotationRunner<C> {
 								+ propertyKey("collection", namespace));
 					}
 
-					loaded = loadJPostmanTestContext(collectionLocation, environmentLocation, testClass);
+					loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
 				}
 
 				field.setAccessible(true);
@@ -191,7 +239,7 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
-	private Context loadJPostmanTestContext(String collectionLocation, String environmentLocation, Class<?> testClass)
+	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)
 			throws Exception {
 
 		try (InputStream collection = open(collectionLocation, testClass)) {
@@ -294,12 +342,26 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		ctx = applyRequest(ctx, collection, dependencyAnnotation);
+		resolver.update(namespace, ctx);
 		framework.setCurrent(ctx);
 		Object value = invoke(testInstance, dependencyMethod);
 
-		if (dependencyMethod.getReturnType() != Void.TYPE) {
-			framework.cache(ctx, cacheKey, value);
+		Object cacheValue;
+		if (dependencyMethod.getReturnType() == Void.TYPE) {
+			cacheValue = VOID_DEPENDENCY_MARKER;
+		} else {
+			cacheValue = value;
 		}
+
+		if (cacheValue == null) {
+			throw new IllegalStateException("Dependency method returned null and cannot be cached: "
+					+ dependencyMethod.getName() + ". Use void for setup-only dependencies, "
+					+ "or return a non-null value when another request needs the cached value.");
+		}
+
+		// Store a non-null marker for void dependencies. ConcurrentHashMap does not
+		// allow null values, and dependency reuse is checked by key existence.
+		framework.cache(resolver.context(namespace), cacheKey, cacheValue);
 	}
 
 	private C applyRequest(C context, Collection collection, JPostmanRequest annotation) {
@@ -342,7 +404,8 @@ public final class JPostmanAnnotationRunner<C> {
 		Collection collection = resolver.collection(annotation.namespace());
 		for (String dependencyName : executorAnnotation.dependsOn()) {
 			runDependency(testInstance, resolver, dependencyName);
-			ctx = applyRequest(ctx, collection, annotation);
+			ctx = applyRequest(resolver.context(annotation.namespace()), collection, annotation);
+			resolver.update(annotation.namespace(), ctx);
 			framework.setCurrent(ctx);
 		}
 
@@ -362,6 +425,7 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		ctx = framework.response(ctx, (ApiExecutor) result);
+		resolver.update(annotation.namespace(), ctx);
 		framework.setCurrent(ctx);
 		framework.verify(ctx, annotation.verify(), annotation.soft(), annotation.log());
 	}
@@ -466,7 +530,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private boolean isCached(C ctx, String key) {
 		try {
-			return framework.cache(ctx, key) != null;
+			return framework.hasCache(ctx, key);
 		} catch (RuntimeException e) {
 			return false;
 		}

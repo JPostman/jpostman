@@ -31,7 +31,13 @@ public @interface JPostmanResponse {
 	/** Dependency method names to run before this response. */
 	String[] dependsOn() default {};
 
-	/** Optional cache key for storing this method result. */
+	/**
+	 * Optional cache key for storing this method result.
+	 *
+	 * <p>
+	 * When empty, the annotated method name is used as the cache key.
+	 * </p>
+	 */
 	String cache() default "";
 
 	/** Expected HTTP status code. */
@@ -40,9 +46,9 @@ public @interface JPostmanResponse {
 	/** Named executor method to use. Empty means default execution. */
 	String executor() default "";
 
-	/** Attach secure log details to assertion failures. */
+	/** Whether to attach secure log details to assertion failures. */
 	boolean log() default false;
 
-	/** Use soft assertion verification. */
+	/** Whether to use soft assertion verification. */
 	boolean soft() default false;
 }

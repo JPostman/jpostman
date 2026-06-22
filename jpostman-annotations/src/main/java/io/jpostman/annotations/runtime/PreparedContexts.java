@@ -37,8 +37,19 @@ final class PreparedContexts<C> {
 		return resolve(namespace).context;
 	}
 
+	C firstContext() {
+		if (values.isEmpty()) {
+			throw new IllegalStateException("No @JPostmanTestContext found.");
+		}
+		return values.values().iterator().next().context;
+	}
+
 	Collection collection(String namespace) {
 		return resolve(namespace).collection;
+	}
+
+	void update(String namespace, C context) {
+		resolve(namespace).update(context);
 	}
 
 	private String normalize(String namespace) {

@@ -10,14 +10,21 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.InvocationInterceptor.Invocation;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import com.google.gson.JsonParser;
 
@@ -165,6 +172,7 @@ public class JUnitContextTest {
 
 		JUnitContext cxt = JUnitContext.from(secure);
 
+		assertTrue(cxt.hasKey("token"));
 		assertEquals(cxt.asString("token"), "abc123");
 
 		cxt.asserts().exists("token").pathEquals("token", "abc123");
@@ -256,27 +264,31 @@ public class JUnitContextTest {
 	}
 
 	@Test
-	public void failurePrinterCanPrintFailure() {
+	public void failurePrinterCanPrintFailureAndCallExtensionMethods() throws Throwable {
 		AssertionError original = new AssertionError("Original failure");
 		JPostmanAssertionError error = JPostmanAssertionError.wrap(original, "secure log");
 
+		JPostmanJUnit.JPostmanJUnitExtension extension = new JPostmanJUnit.JPostmanJUnitExtension();
+
 		String output = captureErr(() -> {
-			JPostmanJUnit.FailurePrinter printer = new JPostmanJUnit.FailurePrinter();
-
 			try {
-				printer.handleTestExecutionException(context(PrintingTest.class, "sampleTest()", error), error);
+				extension.handleTestExecutionException(context(PrintingTest.class, "sampleTest()", error), error);
 			} catch (Throwable ignored) {
 			}
 
 			try {
-				printer.handleBeforeEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
+				extension.handleBeforeEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
 						error);
 			} catch (Throwable ignored) {
 			}
 
 			try {
-				printer.handleAfterEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
+				extension.handleAfterEachMethodExecutionException(context(PrintingTest.class, "sampleTest()", error),
 						error);
+			} catch (Throwable ignored) {
+			}
+			try {
+				JPostmanJUnit.JPostmanJUnitExtension.rethrow(new InvocationTargetException(error));
 			} catch (Throwable ignored) {
 			}
 		});
@@ -285,6 +297,26 @@ public class JUnitContextTest {
 		assertTrue(output.contains("sampleTest()"), output);
 		assertTrue(output.contains("Original failure"), output);
 		assertTrue(output.contains("secure log"), output);
+
+		Object testInstance = new PrintingTest();
+		extension.postProcessTestInstance(testInstance, context(PrintingTest.class, "sampleTest()", null));
+		extension.afterEach(context(PrintingTest.class, "sampleTest()", null));
+		assertFalse(extension.supportsParameter(parameterContext(), context(PrintingTest.class, "sampleTest()", null)));
+
+		JUnitContext.setCurrent(JUnitContext.create());
+		extension.resolveParameter(parameterContext(), context(PrintingTest.class, "sampleTest()", null));
+
+		Method method = PrintingTest.class.getDeclaredMethod("sampleTest");
+		AtomicBoolean invocationCalled = new AtomicBoolean(false);
+		Invocation<Void> invocation = () -> {
+			invocationCalled.set(true);
+			return null;
+		};
+
+		ReflectiveInvocationContext<Method> invocationContext = reflectiveInvocationContext(method);
+		extension.interceptTestMethod(invocation, invocationContext,
+				contextWithInstance(PrintingTest.class, testInstance));
+		assertTrue(invocationCalled.get(), "JUnit invocation should continue after annotation runner");
 	}
 
 	@Test
@@ -295,61 +327,64 @@ public class JUnitContextTest {
 		assertEquals(cxt.response().statusCode(), 200);
 	}
 
-	@Test
-	public void jpostmanJUnitAnnotationExtensionCanCallAllMethods() throws Exception {
-		JPostmanJUnitAnnotationExtension extension = new JPostmanJUnitAnnotationExtension();
+	private static ParameterContext parameterContext() throws Exception {
+		Method method = ParameterFixture.class.getDeclaredMethod("sample", String.class);
+		Parameter parameter = method.getParameters()[0];
 
-		java.lang.reflect.Method testMethod = JUnitContextTest.class
-				.getDeclaredMethod("jpostmanJUnitAnnotationExtensionCanCallAllMethods");
+		return (ParameterContext) Proxy.newProxyInstance(ParameterContext.class.getClassLoader(),
+				new Class<?>[] { ParameterContext.class }, (proxy, proxyMethod, args) -> {
+					switch (proxyMethod.getName()) {
+					case "getParameter":
+						return parameter;
+					case "getIndex":
+						return 0;
+					case "getDeclaringExecutable":
+						return method;
+					case "getTarget":
+						return Optional.empty();
+					case "isAnnotated":
+						return false;
+					case "findAnnotation":
+						return Optional.empty();
+					case "findRepeatableAnnotations":
+						return java.util.List.of();
+					default:
+						throw new UnsupportedOperationException(proxyMethod.getName());
+					}
+				});
+	}
 
-		ExtensionContext extensionContext = (ExtensionContext) Proxy.newProxyInstance(
-				ExtensionContext.class.getClassLoader(), new Class<?>[] { ExtensionContext.class },
-				(proxy, method, args) -> {
+	private static ExtensionContext contextWithInstance(Class<?> testClass, Object testInstance) {
+		return (ExtensionContext) Proxy.newProxyInstance(ExtensionContext.class.getClassLoader(),
+				new Class<?>[] { ExtensionContext.class }, (proxy, method, args) -> {
 					switch (method.getName()) {
+					case "getRequiredTestClass":
+						return testClass;
+					case "getDisplayName":
+						return "sampleTest()";
+					case "getExecutionException":
+						return Optional.empty();
 					case "getRequiredTestInstance":
-						return this;
-					case "getRequiredTestMethod":
-						return testMethod;
+						return testInstance;
+					case "getTestInstance":
+						return Optional.of(testInstance);
 					default:
 						throw new UnsupportedOperationException(method.getName());
 					}
 				});
-
-		extension.beforeEach(extensionContext);
-
-		assertThrows(AssertionError.class, () -> JUnitContext.current());
-
-		java.lang.reflect.Parameter parameter = JUnitContextTest.class
-				.getDeclaredMethod("jpostmanJUnitAnnotationExtensionParameter", JUnitContext.class).getParameters()[0];
-
-		org.junit.jupiter.api.extension.ParameterContext parameterContext = (org.junit.jupiter.api.extension.ParameterContext) Proxy
-				.newProxyInstance(org.junit.jupiter.api.extension.ParameterContext.class.getClassLoader(),
-						new Class<?>[] { org.junit.jupiter.api.extension.ParameterContext.class },
-						(proxy, method, args) -> {
-							if ("getParameter".equals(method.getName())) {
-								return parameter;
-							}
-							throw new UnsupportedOperationException(method.getName());
-						});
-
-		assertTrue(extension.supportsParameter(parameterContext, extensionContext));
-
-		JUnitContext cxt = JUnitContext.create();
-		JUnitContext.setCurrent(cxt);
-
-		assertEquals(cxt, extension.resolveParameter(parameterContext, extensionContext));
-
-		extension.afterEach(extensionContext);
-
-		assertThrows(AssertionError.class, () -> JUnitContext.current());
 	}
 
-	@SuppressWarnings("unused")
-	private static void jpostmanJUnitAnnotationExtensionParameter(JUnitContext context) {
+	private static class ParameterFixture {
+		@SuppressWarnings("unused")
+		void sample(String value) {
+		}
 	}
 
 	@JPostmanJUnit(printFailures = true)
 	private static class PrintingTest {
+		@SuppressWarnings("unused")
+		void sampleTest() {
+		}
 	}
 
 	private static ExtensionContext context(Class<?> testClass, String displayName, Throwable error) {
@@ -364,6 +399,22 @@ public class JUnitContextTest {
 						return Optional.ofNullable(error);
 					default:
 						throw new UnsupportedOperationException(method.getName());
+					}
+				});
+	}
+
+	@SuppressWarnings("unchecked")
+	private static ReflectiveInvocationContext<Method> reflectiveInvocationContext(Method method) {
+		return (ReflectiveInvocationContext<Method>) Proxy.newProxyInstance(
+				ReflectiveInvocationContext.class.getClassLoader(),
+				new Class<?>[] { ReflectiveInvocationContext.class }, (proxy, proxyMethod, args) -> {
+					switch (proxyMethod.getName()) {
+					case "getExecutable":
+						return method;
+					case "getArguments":
+						return java.util.List.of();
+					default:
+						throw new UnsupportedOperationException(proxyMethod.getName());
 					}
 				});
 	}

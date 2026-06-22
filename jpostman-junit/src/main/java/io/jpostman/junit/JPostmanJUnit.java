@@ -5,12 +5,20 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.LifecycleMethodExecutionExceptionHandler;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ParameterResolver;
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
+import org.junit.jupiter.api.extension.TestInstancePostProcessor;
 
 import io.jpostman.secure.JPostmanAssertionError;
 
@@ -22,11 +30,18 @@ import io.jpostman.secure.JPostmanAssertionError;
  * IDE runners that show assertion details only in the JUnit failure trace
  * panel.
  * </p>
+ *
+ * <p>
+ * Optional annotation support is loaded reflectively from
+ * {@code jpostman-annotations} when that module is present on the test
+ * classpath. This keeps annotation behavior in the annotations module while
+ * keeping the user-facing JUnit annotation as {@code @JPostmanJUnit}.
+ * </p>
  */
 @Target(TYPE)
 @Retention(RUNTIME)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@ExtendWith({ JPostmanJUnit.FailurePrinter.class, JPostmanJUnitAnnotationExtension.class })
+@ExtendWith(JPostmanJUnit.JPostmanJUnitExtension.class)
 public @interface JPostmanJUnit {
 
 	/**
@@ -37,9 +52,46 @@ public @interface JPostmanJUnit {
 	boolean printFailures() default true;
 
 	/**
-	 * Prints test failures to the console.
+	 * JUnit bridge for JPostman defaults, optional annotation runtime, current
+	 * context cleanup, parameter resolution, and failure printing.
 	 */
-	final class FailurePrinter implements TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler {
+	final class JPostmanJUnitExtension
+			implements TestExecutionExceptionHandler, LifecycleMethodExecutionExceptionHandler,
+			TestInstancePostProcessor, InvocationInterceptor, AfterEachCallback, ParameterResolver {
+
+		private static final String ANNOTATION_ENGINE = "io.jpostman.annotations.JPostmanAnnotationEngine";
+
+		@Override
+		public void postProcessTestInstance(Object testInstance, ExtensionContext context) throws Exception {
+			setupAnnotations(testInstance);
+		}
+
+		@Override
+		public void interceptTestMethod(Invocation<Void> invocation,
+				ReflectiveInvocationContext<Method> invocationContext, ExtensionContext extensionContext)
+				throws Throwable {
+
+			Object testInstance = extensionContext.getRequiredTestInstance();
+			Method testMethod = invocationContext.getExecutable();
+
+			runAnnotations(testInstance, testMethod);
+			invocation.proceed();
+		}
+
+		@Override
+		public void afterEach(ExtensionContext context) {
+			JUnitContext.clearCurrent();
+		}
+
+		@Override
+		public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext context) {
+			return JUnitContext.class.isAssignableFrom(parameterContext.getParameter().getType());
+		}
+
+		@Override
+		public Object resolveParameter(ParameterContext parameterContext, ExtensionContext context) {
+			return JUnitContext.current();
+		}
 
 		@Override
 		public void handleTestExecutionException(ExtensionContext context, Throwable error) throws Throwable {
@@ -89,6 +141,41 @@ public @interface JPostmanJUnit {
 
 			System.err.println("***********************************");
 			System.err.println();
+		}
+
+		private static void setupAnnotations(Object testInstance) throws Exception {
+			try {
+				Class<?> engine = Class.forName(ANNOTATION_ENGINE);
+				engine.getMethod("setupJUnit", Object.class).invoke(null, testInstance);
+			} catch (ClassNotFoundException e) {
+				// jpostman-annotations is optional. Without it, @JPostmanJUnit still
+				// provides per-class lifecycle, parameter resolution, current cleanup,
+				// and failure printing for plain JUnitContext tests.
+			} catch (InvocationTargetException e) {
+				rethrow(e);
+			}
+		}
+
+		private static void runAnnotations(Object testInstance, Method testMethod) throws Exception {
+			try {
+				Class<?> engine = Class.forName(ANNOTATION_ENGINE);
+				engine.getMethod("runJUnit", Object.class, Method.class).invoke(null, testInstance, testMethod);
+			} catch (ClassNotFoundException e) {
+				// jpostman-annotations is optional.
+			} catch (InvocationTargetException e) {
+				rethrow(e);
+			}
+		}
+
+		static void rethrow(InvocationTargetException error) throws Exception {
+			Throwable cause = error.getCause();
+			if (cause instanceof Exception) {
+				throw (Exception) cause;
+			}
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw error;
 		}
 
 		private static JPostmanAssertionError findJPostmanAssertionError(Throwable error) {

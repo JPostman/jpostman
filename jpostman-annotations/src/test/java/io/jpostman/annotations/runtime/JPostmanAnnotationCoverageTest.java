@@ -2,6 +2,7 @@ package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -24,14 +25,41 @@ import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostmanAnnotationEngine;
-import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.junit.JUnitContext;
 import io.jpostman.testng.TestNgContext;
 
 public class JPostmanAnnotationCoverageTest {
+
+	/**
+	 * Verifies that JUnitContext and TestNgContext can check plain and protected
+	 * secure value keys by key presence.
+	 *
+	 * <p>
+	 * This covers the hasKey helper used when callers need to distinguish between a
+	 * missing key and a key whose resolved value may be empty or null.
+	 * </p>
+	 */
+	@Test
+	public void contextsCanCheckPlainAndSecretKeyPresence() {
+		JUnitContext junit = JUnitContext.create().plain("plainKey", "plainValue").secret("secretKey", "secretValue");
+
+		assertTrue(junit.hasKey("plainKey"));
+		assertTrue(junit.hasKey("secretKey"));
+		assertFalse(junit.hasKey("missingKey"));
+		assertFalse(junit.hasKey(null));
+
+		TestNgContext testng = TestNgContext.create().plain("plainKey", "plainValue").secret("secretKey",
+				"secretValue");
+
+		assertTrue(testng.hasKey("plainKey"));
+		assertTrue(testng.hasKey("secretKey"));
+		assertFalse(testng.hasKey("missingKey"));
+		assertFalse(testng.hasKey(null));
+	}
 
 	/**
 	 * Verifies that PreparedContext stores the same context object and collection
@@ -95,8 +123,8 @@ public class JPostmanAnnotationCoverageTest {
 	 * Verifies duplicate namespace validation.
 	 *
 	 * <p>
-	 * The annotation runtime should fail fast if two @JPostmanTestContext fields use
-	 * the same namespace.
+	 * The annotation runtime should fail fast if two @JPostmanTestContext fields
+	 * use the same namespace.
 	 * </p>
 	 */
 	@Test
@@ -245,10 +273,10 @@ public class JPostmanAnnotationCoverageTest {
 	 * 
 	 * @JPostmanTestContext fields.
 	 *
-	 *                  <p>
-	 *                  Responsibility: the runner should clear the current JUnit
-	 *                  context and return safely.
-	 *                  </p>
+	 *                      <p>
+	 *                      Responsibility: the runner should clear the current
+	 *                      JUnit context and return safely.
+	 *                      </p>
 	 */
 	@Test
 	public void annotationRunnerClearsJUnitCurrentContextWhenNoContextFieldsExist() throws Exception {
@@ -272,10 +300,10 @@ public class JPostmanAnnotationCoverageTest {
 	 * 
 	 * @JPostmanTestContext fields.
 	 *
-	 *                  <p>
-	 *                  Responsibility: the runner should clear the current TestNG
-	 *                  context and return safely.
-	 *                  </p>
+	 *                      <p>
+	 *                      Responsibility: the runner should clear the current
+	 *                      TestNG context and return safely.
+	 *                      </p>
 	 */
 	@Test
 	public void annotationRunnerClearsTestNgCurrentContextWhenNoContextFieldsExist() throws Exception {

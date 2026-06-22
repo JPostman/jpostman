@@ -25,9 +25,15 @@ public @interface JPostmanRequest {
 	/** Optional secure rule section for response filtering and masking. */
 	String rule() default "";
 
-	/** Dependency method names to run before this response. */
+	/** Dependency method names to run before this request method. */
 	String[] dependsOn() default {};
 
-	/** Optional cache key for storing this method result. */
+	/**
+	 * Optional cache key for storing this method result.
+	 *
+	 * <p>
+	 * When empty, the annotated method name is used as the cache key.
+	 * </p>
+	 */
 	String cache() default "";
 }

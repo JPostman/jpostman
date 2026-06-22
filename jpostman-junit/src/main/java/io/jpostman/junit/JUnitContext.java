@@ -565,6 +565,22 @@ public final class JUnitContext {
 	}
 
 	/**
+	 * Checks whether a plain or protected value key exists.
+	 *
+	 * <p>
+	 * This checks key presence, not the resolved value. This is useful when callers
+	 * need to distinguish between a missing key and a key that exists with an empty
+	 * or {@code null} value.
+	 * </p>
+	 *
+	 * @param key value key
+	 * @return {@code true} if the key exists
+	 */
+	public boolean hasKey(String key) {
+		return key != null && secure.values().get(key) != null;
+	}
+
+	/**
 	 * Returns the original value for the given key.
 	 *
 	 * @param key secure value key

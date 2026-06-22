@@ -8,18 +8,15 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Marks a TestNG test class as a JPostman annotation-based test.
+ * Marks a TestNG test class as a JPostman TestNG test.
  *
  * <p>
- * The actual TestNG listener is registered through Java ServiceLoader. This
- * keeps user code clean:
+ * This module provides the TestNG context and TestNG framework support.
+ * Optional annotation-based request execution lives in
+ * {@code jpostman-annotations}. When that module is on the TestNG classpath,
+ * its listener can run annotation setup and request/response execution without
+ * changing this module.
  * </p>
- *
- * <pre>
- * &#64;JPostmanTestNG
- * public class DemoTest {
- * }
- * </pre>
  */
 @Inherited
 @Target(TYPE)
