@@ -34,18 +34,18 @@ jobs:
 
       - name: Publish parent, core, and executors to Maven Central
         run: |
-          #mvn --batch-mode clean deploy \
-          #  -DskipTests \
-          #  -Dgpg.skip=false \
-          #  -Dcentral.skipPublishing=false \
-          #  -pl jpostman-annotations
-
-          # To publish all modules instead:
           mvn --batch-mode clean deploy \
             -DskipTests \
             -Dgpg.skip=false \
             -Dcentral.skipPublishing=false \
-            -pl .,jpostman-core,jpostman-httpclient,jpostman-restassured,jpostman-playwright,jpostman-unirest,jpostman-secure,jpostman-testng,jpostman-junit
+            -pl jpostman-annotations
+
+          # To publish all modules instead:
+          # mvn --batch-mode clean deploy \
+          #  -DskipTests \
+          #  -Dgpg.skip=false \
+          #  -Dcentral.skipPublishing=false \
+          #  -pl .,jpostman-core,jpostman-httpclient,jpostman-restassured,jpostman-playwright,jpostman-unirest,jpostman-secure,jpostman-testng,jpostman-junit
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
