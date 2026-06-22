@@ -424,6 +424,60 @@ public class DemoJUnitTest {
 }
 ```
 
+## 9. Logging
+
+JPostman uses logging for request and response output. To see formatted logs during tests, add a Logback test configuration file:
+
+```text
+src/test/resources/logback-test.xml
+```
+
+This file is used only during tests. It keeps normal logs readable and prints JPostman `TRACE` logs in a cleaner format.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Standard console logs: DEBUG, INFO, WARN, ERROR -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
+
+        <encoder>
+            <pattern>%-5level %logger - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- JPostman TRACE logs only -->
+    <appender name="CONSOLE_TRACE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>TRACE</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+
+        <encoder>
+            <pattern>%cyan(%msg%n%n)</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Reduce noisy third-party logs -->
+    <logger name="com.github.jknack.handlebars.internal.HbsParserFactory" level="WARN" />
+    <logger name="org.testng.TestNG" level="WARN" />
+    <logger name="org.testng.internal.Utils" level="WARN" />
+
+    <!-- Show JPostman request/response logs -->
+    <logger name="io.jpostman" level="TRACE" additivity="false">
+        <appender-ref ref="CONSOLE_TRACE" />
+    </logger>
+
+    <!-- Default logging for everything else -->
+    <root level="DEBUG">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>
+```
+
 ---
 
 ## Why This Is Easy
