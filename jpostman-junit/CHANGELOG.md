@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.6
+
+### Added
+
+- Added limited stack trace printing for JUnit failures, using `DEFAULT_MAX_STACK_TRACE`.
+
+### Fixed
+
+- Fixed noisy JUnit annotation failures by routing thrown errors through the annotation engine cleanup logic when `jpostman-annotations` is available.
+- Improved fallback behavior so original JUnit errors are preserved when annotation cleanup is unavailable.
+
 ## 1.2.5
 
 ### Added

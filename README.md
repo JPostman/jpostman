@@ -462,9 +462,8 @@ This file is used only during tests. It keeps normal logs readable and prints JP
     </appender>
 
     <!-- Reduce noisy third-party logs -->
-    <logger name="com.github.jknack.handlebars.internal.HbsParserFactory" level="WARN" />
-    <logger name="org.testng.TestNG" level="WARN" />
-    <logger name="org.testng.internal.Utils" level="WARN" />
+    <logger name="com.github.jknack.handlebars" level="WARN" />
+    <logger name="org.testng" level="WARN" />
 
     <!-- Show JPostman request/response logs -->
     <logger name="io.jpostman" level="TRACE" additivity="false">

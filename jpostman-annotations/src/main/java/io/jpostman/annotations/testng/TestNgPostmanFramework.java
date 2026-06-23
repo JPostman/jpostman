@@ -1,10 +1,11 @@
-package io.jpostman.annotations.runtime;
+package io.jpostman.annotations.testng;
 
 import java.io.InputStream;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.Environment;
 import io.jpostman.Request;
+import io.jpostman.annotations.runtime.JPostmanFramework;
 import io.jpostman.testng.TestNgContext;
 
 /**
@@ -82,7 +83,7 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 			context.soft(log).statusCode(statusCode);
 			return;
 		}
-		context.verify().asserts(log).verify(statusCode);
+		context.asserts(log).statusCode(statusCode);
 	}
 
 	/** {@inheritDoc} */

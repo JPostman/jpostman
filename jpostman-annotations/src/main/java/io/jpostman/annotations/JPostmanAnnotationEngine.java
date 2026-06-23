@@ -3,8 +3,10 @@ package io.jpostman.annotations;
 import java.lang.reflect.Method;
 
 import io.jpostman.annotations.runtime.JPostmanAnnotationRunner;
+import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
+import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
 import io.jpostman.annotations.runtime.JUnitPostmanFramework;
-import io.jpostman.annotations.runtime.TestNgPostmanFramework;
+import io.jpostman.annotations.testng.TestNgPostmanFramework;
 
 /**
  * Public entry point for JPostman annotation setup and execution.
@@ -42,6 +44,7 @@ public final class JPostmanAnnotationEngine {
 	 *                   fails
 	 */
 	public static void setupJUnit(Object testInstance) throws Exception {
+		JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
 		new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).setup(testInstance);
 	}
 
@@ -59,7 +62,11 @@ public final class JPostmanAnnotationEngine {
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod) throws Exception {
-		new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).run(testInstance, testMethod);
+		try {
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).run(testInstance, testMethod);
+		} catch (Throwable e) {
+			throw JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, e);
+		}
 	}
 
 	/**
@@ -76,6 +83,7 @@ public final class JPostmanAnnotationEngine {
 	 *                   fails
 	 */
 	public static void setupTestNg(Object testInstance) throws Exception {
+		JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
 		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).setup(testInstance);
 	}
 
@@ -95,4 +103,26 @@ public final class JPostmanAnnotationEngine {
 	public static void runTestNg(Object testInstance, Method testMethod) throws Exception {
 		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).run(testInstance, testMethod);
 	}
+
+	/**
+	 * Creates the same short stack-trace failure used by TestNG for JUnit failures.
+	 *
+	 * <p>
+	 * The JUnit bridge calls this method through reflection so the junit module
+	 * does not need a compile-time dependency on {@code jpostman-annotations}.
+	 * </p>
+	 *
+	 * @param testInstance JUnit test instance
+	 * @param testMethod   current JUnit test method
+	 * @param error        original failure
+	 * @return throwable with cleaned stack trace
+	 */
+	public static Throwable cleanJUnitFailure(Object testInstance, Method testMethod, Throwable error) {
+		Throwable root = JPostmanStackTraceCleaner.rootCause(error);
+		if (root instanceof AssertionError) {
+			return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error);
+		}
+		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error);
+	}
+
 }

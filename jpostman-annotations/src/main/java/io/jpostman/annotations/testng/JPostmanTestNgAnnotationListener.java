@@ -4,18 +4,23 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestResult;
+import org.testng.SkipException;
 
 import io.jpostman.annotations.JPostmanAnnotationEngine;
+import io.jpostman.annotations.JPostmanAssert;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanRunner;
 import io.jpostman.annotations.JPostmanTestContext;
+import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
 import io.jpostman.testng.TestNgContext;
 
 /**
@@ -39,6 +44,8 @@ import io.jpostman.testng.TestNgContext;
 public final class JPostmanTestNgAnnotationListener implements IInvokedMethodListener {
 
 	private final Set<Object> prepared = Collections.newSetFromMap(new IdentityHashMap<>());
+	private final Set<Object> reportedSetupFailures = Collections.newSetFromMap(new IdentityHashMap<>());
+	private final Map<Object, Throwable> setupFailures = Collections.synchronizedMap(new IdentityHashMap<>());
 
 	/**
 	 * Prepares and runs JPostman annotations before TestNG invokes a test or
@@ -55,7 +62,14 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 			return;
 		}
 
-		setupOnce(testInstance);
+		Throwable setupFailure = setupOnce(testInstance);
+		if (setupFailure != null) {
+			if (markSetupFailureReported(testInstance)) {
+				throw asRuntime(setupFailure);
+			}
+
+			throw new SkipException("Skipped because JPostman annotation setup failed.");
+		}
 
 		if (!invokedMethod.isTestMethod()) {
 			return;
@@ -64,10 +78,8 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 		try {
 			Method testMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
 			JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new IllegalStateException("Failed to run JPostman annotation engine.", e);
+		} catch (Throwable e) {
+			throw cleanFailure(invokedMethod, e);
 		}
 	}
 
@@ -81,8 +93,33 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 	public void afterInvocation(IInvokedMethod invokedMethod, ITestResult testResult) {
 		Object testInstance = testResult.getInstance();
 
-		if (invokedMethod.isTestMethod() && usesJPostmanAnnotations(testInstance)) {
-			TestNgContext.clearCurrent();
+		if (!usesJPostmanAnnotations(testInstance)) {
+			return;
+		}
+
+		try {
+			Throwable throwable = testResult.getThrowable();
+			if (throwable == null) {
+				return;
+			}
+
+			// Do not rewrite skipped test results caused by a failed configuration
+			// method. TestNG may reuse the same configuration throwable for those skipped
+			// results, and cleaning it with the skipped test method would make the original
+			// @BeforeClass failure point to the wrong line.
+			if (invokedMethod.isTestMethod() && testResult.getStatus() == ITestResult.SKIP) {
+				return;
+			}
+
+			if (invokedMethod.isTestMethod() || invokedMethod.isConfigurationMethod()) {
+				Class<?> testClass = invokedMethod.getTestMethod().getRealClass();
+				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+				testResult.setThrowable(JPostmanStackTraceCleaner.cleanThrowable(testClass, javaMethod, throwable));
+			}
+		} finally {
+			if (invokedMethod.isTestMethod()) {
+				TestNgContext.clearCurrent();
+			}
 		}
 	}
 
@@ -106,7 +143,9 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 
 		for (Method method : type.getDeclaredMethods()) {
 			if (method.isAnnotationPresent(JPostmanRequest.class) || method.isAnnotationPresent(JPostmanResponse.class)
-					|| method.isAnnotationPresent(JPostmanExecutor.class)) {
+					|| method.isAnnotationPresent(JPostmanRunner.class)
+					|| method.isAnnotationPresent(JPostmanExecutor.class)
+					|| method.isAnnotationPresent(JPostmanAssert.class)) {
 				return true;
 			}
 		}
@@ -114,20 +153,51 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 		return false;
 	}
 
-	private void setupOnce(Object testInstance) {
+	private Throwable setupOnce(Object testInstance) {
 		synchronized (prepared) {
 			if (prepared.contains(testInstance)) {
-				return;
+				return null;
+			}
+
+			Throwable setupFailure = setupFailures.get(testInstance);
+			if (setupFailure != null) {
+				return setupFailure;
 			}
 
 			try {
 				JPostmanAnnotationEngine.setupTestNg(testInstance);
 				prepared.add(testInstance);
-			} catch (RuntimeException e) {
-				throw e;
-			} catch (Exception e) {
-				throw new IllegalStateException("Failed to set up JPostman annotation engine.", e);
+				return null;
+			} catch (Throwable e) {
+				Throwable failure = JPostmanStackTraceCleaner.rootCause(e);
+				setupFailures.put(testInstance, failure);
+				return failure;
 			}
 		}
 	}
+
+	private boolean markSetupFailureReported(Object testInstance) {
+		synchronized (prepared) {
+			return reportedSetupFailures.add(testInstance);
+		}
+	}
+
+	private static RuntimeException asRuntime(Throwable throwable) {
+		if (throwable instanceof RuntimeException) {
+			return (RuntimeException) throwable;
+		}
+		if (throwable instanceof Error) {
+			throw (Error) throwable;
+		}
+		return new IllegalStateException(
+				throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage(),
+				throwable);
+	}
+
+	private static AssertionError cleanFailure(IInvokedMethod invokedMethod, Throwable error) {
+		Class<?> testClass = invokedMethod.getTestMethod().getRealClass();
+		Method testMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+		return JPostmanStackTraceCleaner.cleanFailure(testClass, testMethod, error);
+	}
+
 }

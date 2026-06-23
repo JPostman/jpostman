@@ -82,8 +82,7 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 			context.soft(log).statusCode(statusCode);
 			return;
 		}
-
-		context.asserts(log).verify(statusCode);
+		context.asserts(log).statusCode(statusCode);
 	}
 
 	/** {@inheritDoc} */

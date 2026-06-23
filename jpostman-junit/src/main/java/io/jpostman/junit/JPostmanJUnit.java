@@ -43,6 +43,8 @@ import io.jpostman.secure.JPostmanAssertionError;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @ExtendWith(JPostmanJUnit.JPostmanJUnitExtension.class)
 public @interface JPostmanJUnit {
+	
+	public static final int DEFAULT_MAX_STACK_TRACE = 6;
 
 	/**
 	 * Enables printing test failures to the console.
@@ -68,14 +70,39 @@ public @interface JPostmanJUnit {
 
 		@Override
 		public void interceptTestMethod(Invocation<Void> invocation,
-				ReflectiveInvocationContext<Method> invocationContext, ExtensionContext extensionContext)
-				throws Throwable {
+		        ReflectiveInvocationContext<Method> invocationContext,
+		        ExtensionContext extensionContext) throws Throwable {
 
-			Object testInstance = extensionContext.getRequiredTestInstance();
-			Method testMethod = invocationContext.getExecutable();
+		    Object testInstance = extensionContext.getRequiredTestInstance();
+		    Method testMethod = invocationContext.getExecutable();
 
-			runAnnotations(testInstance, testMethod);
-			invocation.proceed();
+		    try {
+		        runAnnotations(testInstance, testMethod);
+		        invocation.proceed();
+		    } catch (Throwable e) {
+		        throw cleanJUnitFailure(testInstance, testMethod, e);
+		    }
+		}
+		
+		private static Throwable cleanJUnitFailure(Object testInstance, Method testMethod, Throwable error) throws Throwable {
+		    try {
+		        Class<?> engine = Class.forName(ANNOTATION_ENGINE);
+		        Method clean = engine.getMethod("cleanJUnitFailure", Object.class, Method.class, Throwable.class);
+
+		        Object result = clean.invoke(null, testInstance, testMethod, error);
+
+		        if (result instanceof Throwable) {
+		            return (Throwable) result;
+		        }
+		    } catch (ClassNotFoundException e) {
+		        // jpostman-annotations is optional.
+		    } catch (InvocationTargetException e) {
+		        throw e.getCause();
+		    } catch (ReflectiveOperationException e) {
+		        // Fall back to original error.
+		    }
+
+		    return error;
 		}
 
 		@Override
@@ -130,17 +157,29 @@ public @interface JPostmanJUnit {
 
 			System.err.println(root.getClass().getName() + ": " + nullToEmpty(root.getMessage()));
 
+			printStackTrace(root);
+
 			JPostmanAssertionError jpostmanError = findJPostmanAssertionError(error);
 			if (jpostmanError != null) {
-				String secureLog = jpostmanError.secureLog();
-				if (secureLog != null && !secureLog.isBlank()) {
-					System.err.println();
-					System.err.println(secureLog.trim());
-				}
+			    String secureLog = jpostmanError.secureLog();
+			    if (secureLog != null && !secureLog.isBlank()) {
+			        System.err.println();
+			        System.err.println(secureLog.trim());
+			    }
 			}
 
-			System.err.println("***********************************");
 			System.err.println();
+		}
+		
+		private static void printStackTrace(Throwable error) {
+		    if (error == null) {
+		        return;
+		    }
+		    StackTraceElement[] stack = error.getStackTrace();
+		    for (int i = 0; i < stack.length && i < DEFAULT_MAX_STACK_TRACE; i++) {
+		        StackTraceElement element = stack[i];
+		        System.err.println("\tat " + element);
+		    }
 		}
 
 		private static void setupAnnotations(Object testInstance) throws Exception {
