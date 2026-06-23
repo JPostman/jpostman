@@ -1,5 +1,10 @@
 package io.jpostman.testng;
 
+import java.util.List;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
+
 import org.testng.Assert;
 
 import io.jpostman.secure.JPostmanAssertionError;
@@ -308,6 +313,69 @@ public class TestNgAssertions<T extends TestNgAssertions<?>> {
 	}
 
 	/**
+	 * Asserts that every value returned by the response path matches the predicate.
+	 *
+	 * @param path      response path that resolves to a list of numeric values
+	 * @param predicate predicate applied to each value
+	 * @param message   custom failure message
+	 * @return this assertion helper
+	 */
+	public T allMatch(String path, Predicate<Number> predicate, String message) {
+		requireResponse(message);
+		List<?> values = context.paths(path);
+
+		for (int i = 0; i < values.size(); i++) {
+			final int index = i;
+			final Object value = values.get(i);
+
+			assertWithLog(() -> {
+				if (!(value instanceof Number)) {
+					fail(valueMessage(message(message, "Path value is not numeric"), value, index));
+				}
+
+				Number number = (Number) value;
+				if (!predicate.test(number)) {
+					fail(valueMessage(message(message, "Path value did not match"), number, index));
+				}
+			});
+		}
+
+		return self();
+	}
+
+	/**
+	 * Asserts that every value returned by the response path matches the predicate.
+	 *
+	 * @param path      response path that resolves to a list of numeric values
+	 * @param predicate predicate applied to each value and index
+	 * @param message   custom failure message. Use {} placeholders for value and index.
+	 * @return this assertion helper
+	 */
+	public T allMatch(String path, BiPredicate<Number, Integer> predicate, String message) {
+		requireResponse(message);
+		List<?> values = context.paths(path);
+
+		for (int i = 0; i < values.size(); i++) {
+			final int index = i;
+			final Object value = values.get(i);
+
+			assertWithLog(() -> {
+				if (!(value instanceof Number)) {
+					fail(format(message(message, "Path value is not numeric. Value: {}, Index: {}"), value, index));
+				}
+
+				Number number = (Number) value;
+				if (!predicate.test(number, index)) {
+					fail(format(message(message, "Path value did not match. Value: {}, Index: {}"), number, index));
+				}
+			});
+		}
+
+		return self();
+	}
+
+
+	/**
 	 * Verifies status code {@code 200} and returns the test context.
 	 *
 	 * <p>
@@ -361,6 +429,28 @@ public class TestNgAssertions<T extends TestNgAssertions<?>> {
 	protected AssertionError wrap(AssertionError error) {
 		return JPostmanAssertionError.wrap(error, includeLog ? context.log() : null);
 	}
+
+
+	private void fail(String message) {
+		Assert.fail(message);
+	}
+
+	private static String valueMessage(String message, Object value, int index) {
+		String resolved = message(message, "Path value did not match");
+		if (resolved.contains("{}")) {
+			return format(resolved, value);
+		}
+		return format(resolved + ". Value: {}, Index: {}", value, index);
+	}
+
+	private static String format(String message, Object... args) {
+		String result = message;
+		for (Object arg : args) {
+			result = result.replaceFirst("\\{}", Matcher.quoteReplacement(String.valueOf(arg)));
+		}
+		return result;
+	}
+
 
 	private SecureResponse requireResponse(String message) {
 		SecureResponse response = context.response();

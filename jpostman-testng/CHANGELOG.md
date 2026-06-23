@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.6
+
+### Added
+
+- Added `allMatch(...)` assertion support for validating every numeric value returned by a response path.
+
 ## 1.2.5
 
 ### Added

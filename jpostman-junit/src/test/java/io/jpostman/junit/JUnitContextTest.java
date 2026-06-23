@@ -107,6 +107,17 @@ public class JUnitContextTest {
 		}
 	}
 
+
+	@Test
+	public void assertionsCanMatchAllNumericPathValues() {
+		ApiResponse response = response(200, "{\"products\":[{\"stock\":5},{\"stock\":9}]}");
+		JUnitContext cxt = JUnitContext.create().response(response);
+
+		cxt.asserts().allMatch("/**/stock", stock -> stock.intValue() > 0, "Stock is empty").verify();
+		cxt.soft().allMatch("/**/stock", (stock, i) -> stock.intValue() > 0,
+				"Stock is empty. Value: {}, Index: {}").verify();
+	}
+
 	@Test
 	public void contextCanCallSecureDelegateMethods() throws Exception {
 		String rules = "accessToken\n";

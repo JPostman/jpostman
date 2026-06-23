@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `allMatch(...)` assertion support for validating every numeric value returned by a response path.
 - Added limited stack trace printing for JUnit failures, using `DEFAULT_MAX_STACK_TRACE`.
 
 ### Fixed
