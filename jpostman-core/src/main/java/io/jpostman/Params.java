@@ -210,13 +210,13 @@ public class Params<T> {
 	 */
 	public static Map<String, String> props(Map<String, String> values, Set<String> keys) {
 	    Map<String, String> result = new LinkedHashMap<>();
-	    if (values != null) {
-	        result.putAll(values);
+	    if (values == null) {
+	    	return result;
 	    }
 
 	    Set<String> overrideKeys = keys;
 	    if (overrideKeys == null || overrideKeys.isEmpty()) {
-	        overrideKeys = result.keySet();
+	        overrideKeys = values.keySet();
 	    }
 
 	    for (String key : overrideKeys) {
