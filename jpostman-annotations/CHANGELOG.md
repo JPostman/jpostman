@@ -1,16 +1,22 @@
 # Changelog
 
 ## 1.0.4
+
 ### Added
-- Added @JPostmanRunner to execute multiple Postman requests from a collection or folder.
-- Added @JPostmanAssert to apply reusable assertion rules after annotation-based response execution.
-- Added support for assertion rule files with sections, inheritance, request-specific overrides, and comparison rules.
-- Added validation to prevent @JPostmanRequest and @JPostmanExecutor helper methods from also being annotated with @Test.
+
+- Added `@JPostmanRunner` to execute multiple Postman requests from a collection or folder.
+- Added `@JPostmanAssert` to apply reusable assertion rules after annotation-based response execution.
+- Added `JPostmanInfo` to share runtime execution details across annotation chains, dependencies, and executors.
+- Added support for passing `JPostmanInfo` into `@JPostmanRequest` helper methods.
+- Added support for passing `JPostmanInfo` into `@JPostmanExecutor` methods.
+- Added `JPostmanReport` to collect latest execution info, passed executions, failed executions, skipped executions, totals, and total execution time.
+- Added `@JPostmanReportContext` to inject a `JPostmanReport` into test classes.
+- Added `@JPostmanRequest.next()` to support forward-readable request helper chains.
 
 ### Changed
-- Extended @JPostmanExecutor support to allow executor methods with the current Postman request name.
-- Improved annotation failure handling with shorter, cleaner stack traces for JUnit and TestNG execution.
-- Refactored annotation runtime context loading, request discovery, and assertion execution into dedicated runtime helpers.
+
+- Added support for assertion rule files with sections, inheritance, request-specific overrides, and comparison rules.
+- Added validation to prevent @JPostmanRequest and @JPostmanExecutor helper methods from also being annotated with @Test.
 
 ## 1.0.3
 

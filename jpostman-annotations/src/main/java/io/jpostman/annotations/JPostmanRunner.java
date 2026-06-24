@@ -74,7 +74,7 @@ public @interface JPostmanRunner {
 	 * Optional cache key for storing this method result when used as a dependency.
 	 *
 	 * <p>
-	 * When empty, the annotated method name is used as the cache key.
+	 * Empty means the dependency is not cached.
 	 * </p>
 	 *
 	 * @return cache key

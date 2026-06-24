@@ -149,7 +149,7 @@ final class JPostmanContextRunner<C> {
 		 * Treat enabled Postman environment variables as plain values and disabled
 		 * variables as secrets so they can still be resolved while remaining masked.
 		 */
-		environment.getParams().keySet().forEach(key -> {
+		for (String key : environment.getParams().keySet()) {
 			Params.Entry entry = environment.entry(key);
 
 			if (entry.isEnabled()) {
@@ -157,7 +157,7 @@ final class JPostmanContextRunner<C> {
 			} else {
 				framework.secret(ctx, key, entry.getValue());
 			}
-		});
+		}
 	}
 
 	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)

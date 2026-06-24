@@ -31,11 +31,14 @@ public @interface JPostmanResponse {
 	/** Dependency method names to run before this response. */
 	String[] dependsOn() default {};
 
+	/** Call next function after end **/
+	String next() default "";
+
 	/**
 	 * Optional cache key for storing this method result.
 	 *
 	 * <p>
-	 * When empty, the annotated method name is used as the cache key.
+	 * Empty means the dependency is not cached.
 	 * </p>
 	 */
 	String cache() default "";
