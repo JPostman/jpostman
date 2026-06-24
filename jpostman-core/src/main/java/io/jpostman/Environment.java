@@ -53,9 +53,7 @@ public class Environment {
 	public Map<String, String> getParams() {
 		Map<String, String> enabled = new LinkedHashMap<>();
 		params.forEach((key, info) -> {
-			if (info.enabled) {
-				enabled.put(key, info.value);
-			}
+			enabled.put(key, info.value);
 		});
 		return enabled;
 	}

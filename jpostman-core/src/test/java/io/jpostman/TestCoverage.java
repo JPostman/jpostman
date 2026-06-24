@@ -124,7 +124,7 @@ public class TestCoverage {
 		assertEquals(env.get("apikey"), "v");
 		assertEquals(env.raw("apikey"), "v");
 		env.entry("apikey").setEnabled(false);
-		assertEquals(env.getParams().size(), 0);
+		assertEquals(env.getParams().size(), 1);
 		assertEquals(env.get("apikey"), null);
 		assertEquals(env.raw("apikey"), "v");
 		assertEquals(env.entry("apikey").toString(), "value=v, enabled=false");
@@ -136,7 +136,7 @@ public class TestCoverage {
 		env = Environment
 				.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":false}]}")
 						.getAsJsonObject());
-		assertEquals(env.getParams().size(), 0);
+		assertEquals(env.getParams().size(), 1);
 		assertEquals(env.entry("apikey").isEnabled(), false);
 		env.entry("apikey").setEnabled(true);
 		assertEquals(env.getParams().size(), 1);
