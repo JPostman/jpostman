@@ -107,15 +107,47 @@ public class JUnitContextTest {
 		}
 	}
 
-
 	@Test
 	public void assertionsCanMatchAllNumericPathValues() {
 		ApiResponse response = response(200, "{\"products\":[{\"stock\":5},{\"stock\":9}]}");
 		JUnitContext cxt = JUnitContext.create().response(response);
 
 		cxt.asserts().allMatch("/**/stock", stock -> stock.intValue() > 0, "Stock is empty").verify();
-		cxt.soft().allMatch("/**/stock", (stock, i) -> stock.intValue() > 0,
+		cxt.soft().allMatch("/**/stock", Integer.class, (stock, i) -> stock.intValue() > 0,
 				"Stock is empty. Value: {}, Index: {}").verify();
+	}
+
+	@Test
+	public void allMatchFormatsValueAndIndexFailureMessages() {
+		ApiResponse response = response(200, "{\"products\":[{\"category\":\"beauty\"},{\"category\":\"groceries\"}]}");
+		JUnitContext cxt = JUnitContext.create().response(response);
+		AssertionError error = assertThrows(AssertionError.class, () -> cxt.soft().allMatch("/**/category",
+				(value, index) -> value.equals("groceries"), "Category mismatch. Value: {}, Index: {}").verify());
+		assertEquals(normalized(error.getMessage()), "Multiple Failures (1 failure)" + System.lineSeparator()
+				+ "	org.opentest4j.AssertionFailedError: Category mismatch. Value: beauty, Index: 0");
+	}
+
+	@Test
+	public void allMatchAppendsValueAndIndexWhenMessageHasNoPlaceholders() {
+		ApiResponse response = response(200, "{\"products\":[{\"stock\":0},{\"stock\":3}]}");
+		JUnitContext cxt = JUnitContext.create().response(response);
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> cxt.asserts().allMatch("/**/stock", stock -> stock.intValue() > 0, "Stock is empty"));
+
+		assertEquals("Stock is empty. Value: 0, Index: 0", normalized(error.getMessage()));
+	}
+
+	@Test
+	public void allMatchReportsTypedValueMismatch() {
+		ApiResponse response = response(200, "{\"products\":[{\"category\":\"beauty\"}]}");
+		JUnitContext cxt = JUnitContext.create().response(response);
+
+		AssertionError error = assertThrows(AssertionError.class, () -> cxt.asserts().allMatch("/**/category",
+				Integer.class, (value, index) -> value > 0, "Category should be numeric"));
+
+		assertEquals("Path value has wrong type. Expected: Integer, Value: beauty, Index: 0",
+				normalized(error.getMessage()));
 	}
 
 	@Test
@@ -331,6 +363,22 @@ public class JUnitContextTest {
 	}
 
 	@Test
+	public void cleanJUnitFailureReturnsThrowableForJUnitBridge() throws Exception {
+		Object testInstance = new PrintingTest();
+		Method testMethod = PrintingTest.class.getDeclaredMethod("sampleTest");
+		AssertionError original = new AssertionError("Original failure");
+
+		Method clean = JPostmanJUnit.JPostmanJUnitExtension.class.getDeclaredMethod("cleanJUnitFailure", Object.class,
+				Method.class, Throwable.class);
+		clean.setAccessible(true);
+
+		Object result = clean.invoke(null, testInstance, testMethod, original);
+
+		assertTrue(result instanceof Throwable);
+		assertTrue(((Throwable) result).getMessage().contains("Original failure"));
+	}
+
+	@Test
 	public void responseCanUseCurrentContextFunction() {
 		ApiResponse response = response(200, "{\"accessToken\":\"abc123\"}");
 		JUnitContext cxt = JUnitContext.create().request(request()).response(ctx -> response);
@@ -441,6 +489,10 @@ public class JUnitContextTest {
 		} finally {
 			System.setErr(original);
 		}
+	}
+
+	private static String normalized(String message) {
+		return message == null ? null : message.trim();
 	}
 
 	private static ApiResponse response(int statusCode, String body) {

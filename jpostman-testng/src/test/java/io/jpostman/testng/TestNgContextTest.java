@@ -94,15 +94,47 @@ public class TestNgContextTest {
 		}
 	}
 
-
 	@Test
 	public void assertionsCanMatchAllNumericPathValues() {
 		ApiResponse response = response(200, "{\"products\":[{\"stock\":5},{\"stock\":9}]}");
 		TestNgContext cxt = TestNgContext.create().response(response);
 
 		cxt.asserts().allMatch("/**/stock", stock -> stock.intValue() > 0, "Stock is empty").verify();
-		cxt.soft().allMatch("/**/stock", (stock, i) -> stock.intValue() > 0,
+		cxt.soft().allMatch("/**/stock", Integer.class, (stock, i) -> stock.intValue() > 0,
 				"Stock is empty. Value: {}, Index: {}").verify();
+	}
+
+	@Test
+	public void allMatchFormatsValueAndIndexFailureMessages() {
+		ApiResponse response = response(200, "{\"products\":[{\"category\":\"beauty\"},{\"category\":\"groceries\"}]}");
+		TestNgContext cxt = TestNgContext.create().response(response);
+		AssertionError error = expectThrows(AssertionError.class, () -> cxt.soft().allMatch("/**/category",
+				(value, index) -> value.equals("groceries"), "Category mismatch. Value: {}, Index: {}").verify());
+		assertEquals(normalized(error.getMessage()),
+				"The following asserts failed:\n	Category mismatch. Value: beauty, Index: 0");
+	}
+
+	@Test
+	public void allMatchAppendsValueAndIndexWhenMessageHasNoPlaceholders() {
+		ApiResponse response = response(200, "{\"products\":[{\"stock\":0},{\"stock\":3}]}");
+		TestNgContext cxt = TestNgContext.create().response(response);
+
+		AssertionError error = expectThrows(AssertionError.class,
+				() -> cxt.asserts().allMatch("/**/stock", stock -> stock.intValue() > 0, "Stock is empty"));
+
+		assertEquals(normalized(error.getMessage()), "Stock is empty. Value: 0, Index: 0");
+	}
+
+	@Test
+	public void allMatchReportsTypedValueMismatch() {
+		ApiResponse response = response(200, "{\"products\":[{\"category\":\"beauty\"}]}");
+		TestNgContext cxt = TestNgContext.create().response(response);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> cxt.asserts().allMatch("/**/category",
+				Integer.class, (value, index) -> value > 0, "Category should be numeric"));
+
+		assertEquals(normalized(error.getMessage()),
+				"Path value has wrong type. Expected: Integer, Value: beauty, Index: 0");
 	}
 
 	@Test
@@ -275,6 +307,10 @@ public class TestNgContextTest {
 		@SuppressWarnings("unused")
 		public void plain() {
 		}
+	}
+
+	private static String normalized(String message) {
+		return message == null ? null : message.trim();
 	}
 
 	private static ApiResponse response(int statusCode, String body) {

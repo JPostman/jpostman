@@ -313,45 +313,44 @@ public class JUnitAssertions<T extends JUnitAssertions<T>> {
 	}
 
 	/**
-	 * Asserts that every value returned by the response path matches the predicate.
+	 * Asserts that every numeric value returned by the response path matches the
+	 * predicate.
 	 *
 	 * @param path      response path that resolves to a list of numeric values
 	 * @param predicate predicate applied to each value
-	 * @param message   custom failure message
+	 * @param message   custom failure message. Use {} for the value.
 	 * @return this assertion helper
 	 */
 	public T allMatch(String path, Predicate<Number> predicate, String message) {
-		requireResponse(message);
-		List<?> values = context.paths(path);
+		return allMatch(path, Number.class, (value, index) -> predicate.test(value), message);
+	}
 
-		for (int i = 0; i < values.size(); i++) {
-			final int index = i;
-			final Object value = values.get(i);
-
-			assertWithLog(() -> {
-				if (!(value instanceof Number)) {
-					fail(valueMessage(message(message, "Path value is not numeric"), value, index));
-				}
-
-				Number number = (Number) value;
-				if (!predicate.test(number)) {
-					fail(valueMessage(message(message, "Path value did not match"), number, index));
-				}
-			});
-		}
-
-		return self();
+	/**
+	 * Asserts that every numeric value returned by the response path matches the
+	 * predicate.
+	 *
+	 * @param path      response path that resolves to a list of numeric values
+	 * @param predicate predicate applied to each value and index
+	 * @param message   custom failure message. Use {} placeholders for value and
+	 *                  index.
+	 * @return this assertion helper
+	 */
+	public T allMatch(String path, BiPredicate<Object, Integer> predicate, String message) {
+		return allMatch(path, Object.class, predicate, message);
 	}
 
 	/**
 	 * Asserts that every value returned by the response path matches the predicate.
 	 *
-	 * @param path      response path that resolves to a list of numeric values
+	 * @param <V>       expected value type
+	 * @param path      response path that resolves to a list of values
+	 * @param type      expected value type
 	 * @param predicate predicate applied to each value and index
-	 * @param message   custom failure message. Use {} placeholders for value and index.
+	 * @param message   custom failure message. Use {} placeholders for value and
+	 *                  index.
 	 * @return this assertion helper
 	 */
-	public T allMatch(String path, BiPredicate<Number, Integer> predicate, String message) {
+	public <V> T allMatch(String path, Class<V> type, BiPredicate<V, Integer> predicate, String message) {
 		requireResponse(message);
 		List<?> values = context.paths(path);
 
@@ -360,20 +359,20 @@ public class JUnitAssertions<T extends JUnitAssertions<T>> {
 			final Object value = values.get(i);
 
 			assertWithLog(() -> {
-				if (!(value instanceof Number)) {
-					fail(format(message(message, "Path value is not numeric. Value: {}, Index: {}"), value, index));
+				if (!type.isInstance(value)) {
+					Assertions.fail(format("Path value has wrong type. Expected: {}, Value: {}, Index: {}",
+							type.getSimpleName(), value, index));
 				}
 
-				Number number = (Number) value;
-				if (!predicate.test(number, index)) {
-					fail(format(message(message, "Path value did not match. Value: {}, Index: {}"), number, index));
+				V typedValue = type.cast(value);
+				if (!predicate.test(typedValue, index)) {
+					Assertions.fail(valueIndexMessage(message(message, "Path value did not match"), typedValue, index));
 				}
 			});
 		}
 
 		return self();
 	}
-
 
 	/**
 	 * Verifies status code {@code 200} and returns the test context.
@@ -430,15 +429,10 @@ public class JUnitAssertions<T extends JUnitAssertions<T>> {
 		return JPostmanAssertionError.wrap(error, includeLog ? context.log() : null);
 	}
 
-
-	private void fail(String message) {
-		Assertions.fail(message);
-	}
-
-	private static String valueMessage(String message, Object value, int index) {
+	private static String valueIndexMessage(String message, Object value, int index) {
 		String resolved = message(message, "Path value did not match");
 		if (resolved.contains("{}")) {
-			return format(resolved, value);
+			return format(resolved, value, index);
 		}
 		return format(resolved + ". Value: {}, Index: {}", value, index);
 	}
@@ -450,7 +444,6 @@ public class JUnitAssertions<T extends JUnitAssertions<T>> {
 		}
 		return result;
 	}
-
 
 	private SecureResponse requireResponse(String message) {
 		SecureResponse response = context.response();
