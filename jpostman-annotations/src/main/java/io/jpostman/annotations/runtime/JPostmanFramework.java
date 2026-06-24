@@ -48,12 +48,30 @@ public interface JPostmanFramework<C> {
 	void clearCurrent();
 
 	/**
-	 * Loads environment values into the framework context as secrets.
+	 * Loads all environment values into the framework context as secrets.
 	 *
 	 * @param context     framework context
 	 * @param environment Postman environment object
 	 */
 	void secret(C context, Object environment);
+
+	/**
+	 * Stores a plain value in the framework context.
+	 *
+	 * @param context framework context
+	 * @param key     value key
+	 * @param value   plain value
+	 */
+	void plain(C context, String key, Object value);
+
+	/**
+	 * Stores a secret value in the framework context.
+	 *
+	 * @param context framework context
+	 * @param key     value key
+	 * @param value   secret value
+	 */
+	void secret(C context, String key, Object value);
 
 	/**
 	 * Loads secure rules into the framework context.

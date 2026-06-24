@@ -45,6 +45,18 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 
 	/** {@inheritDoc} */
 	@Override
+	public void plain(TestNgContext context, String key, Object value) {
+		context.plain(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void secret(TestNgContext context, String key, Object value) {
+		context.secret(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void load(TestNgContext context, InputStream rules) throws Exception {
 		context.load(rules);
 	}

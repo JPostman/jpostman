@@ -59,7 +59,7 @@ public class Environment {
 		});
 		return enabled;
 	}
-	
+
 	/**
 	 * Looks up parameter metadata by key.
 	 *
@@ -67,9 +67,9 @@ public class Environment {
 	 * @return matching {@link Entry}, or {@code null} when absent
 	 */
 	public Entry entry(String key) {
-	    return params.get(key);
+		return params.get(key);
 	}
-	
+
 	/**
 	 * Removes parameter metadata by key.
 	 *
@@ -77,7 +77,7 @@ public class Environment {
 	 * @return removed {@link Entry}, or {@code null} when absent
 	 */
 	public Entry removeKey(String key) {
-	    return params.remove(key);
+		return params.remove(key);
 	}
 
 	/**

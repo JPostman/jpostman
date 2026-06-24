@@ -192,12 +192,13 @@ public class Params<T> {
 	 * Creates a copy of environment values and overrides matching keys with
 	 * non-empty system property values.
 	 *
-	 * @param env environment containing default values
-	 * @param keys keys allowed to be overridden; when null or empty, all keys are checked
+	 * @param env  environment containing default values
+	 * @param keys keys allowed to be overridden; when null or empty, all keys are
+	 *             checked
 	 * @return copied values with system property overrides
 	 */
 	public static Map<String, String> props(Environment env, Set<String> keys) {
-	    return props(env.getParams(), keys);
+		return props(env.getParams(), keys);
 	}
 
 	/**
@@ -205,28 +206,31 @@ public class Params<T> {
 	 * non-empty system property values.
 	 *
 	 * @param values default values
-	 * @param keys keys allowed to be overridden; when null or empty, all keys are checked
+	 * @param keys   keys allowed to be overridden; when null or empty, all keys are
+	 *               checked
 	 * @return copied values with system property overrides
 	 */
 	public static Map<String, String> props(Map<String, String> values, Set<String> keys) {
-	    Map<String, String> result = new LinkedHashMap<>();
-	    if (values == null) {
-	    	return result;
-	    }
+		Map<String, String> result = new LinkedHashMap<>();
+		if (values == null) {
+			return result;
+		}
 
-	    Set<String> overrideKeys = keys;
-	    if (overrideKeys == null || overrideKeys.isEmpty()) {
-	        overrideKeys = values.keySet();
-	    }
+		Set<String> overrideKeys = keys;
+		if (overrideKeys == null || overrideKeys.isEmpty()) {
+			overrideKeys = values.keySet();
+		}
 
-	    for (String key : overrideKeys) {
-	        String value = System.getProperty(key);
-	        if (value != null && !value.isEmpty()) {
-	            result.put(key, value);
-	        }
-	    }
+		for (String key : overrideKeys) {
+			String value = System.getProperty(key);
+			if (value != null && !value.isEmpty()) {
+				result.put(key, value);
+			} else {
+				result.put(key, values.get(key));
+			}
+		}
 
-	    return result;
+		return result;
 	}
 
 	/**
@@ -237,7 +241,7 @@ public class Params<T> {
 	 * @return copied values with system property overrides
 	 */
 	public static Map<String, String> props(Map<String, String> values) {
-	    return props(values, null);
+		return props(values, null);
 	}
 
 	/**

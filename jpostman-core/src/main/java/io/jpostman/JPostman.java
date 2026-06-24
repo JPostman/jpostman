@@ -24,13 +24,14 @@ public final class JPostman {
 	 *
 	 * <p>
 	 * Requests returned from the created {@link Context} are not resolved against
-	 * environment variables unless values are supplied later through request builders
-	 * or other APIs.
+	 * environment variables unless values are supplied later through request
+	 * builders or other APIs.
 	 * </p>
 	 *
 	 * @param col input stream containing the exported Postman collection JSON
 	 * @return a context containing the loaded collection
-	 * @throws IOException if the collection stream cannot be read or parsed
+	 * @throws IOException          if the collection stream cannot be read or
+	 *                              parsed
 	 * @throws NullPointerException if {@code col} is {@code null}
 	 */
 	public static Context load(InputStream col) throws IOException {
@@ -51,8 +52,8 @@ public final class JPostman {
 	 * @param env input stream containing the exported Postman environment JSON; may
 	 *            be {@code null}
 	 * @return a context containing the loaded collection and optional environment
-	 * @throws IOException if the collection or environment stream cannot be read or
-	 *                     parsed
+	 * @throws IOException          if the collection or environment stream cannot
+	 *                              be read or parsed
 	 * @throws NullPointerException if {@code col} is {@code null}
 	 */
 	public static Context load(InputStream col, InputStream env) throws IOException {
@@ -73,9 +74,9 @@ public final class JPostman {
 	 * Represents a loaded Postman collection with an optional environment.
 	 *
 	 * <p>
-	 * A context is used to retrieve folders and requests from the loaded collection.
-	 * When an environment is available, returned requests are resolved against that
-	 * environment before being returned.
+	 * A context is used to retrieve folders and requests from the loaded
+	 * collection. When an environment is available, returned requests are resolved
+	 * against that environment before being returned.
 	 * </p>
 	 */
 	public static final class Context {
@@ -86,7 +87,7 @@ public final class JPostman {
 		/**
 		 * Creates a context for a loaded collection and optional environment.
 		 *
-		 * @param collection loaded Postman collection
+		 * @param collection  loaded Postman collection
 		 * @param environment loaded Postman environment, or {@code null}
 		 * @throws NullPointerException if {@code collection} is {@code null}
 		 */
@@ -100,7 +101,7 @@ public final class JPostman {
 		 *
 		 * @param folderName folder name from the Postman collection
 		 * @return matching folder
-		 * @throws NullPointerException if {@code folderName} is {@code null}
+		 * @throws NullPointerException     if {@code folderName} is {@code null}
 		 * @throws IllegalArgumentException if the folder cannot be found by name
 		 */
 		public Folder folder(String folderName) {
@@ -118,7 +119,7 @@ public final class JPostman {
 		 *
 		 * @param requestName request name from the Postman collection
 		 * @return matching request, resolved if an environment is loaded
-		 * @throws NullPointerException if {@code requestName} is {@code null}
+		 * @throws NullPointerException     if {@code requestName} is {@code null}
 		 * @throws IllegalArgumentException if the request cannot be found by name
 		 */
 		public Request request(String requestName) {

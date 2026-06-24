@@ -12,8 +12,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Properties;
 
+import io.jpostman.Environment;
 import io.jpostman.JPostman;
 import io.jpostman.JPostman.Context;
+import io.jpostman.Params;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanTestContext;
 
@@ -124,8 +126,9 @@ final class JPostmanContextRunner<C> {
 		Context loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
 
 		C ctx = existingContext == null ? framework.create() : existingContext;
-		if (existingContext == null && loaded.getEnvironment() != null) {
-			framework.secret(ctx, loaded.getEnvironment());
+
+		if (existingContext == null) {
+			loadEnvironmentValues(ctx, loaded.getEnvironment());
 		}
 
 		if (existingContext == null && !rulesLocation.isBlank()) {
@@ -135,6 +138,26 @@ final class JPostmanContextRunner<C> {
 		}
 
 		return new PreparedContext<>(ctx, loaded, testInstance, field);
+	}
+
+	private void loadEnvironmentValues(C ctx, Environment environment) {
+		if (environment == null) {
+			return;
+		}
+
+		/*
+		 * Treat enabled Postman environment variables as plain values and disabled
+		 * variables as secrets so they can still be resolved while remaining masked.
+		 */
+		environment.getParams().keySet().forEach(key -> {
+			Params.Entry entry = environment.entry(key);
+
+			if (entry.isEnabled()) {
+				framework.plain(ctx, key, entry.getValue());
+			} else {
+				framework.secret(ctx, key, entry.getValue());
+			}
+		});
 	}
 
 	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)

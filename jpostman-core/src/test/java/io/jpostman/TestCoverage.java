@@ -278,24 +278,32 @@ public class TestCoverage {
 
 	@Test
 	public void testParamsPropsOverridesWithNonEmptySystemProperties() {
-		System.setProperty("PARAMS_TOKEN", "system-token");
 		System.setProperty("PARAMS_EMPTY", "");
+		System.setProperty("PARAMS_TOKEN", "system-token");
 		try {
-			Map<String, String> source = Map.of("PARAMS_TOKEN", "default-token", "PARAMS_EMPTY", "default-empty",
-					"PARAMS_NAME", "default-name");
+			Map<String, String> source = Map.of("PARAMS_EMPTY", "default-empty", "PARAMS_NAME", "default-name",
+					"PARAMS_TOKEN", "default-token");
 
 			Map<String, String> result = Params.props(source, null);
 
-			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
 			assertEquals(result.get("PARAMS_EMPTY"), "default-empty");
 			assertEquals(result.get("PARAMS_NAME"), "default-name");
+			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
 			assertEquals(source.get("PARAMS_TOKEN"), "default-token");
 
-			result = Params.props(source, Set.of("PARAMS_EMPTY"));
+			result = Params.props(source, Set.of("PARAMS_EMPTY", "PARAMS_TOKEN"));
 
-			assertEquals(result.get("PARAMS_TOKEN"), "default-token");
 			assertEquals(result.get("PARAMS_EMPTY"), "default-empty");
-			assertEquals(result.get("PARAMS_NAME"), "default-name");
+			assertEquals(result.get("PARAMS_NAME"), null);
+			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
+			assertEquals(source.get("PARAMS_TOKEN"), "default-token");
+
+			result = Params.props(source, Set.of("PARAMS_TOKEN"));
+
+			assertEquals(result.get("PARAMS_EMPTY"), null);
+			assertEquals(result.get("PARAMS_NAME"), null);
+			assertEquals(result.get("PARAMS_TOKEN"), "system-token");
+			assertEquals(source.get("PARAMS_TOKEN"), "default-token");
 
 			Environment env = new Environment("Test Env");
 			assertEquals(Params.props(env, Set.of()).size(), 0);

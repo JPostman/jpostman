@@ -44,6 +44,18 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 
 	/** {@inheritDoc} */
 	@Override
+	public void plain(JUnitContext context, String key, Object value) {
+		context.plain(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void secret(JUnitContext context, String key, Object value) {
+		context.secret(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void load(JUnitContext context, InputStream rules) throws Exception {
 		context.load(rules);
 	}
