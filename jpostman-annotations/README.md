@@ -26,6 +26,7 @@ import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanInfo;
 ```
 
 ## Main Annotations
@@ -98,7 +99,7 @@ Defines how the request is executed.
 
 ```java
 @JPostmanExecutor(name = "auth", dependsOn = "login")
-public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+public ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
     return RestAssuredExecutor.apply(context.request())
             .auth()
             .oauth2(context.cache("accessToken"));
@@ -111,6 +112,7 @@ public ApiExecutor authExecutor(JUnitContext context, String methodName) {
 import io.jpostman.ApiExecutor;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanInfo;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.junit.JPostmanJUnit;
@@ -147,7 +149,7 @@ public class DemoJUnitTest {
     }
 
     @JPostmanExecutor(name = "auth", dependsOn = "login")
-    public ApiExecutor authExecutor(JUnitContext context, String methodName) {
+    public ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
         return RestAssuredExecutor.apply(context.request())
                 .auth()
                 .oauth2(context.cache("accessToken"));
@@ -161,6 +163,7 @@ public class DemoJUnitTest {
 import io.jpostman.ApiExecutor;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanInfo;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.testng.JPostmanTestNG;
@@ -197,7 +200,7 @@ public class DemoTestNgTest {
     }
 
     @JPostmanExecutor(name = "auth", dependsOn = "login")
-    public ApiExecutor authExecutor(TestNgContext context, String methodName) {
+    public ApiExecutor authExecutor(TestNgContext context, JPostmanInfo info) {
         return RestAssuredExecutor.apply(context.request())
                 .auth()
                 .oauth2(context.cache("accessToken"));
@@ -248,6 +251,51 @@ collection.product=classpath:Product.postman_collection.json
 
 Rules are optional. However, if a request or response uses `rule = "..."`, then the matching context must load a rules file containing that section.
 
+
+## Assertion Rules
+
+`@JPostmanAssert` can load assertion rules from an INI file so the test body can stay empty.
+
+Example `jpostman-assertions.ini`:
+
+```ini
+# Supported assertion rule formats:
+# statusCode=200                                  -> verifies HTTP status code
+# exists=id,firstName                             -> verifies one or more paths exist
+# notExists=missing                               -> verifies one or more paths do not exist
+# pathNotNull=id                                  -> verifies one or more paths are not null
+# pathEquals=firstName=John                       -> verifies path equals value
+# compare=id>=1,id<2,active=true                  -> verifies one or more path comparison rules
+# allMatch=/**/price> 0 | Price is empty. Element : {}, Index: {}
+#                                                 -> one allMatch condition with custom message after pipe
+# allMatch=/**/stock > 0, /**/discount < 25       -> multiple allMatch conditions with generated messages
+#
+# Supported comparison operators: =, ==, !=, <, <=, >, >=
+
+[product]
+statusCode=200
+allMatch=/**/stock > 0, /**/discount < 25
+```
+
+`allMatch` uses the same comparison operators as `compare`: `=`, `==`, `!=`, `<`, `<=`, `>`, and `>=`.
+When `allMatch` contains a pipe (`|`), the left side is one condition and the right side is the custom message.
+When `allMatch` does not contain a pipe, comma-separated conditions are evaluated independently with generated messages containing the current item, index, and condition.
+
+Then the runner can apply the rule without writing the assertion in the test method:
+
+```java
+@JPostmanRunner(
+    namespace = "product",
+    folder = "Product",
+    include = { "Get all products" },
+    executor = "auth",
+    soft = true
+)
+@JPostmanAssert(sections = { "product" })
+public void productRunner() {
+}
+```
+
 ## Dependency Flow
 
 Annotation dependencies are handled through method names.
@@ -297,15 +345,15 @@ public ApiExecutor defaultExecutor(JUnitContext context)
 or:
 
 ```java
-public ApiExecutor defaultExecutor(JUnitContext context, String methodName)
+public ApiExecutor defaultExecutor(JUnitContext context, JPostmanInfo info)
 ```
 
-The second form allows logs to include the current test method name.
+The second form allows logs to include the current execution info.
 
 ```java
 @JPostmanExecutor
-public ApiExecutor defaultExecutor(JUnitContext context, String methodName) {
-    System.out.println(methodName + " >>> " + context.log());
+public ApiExecutor defaultExecutor(JUnitContext context, JPostmanInfo info) {
+    System.out.println(info.method + " >>> " + context.log());
     return RestAssuredExecutor.apply(context.request());
 }
 ```

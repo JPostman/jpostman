@@ -1,5 +1,6 @@
 package io.jpostman.annotations.testng;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -7,10 +8,12 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
+import org.testng.IAnnotationTransformer;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestResult;
 import org.testng.SkipException;
+import org.testng.annotations.ITestAnnotation;
 
 import io.jpostman.annotations.JPostmanAnnotationEngine;
 import io.jpostman.annotations.JPostmanAssert;
@@ -20,6 +23,7 @@ import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
 import io.jpostman.annotations.JPostmanTestContext;
+import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
 import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
 import io.jpostman.testng.TestNgContext;
 
@@ -41,11 +45,30 @@ import io.jpostman.testng.TestNgContext;
  * available in lifecycle methods.
  * </p>
  */
-public final class JPostmanTestNgAnnotationListener implements IInvokedMethodListener {
+public final class JPostmanTestNgAnnotationListener implements IInvokedMethodListener, IAnnotationTransformer {
 
 	private final Set<Object> prepared = Collections.newSetFromMap(new IdentityHashMap<>());
 	private final Set<Object> reportedSetupFailures = Collections.newSetFromMap(new IdentityHashMap<>());
 	private final Map<Object, Throwable> setupFailures = Collections.synchronizedMap(new IdentityHashMap<>());
+
+	/**
+	 * Validates TestNG @Test methods before TestNG attempts native parameter
+	 * injection. This lets JPostman show a clear annotation error instead of
+	 * TestNG's generic injection failure.
+	 */
+	@Override
+	@SuppressWarnings("rawtypes")
+	public void transform(ITestAnnotation annotation, Class testClass, Constructor testConstructor, Method testMethod) {
+		if (testMethod == null) {
+			return;
+		}
+
+		if (!usesJPostmanAnnotations(testMethod.getDeclaringClass())) {
+			return;
+		}
+
+		JPostmanAnnotationValidator.validateTestMethod(testMethod);
+	}
 
 	/**
 	 * Prepares and runs JPostman annotations before TestNG invokes a test or
@@ -148,6 +171,40 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 					|| method.isAnnotationPresent(JPostmanAssert.class)) {
 				return true;
 			}
+		}
+
+		return false;
+	}
+
+	private boolean usesJPostmanAnnotations(Class<?> type) {
+		if (type == null) {
+			return false;
+		}
+
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			if (current.isAnnotationPresent(JPostmanTestNgAnnotations.class)) {
+				return true;
+			}
+
+			for (Field field : current.getDeclaredFields()) {
+				if (field.isAnnotationPresent(JPostmanContext.class)
+						|| field.isAnnotationPresent(JPostmanTestContext.class)) {
+					return true;
+				}
+			}
+
+			for (Method method : current.getDeclaredMethods()) {
+				if (method.isAnnotationPresent(JPostmanRequest.class)
+						|| method.isAnnotationPresent(JPostmanResponse.class)
+						|| method.isAnnotationPresent(JPostmanRunner.class)
+						|| method.isAnnotationPresent(JPostmanExecutor.class)
+						|| method.isAnnotationPresent(JPostmanAssert.class)) {
+					return true;
+				}
+			}
+
+			current = current.getSuperclass();
 		}
 
 		return false;

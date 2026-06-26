@@ -62,6 +62,7 @@ public final class JPostmanAnnotationEngine {
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod) throws Exception {
+		JPostmanAnnotationValidator.validateTestMethod(testMethod);
 		try {
 			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).run(testInstance, testMethod);
 		} catch (Throwable e) {
@@ -101,6 +102,7 @@ public final class JPostmanAnnotationEngine {
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod) throws Exception {
+		JPostmanAnnotationValidator.validateTestMethod(testMethod);
 		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).run(testInstance, testMethod);
 	}
 

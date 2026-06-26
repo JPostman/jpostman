@@ -189,6 +189,11 @@ public class SecureTest {
 		assertEquals(request.getHeader().get("Authorization"), "Bearer real-token");
 		assertEquals(request.getHeader().get("API-KEY"), "real-api-key");
 		assertEquals(request.toUrl(), "https://api.example.com/login");
+
+		Request modified = secure.builder().headers().add("X-Token", "{{accessToken}}").end().build();
+		assertEquals(modified.getHeader().get("X-Token"), "real-token");
+		assertEquals(modified.toUrl(), "https://api.example.com/login");
+
 		assertEquals(secure.request(), loginRequest);
 	}
 

@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Convenience entry point for loading a Postman collection and, optionally, a
  * Postman environment.
@@ -81,19 +84,143 @@ public final class JPostman {
 	 */
 	public static final class Context {
 
+		private final Logger log;
 		private final Collection collection;
 		private final Environment environment;
 
 		/**
 		 * Creates a context for a loaded collection and optional environment.
 		 *
+		 * <p>
+		 * The default logger owner is {@link JPostman}. Annotation integrations may
+		 * create a copy of this context with a test-class logger by using
+		 * {@link #logger(Class)}.
+		 * </p>
+		 *
 		 * @param collection  loaded Postman collection
 		 * @param environment loaded Postman environment, or {@code null}
 		 * @throws NullPointerException if {@code collection} is {@code null}
 		 */
 		private Context(Collection collection, Environment environment) {
+			this(collection, environment, JPostman.class);
+		}
+
+		/**
+		 * Creates a context with a specific logger owner class.
+		 *
+		 * <p>
+		 * This constructor is used internally so framework integrations can make
+		 * context logging appear under the user's test class, for example
+		 * {@code DemoTest}, instead of {@code io.jpostman.JPostman$Context}.
+		 * </p>
+		 *
+		 * @param collection  loaded Postman collection
+		 * @param environment loaded Postman environment, or {@code null}
+		 * @param logClass    class used as the SLF4J logger name; when {@code null},
+		 *                    {@link JPostman} is used
+		 * @throws NullPointerException if {@code collection} is {@code null}
+		 */
+		private Context(Collection collection, Environment environment, Class<?> logClass) {
 			this.collection = Objects.requireNonNull(collection, "collection must not be null");
 			this.environment = environment;
+			this.log = LoggerFactory.getLogger(Objects.requireNonNull(logClass, "logClass must not be null"));
+		}
+
+		/**
+		 * Returns a copy of this context that uses the supplied class as its logger
+		 * owner.
+		 *
+		 * <p>
+		 * The loaded collection and environment are reused. Only the logger name
+		 * changes. This is useful for annotation runners that want
+		 * {@code jctx.debug(...)} to log under the user's test class.
+		 * </p>
+		 *
+		 * @param logClass class used as the SLF4J logger name
+		 * @return context copy with the same collection/environment and a different
+		 *         logger
+		 */
+		public Context logger(Class<?> logClass) {
+			return new Context(collection, environment, logClass);
+		}
+
+		/**
+		 * Returns the SLF4J logger used by this context.
+		 *
+		 * @return logger used for context-level log messages
+		 */
+		public Logger log() {
+			return log;
+		}
+
+		/**
+		 * Logs a TRACE message using the context logger.
+		 *
+		 * <p>
+		 * Supports both plain messages and SLF4J-style formatted messages.
+		 * </p>
+		 *
+		 * @param message log message
+		 * @param args    optional message arguments
+		 */
+		public void trace(String message, Object... args) {
+			log.trace(message, args);
+		}
+
+		/**
+		 * Logs a DEBUG message using the context logger.
+		 *
+		 * <p>
+		 * Supports both plain messages and SLF4J-style formatted messages.
+		 * </p>
+		 *
+		 * @param message log message
+		 * @param args    optional message arguments
+		 */
+		public void debug(String message, Object... args) {
+			log.debug(message, args);
+		}
+
+		/**
+		 * Logs an INFO message using the context logger.
+		 *
+		 * <p>
+		 * Supports both plain messages and SLF4J-style formatted messages.
+		 * </p>
+		 *
+		 * @param message log message
+		 * @param args    optional message arguments
+		 */
+		public void info(String message, Object... args) {
+			log.info(message, args);
+		}
+
+		/**
+		 * Logs a WARN message using the context logger.
+		 *
+		 * <p>
+		 * Supports both plain messages and SLF4J-style formatted messages.
+		 * </p>
+		 *
+		 * @param message log message
+		 * @param args    optional message arguments
+		 */
+		public void warn(String message, Object... args) {
+			log.warn(message, args);
+		}
+
+		/**
+		 * Logs an ERROR message using the context logger.
+		 *
+		 * <p>
+		 * Supports both plain messages and SLF4J-style formatted messages.
+		 * </p>
+		 *
+		 * @param message log message
+		 * @param args    optional message arguments
+		 */
+		public void error(String message, Object... args) {
+			log.error(message, args);
 		}
 
 		/**

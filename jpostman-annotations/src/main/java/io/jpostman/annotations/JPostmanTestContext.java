@@ -13,18 +13,46 @@ import java.lang.annotation.Target;
 @Retention(RUNTIME)
 public @interface JPostmanTestContext {
 
-	/** Context namespace to use. Empty means default context. */
+	/**
+	 * Context namespace to use. Empty means default context.
+	 *
+	 * @return context namespace
+	 */
 	String namespace() default "";
 
-	/** Properties file to load context locations from. */
+	/**
+	 * Properties file to load context locations from.
+	 *
+	 * @return context configuration location
+	 */
 	String config() default "classpath:jpostman.properties";
 
-	/** Optional Postman collection location. */
+	/**
+	 * Optional Postman collection location.
+	 *
+	 * @return Postman collection location
+	 */
 	String collection() default "";
 
-	/** Optional Postman environment location. */
+	/**
+	 * Optional Postman environment location.
+	 *
+	 * @return Postman environment location
+	 */
 	String environment() default "";
 
-	/** Optional secure rules location. */
+	/**
+	 * Optional secure rules location.
+	 *
+	 * @return secure rules location
+	 */
 	String rules() default "";
+
+	/**
+	 * When true, this field mirrors the latest active framework context produced by
+	 * JPostman execution, regardless of namespace.
+	 *
+	 * @return {@code true} when this field should mirror the active context
+	 */
+	boolean active() default false;
 }

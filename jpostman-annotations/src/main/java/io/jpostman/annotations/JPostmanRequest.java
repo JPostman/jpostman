@@ -12,8 +12,8 @@ import java.lang.annotation.Target;
  * <p>
  * Request helper methods can be used as dependencies for
  * {@link JPostmanResponse}, {@link JPostmanRunner}, or another
- * {@code @JPostmanRequest}. Blank namespace and folder values use the default
- * context and collection root for the helper request.
+ * {@code @JPostmanRequest}. When request, folder, or namespace is blank, the
+ * value is inherited from the caller in the current {@link JPostmanInfo} chain.
  * </p>
  */
 @Target(METHOD)
@@ -21,10 +21,31 @@ import java.lang.annotation.Target;
 public @interface JPostmanRequest {
 
 	/**
+	 * Logical name for this request helper.
+	 *
+	 * @return logical JPostman invocation name
+	 */
+	String id() default "";
+
+	/**
+	 * Named executor associated with this request helper.
+	 *
+	 * <p>
+	 * Empty means the default executor. This value is stored in
+	 * {@link JPostmanInfo} so helper methods can see which executor is active for
+	 * the chain.
+	 * </p>
+	 *
+	 * @return named executor
+	 */
+	String executor() default "";
+
+	/**
 	 * Context namespace to use.
 	 *
 	 * <p>
-	 * Empty means the default context is used.
+	 * Empty means inherit from the caller. If there is no caller namespace, the
+	 * default context is used.
 	 * </p>
 	 *
 	 * @return context namespace
@@ -35,7 +56,8 @@ public @interface JPostmanRequest {
 	 * Postman folder name to search before resolving the request.
 	 *
 	 * <p>
-	 * Empty means the collection root is searched by request name.
+	 * Empty means inherit from the caller. If no folder is available, the
+	 * collection root is searched by request name.
 	 * </p>
 	 *
 	 * @return Postman folder name
@@ -46,8 +68,9 @@ public @interface JPostmanRequest {
 	 * Postman request name to prepare.
 	 *
 	 * <p>
-	 * Empty means no request is prepared by this helper. This allows helper methods
-	 * to modify {@link JPostmanInfo#params} without loading a request.
+	 * Empty means inherit from the caller. This allows helper methods to modify
+	 * {@link JPostmanInfo#params} without repeating the same request name on every
+	 * method in the chain.
 	 * </p>
 	 *
 	 * @return Postman request name
@@ -85,8 +108,9 @@ public @interface JPostmanRequest {
 	 * Cache key for storing this method result.
 	 *
 	 * <p>
-	 * Empty means the dependency is not cached. JPostman does not cache by method
-	 * name automatically.
+	 * Empty means the dependency is not cached. When a cache key is provided, the
+	 * request method must return a value. Void request methods cannot be cached
+	 * because there is no result to store.
 	 * </p>
 	 *
 	 * @return cache key

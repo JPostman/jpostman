@@ -6,10 +6,9 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.jpostman.Environment;
 import io.jpostman.Request;
-import io.jpostman.RequestProvider;
 import io.jpostman.Request.RequestBuilder;
+import io.jpostman.RequestProvider;
 
 /**
  * Provides a secure wrapper around a request.
@@ -185,8 +184,7 @@ public final class SecureRequest implements RequestProvider {
 	 */
 	@Override
 	public Request build() {
-		Environment env = new Environment("jpostman-secure").builder().resolve(resolveValues()).end();
-		return builder().build(env);
+		return builder().build();
 	}
 
 	/**
@@ -195,7 +193,12 @@ public final class SecureRequest implements RequestProvider {
 	 * @return request builder
 	 */
 	public RequestBuilder builder() {
-		return request.builder();
+		return new Request.RequestBuilder(request) {
+			@Override
+			protected Map<String, ?> variables() {
+				return resolveValues();
+			}
+		};
 	}
 
 	/**

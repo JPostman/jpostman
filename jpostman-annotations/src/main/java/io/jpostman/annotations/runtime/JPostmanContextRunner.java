@@ -35,30 +35,77 @@ final class JPostmanContextRunner<C> {
 	PreparedContexts<C> prepare(Object testInstance) throws Exception {
 		PreparedContexts<C> prepared = new PreparedContexts<>();
 
+		prepareNamedContexts(testInstance, prepared);
+		prepareActiveContexts(testInstance, prepared);
+
+		return prepared;
+	}
+
+	private void prepareNamedContexts(Object testInstance, PreparedContexts<C> prepared) throws Exception {
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
 			for (Field field : current.getDeclaredFields()) {
-				if (!field.isAnnotationPresent(JPostmanTestContext.class)
-						|| !framework.contextType().isAssignableFrom(field.getType())) {
+				if (!isTestContextField(field)) {
 					continue;
 				}
 
 				JPostmanTestContext annotation = field.getAnnotation(JPostmanTestContext.class);
-				String namespace = annotation.namespace();
-
-				field.setAccessible(true);
-				C existingContext = framework.contextType().cast(field.get(testInstance));
+				if (isActive(annotation)) {
+					continue;
+				}
 
 				PreparedContext<C> context = createContext(annotation, testInstance.getClass(), field, testInstance,
-						existingContext);
+						existingContext(testInstance, field));
 				field.set(testInstance, context.context);
-
-				prepared.put(namespace, context);
+				prepared.put(annotation.namespace(), context);
 			}
 			current = current.getSuperclass();
 		}
+	}
 
-		return prepared;
+	private void prepareActiveContexts(Object testInstance, PreparedContexts<C> prepared) throws Exception {
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (!isTestContextField(field)) {
+					continue;
+				}
+
+				JPostmanTestContext annotation = field.getAnnotation(JPostmanTestContext.class);
+				if (!isActive(annotation)) {
+					continue;
+				}
+
+				String namespace = annotation.namespace();
+				PreparedContext<C> source;
+				if (prepared.contains(namespace)) {
+					source = prepared.resolve(namespace);
+				} else {
+					source = createContext(annotation, testInstance.getClass(), field, testInstance,
+							existingContext(testInstance, field));
+					prepared.put(namespace, source);
+				}
+
+				field.setAccessible(true);
+				field.set(testInstance, source.context);
+				prepared.addActive(new PreparedContext<>(source.context, source.loaded, testInstance, field));
+			}
+			current = current.getSuperclass();
+		}
+	}
+
+	private boolean isTestContextField(Field field) {
+		return field.isAnnotationPresent(JPostmanTestContext.class)
+				&& framework.contextType().isAssignableFrom(field.getType());
+	}
+
+	private boolean isActive(JPostmanTestContext annotation) {
+		return annotation.active();
+	}
+
+	private C existingContext(Object testInstance, Field field) throws IllegalAccessException {
+		field.setAccessible(true);
+		return framework.contextType().cast(field.get(testInstance));
 	}
 
 	void injectLoadedContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
@@ -99,9 +146,24 @@ final class JPostmanContextRunner<C> {
 				}
 
 				field.setAccessible(true);
-				field.set(testInstance, loaded);
+				field.set(testInstance, loggerContext(loaded, testClass));
 			}
 			current = current.getSuperclass();
+		}
+	}
+
+	private Context loggerContext(Context context, Class<?> testClass) throws Exception {
+		try {
+			Method logger = Context.class.getMethod("logger", Class.class);
+			return (Context) logger.invoke(context, testClass);
+		} catch (NoSuchMethodException e) {
+			return context;
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof Exception) {
+				throw (Exception) cause;
+			}
+			throw e;
 		}
 	}
 
@@ -125,16 +187,17 @@ final class JPostmanContextRunner<C> {
 
 		Context loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
 
-		C ctx = existingContext == null ? framework.create() : existingContext;
+		C ctx = framework.create();
+		loadEnvironmentValues(ctx, loaded.getEnvironment());
 
-		if (existingContext == null) {
-			loadEnvironmentValues(ctx, loaded.getEnvironment());
-		}
-
-		if (existingContext == null && !rulesLocation.isBlank()) {
+		if (!rulesLocation.isBlank()) {
 			try (InputStream input = open(rulesLocation, testClass)) {
 				framework.load(ctx, input);
 			}
+		}
+
+		if (existingContext != null) {
+			framework.copyCache(existingContext, ctx);
 		}
 
 		return new PreparedContext<>(ctx, loaded, testInstance, field);
@@ -149,7 +212,7 @@ final class JPostmanContextRunner<C> {
 		 * Treat enabled Postman environment variables as plain values and disabled
 		 * variables as secrets so they can still be resolved while remaining masked.
 		 */
-		for (String key : environment.getParams().keySet()) {
+		environment.getParams().keySet().forEach(key -> {
 			Params.Entry entry = environment.entry(key);
 
 			if (entry.isEnabled()) {
@@ -157,7 +220,7 @@ final class JPostmanContextRunner<C> {
 			} else {
 				framework.secret(ctx, key, entry.getValue());
 			}
-		}
+		});
 	}
 
 	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)

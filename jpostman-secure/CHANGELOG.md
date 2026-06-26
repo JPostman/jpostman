@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.6
+
+- Added test coverage for modifying a secure request builder with a new header containing {{accessToken}}.
+
+### Changed
+- Removed temporary Environment wrapping from SecureRequest.build().
+- Changed SecureRequest.build() to call builder().build() directly.
+- Updated SecureRequest.builder() to return a custom RequestBuilder.
+- The custom builder overrides variables() and returns resolveValues().
+
 ## 1.1.4
 
 ### Added

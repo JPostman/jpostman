@@ -22,6 +22,13 @@ import java.lang.annotation.Target;
 public @interface JPostmanRunner {
 
 	/**
+	 * Logical id for this runner execution.
+	 *
+	 * @return runner id, or empty string when not defined
+	 */
+	String id() default "";
+
+	/**
 	 * Context namespace to use. Empty means the default context.
 	 *
 	 * @return context namespace
@@ -71,22 +78,20 @@ public @interface JPostmanRunner {
 	String[] exclude() default {};
 
 	/**
-	 * Optional cache key for storing this method result when used as a dependency.
-	 *
-	 * <p>
-	 * Empty means the dependency is not cached.
-	 * </p>
-	 *
-	 * @return cache key
-	 */
-	String cache() default "";
-
-	/**
 	 * Expected HTTP status code for each executed request.
 	 *
-	 * @return expected HTTP status code
+	 * <p>
+	 * A negative value uses {@link JPostmanContext#verifyStatusCode()}. When the
+	 * context default is also negative, automatic status-code verification is
+	 * disabled. This is the default so runners can execute mixed request flows
+	 * without assuming every response must be {@code 200}. Set a concrete value
+	 * when each runner request should be verified by the annotation runtime.
+	 * </p>
+	 *
+	 * @return expected HTTP status code, or a negative value to use the context
+	 *         default
 	 */
-	int verify() default 200;
+	int verify() default -1;
 
 	/**
 	 * Named executor method to use. Empty means default execution.

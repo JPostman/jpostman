@@ -1,6 +1,7 @@
 package io.jpostman.annotations.runtime;
 
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -50,7 +51,15 @@ final class JPostmanResourceLoader {
 			return input;
 		}
 
-		return new FileInputStream(value);
+		try {
+			return new FileInputStream(value);
+		} catch (FileNotFoundException e) {
+			InputStream input = testClass.getClassLoader().getResourceAsStream(value);
+			if (input != null) {
+				return input;
+			}
+			throw e;
+		}
 	}
 
 	static String property(Properties properties, String key, String namespace) {

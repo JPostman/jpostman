@@ -1,12 +1,15 @@
 package io.jpostman.annotations.runtime;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import io.jpostman.Collection;
 
 final class PreparedContexts<C> {
 	private final Map<String, PreparedContext<C>> values = new HashMap<>();
+	private final List<PreparedContext<C>> active = new ArrayList<>();
 
 	boolean isEmpty() {
 		return values.isEmpty();
@@ -48,8 +51,27 @@ final class PreparedContexts<C> {
 		return resolve(namespace).collection;
 	}
 
+	List<C> contexts() {
+		List<C> contexts = new ArrayList<>();
+		for (PreparedContext<C> value : values.values()) {
+			contexts.add(value.context);
+		}
+		return contexts;
+	}
+
 	void update(String namespace, C context) {
 		resolve(namespace).update(context);
+		updateActive(context);
+	}
+
+	void addActive(PreparedContext<C> context) {
+		active.add(context);
+	}
+
+	void updateActive(C context) {
+		for (PreparedContext<C> value : active) {
+			value.update(context);
+		}
 	}
 
 	private String normalize(String namespace) {

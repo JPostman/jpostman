@@ -10,8 +10,9 @@ import org.slf4j.LoggerFactory;
  * Runtime report collected during JPostman annotation execution.
  *
  * <p>
- * The report is intentionally simple and mutable so tests can inspect it
- * directly after annotation-driven requests, dependencies, or runners execute.
+ * The report keeps the latest execution info and simple status lists for
+ * passed, failed, and skipped top-level JPostman executions. The lists are
+ * public for easy inspection in user tests.
  * </p>
  */
 public final class JPostmanReport {
@@ -19,16 +20,10 @@ public final class JPostmanReport {
 	private static final Logger log = LoggerFactory.getLogger(JPostmanReport.class);
 
 	/** Latest JPostman execution info. */
-	public JPostmanInfo info;
+	private JPostmanInfo info;
 
 	/** Timestamp when this report object was created. */
 	public final long created = System.currentTimeMillis();
-
-	/** Total tracked execution time in milliseconds. */
-	public long totalTime;
-
-	/** Total number of tracked top-level executions. */
-	public int total;
 
 	/** Passed top-level JPostman executions. */
 	public final List<JPostmanInfo> passed = new ArrayList<>();
@@ -40,61 +35,135 @@ public final class JPostmanReport {
 	public final List<JPostmanInfo> skipped = new ArrayList<>();
 
 	/**
-	 * Stores the latest info without changing counters.
+	 * Stores the latest execution info without changing status counters.
 	 *
 	 * @param info execution info to store
 	 */
-	public void add(JPostmanInfo info) {
+	public JPostmanInfo update(JPostmanInfo info) {
+		this.info = info;
+		return info;
+	}
+
+	/**
+	 * Returns the latest execution info and prints it using trace level.
+	 *
+	 * @return latest execution info, or {@code null} when nothing has executed
+	 */
+	public JPostmanInfo info() {
+		return info(true);
+	}
+
+	/**
+	 * Returns the latest execution info.
+	 *
+	 * @param print whether to print the latest info using trace level
+	 * @return latest execution info, or {@code null} when nothing has executed
+	 */
+	public JPostmanInfo info(boolean print) {
+		if (print && info != null) {
+			print();
+		}
+		return info;
+	}
+
+	/**
+	 * Prints the latest execution info using trace level.
+	 *
+	 * <p>
+	 * This is a convenience alias for {@link #info()}.
+	 * </p>
+	 */
+	public void print() {
 		if (info != null) {
-			this.info = info;
+			info.print();
 		}
 	}
 
-	/** Records a passed top-level execution. */
+	/**
+	 * Records a passed top-level execution.
+	 *
+	 * @param info passed execution info
+	 */
 	public void passed(JPostmanInfo info) {
-		count(info);
-		passed.add(info);
+		passed.add(update(info));
 	}
 
-	/** Records a failed top-level execution. */
+	/**
+	 * Records a failed top-level execution.
+	 *
+	 * @param info failed execution info
+	 */
 	public void failed(JPostmanInfo info) {
-		count(info);
-		failed.add(info);
+		failed.add(update(info));
 	}
 
-	/** Records a skipped top-level execution. */
+	/**
+	 * Records a skipped top-level execution.
+	 *
+	 * @param info skipped execution info
+	 */
 	public void skipped(JPostmanInfo info) {
-		count(info);
-		skipped.add(info);
+		skipped.add(update(info));
 	}
 
 	/** Clears collected execution values but keeps the same report instance. */
 	public void clear() {
 		info = null;
-		totalTime = 0L;
-		total = 0;
 		passed.clear();
 		failed.clear();
 		skipped.clear();
 	}
 
-	/** Builds a readable report summary. */
+	/**
+	 * Returns the total number of recorded top-level executions.
+	 *
+	 * @return passed + failed + skipped count
+	 */
+	public int total() {
+		return passed.size() + failed.size() + skipped.size();
+	}
+
+	/**
+	 * Returns total execution time in milliseconds.
+	 *
+	 * @return sum of positive durations from passed, failed, and skipped entries
+	 */
+	public long duration() {
+		long duration = 0L;
+		for (JPostmanInfo info : all()) {
+			if (info != null && info.duration() > 0L) {
+				duration += info.duration();
+			}
+		}
+		return duration;
+	}
+
+	/**
+	 * Returns all recorded execution infos in status order.
+	 *
+	 * @return passed, failed, and skipped infos
+	 */
+	public List<JPostmanInfo> all() {
+		List<JPostmanInfo> infos = new ArrayList<>();
+		infos.addAll(passed);
+		infos.addAll(failed);
+		infos.addAll(skipped);
+		return infos;
+	}
+
+	/**
+	 * Builds a readable multi-line report summary.
+	 *
+	 * @return formatted report summary
+	 */
 	public String log() {
-		return "JPostmanReport {" + "\n  total=" + total + "\n  passed=" + passed.size() + "\n  failed=" + failed.size()
-				+ "\n  skipped=" + skipped.size() + "\n  totalTime=" + totalTime + "\n  latest="
-				+ (info == null ? null : info.method) + "\n}";
+		return "===============================================" + "\nJPostman report" + "\nTotal tests run: " + total()
+				+ ", Passes: " + passed.size() + ", Failures: " + failed.size() + ", Skips: " + skipped.size()
+				+ ", Duration: " + duration() + " ms" + "\n===============================================";
 	}
 
 	/** Prints {@link #log()} using trace level. */
-	public void print() {
+	public void summary() {
 		log.trace(log());
-	}
-
-	private void count(JPostmanInfo info) {
-		add(info);
-		total++;
-		if (info != null && info.duration > 0L) {
-			totalTime += info.duration;
-		}
 	}
 }

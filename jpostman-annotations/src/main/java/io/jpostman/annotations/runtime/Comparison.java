@@ -1,5 +1,8 @@
 package io.jpostman.annotations.runtime;
 
+/**
+ * Parsed comparison rule used by annotation assertion processing.
+ */
 final class Comparison {
 	final String path;
 	final String operator;
@@ -11,6 +14,14 @@ final class Comparison {
 		this.expected = expected;
 	}
 
+	/**
+	 * Parses a comparison expression into path, operator, and expected value parts.
+	 *
+	 * @param expression expression such as {@code /price >= 10}
+	 * @return parsed comparison rule
+	 * @throws IllegalStateException when the expression is blank, incomplete, or
+	 *                               uses an unsupported operator
+	 */
 	public static Comparison parseComparison(String expression) {
 		String value = expression.trim();
 
@@ -31,6 +42,17 @@ final class Comparison {
 		throw new IllegalStateException("compare rule must use one of =, ==, !=, <, <=, >, >=: " + expression);
 	}
 
+	/**
+	 * Compares an actual value with an expected value using the supplied operator.
+	 *
+	 * @param actual   actual value extracted from the response
+	 * @param operator comparison operator, one of {@code =}, {@code ==},
+	 *                 {@code !=}, {@code <}, {@code <=}, {@code >}, or {@code >=}
+	 * @param expected expected value from the assertion rule
+	 * @return {@code true} when the comparison passes
+	 * @throws IllegalStateException when the operator is unsupported or numeric
+	 *                               comparison receives a non-numeric value
+	 */
 	public boolean compare(Object actual, String operator, Object expected) {
 		if ("=".equals(operator) || "==".equals(operator)) {
 			return valuesEqual(actual, expected);

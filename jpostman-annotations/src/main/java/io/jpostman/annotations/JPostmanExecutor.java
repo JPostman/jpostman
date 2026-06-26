@@ -13,9 +13,7 @@ import java.lang.annotation.Target;
  * <p>
  * Executor methods are used by {@link JPostmanResponse#executor()} and can also
  * declare dependencies that must run before the executor is created. Supported
- * method signatures are: context only; context and {@link JPostmanInfo};
- * context and test method name; or context, test method name, and current
- * Postman request name.
+ * method signatures are: context only, or context and {@link JPostmanInfo}.
  * </p>
  */
 @Target(METHOD)
@@ -25,13 +23,9 @@ public @interface JPostmanExecutor {
 	/**
 	 * Executor name used by {@link JPostmanResponse#executor()}.
 	 *
-	 * <p>
-	 * An empty value marks the method as the default executor.
-	 * </p>
-	 *
 	 * @return executor name, or empty string for the default executor
 	 */
-	String name() default "";
+	String id() default "";
 
 	/**
 	 * Dependency method names to run before creating this executor.

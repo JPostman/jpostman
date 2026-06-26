@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.6
+
+### Added
+
+- SLF4J logger support to JPostman.Context.
+- context log helpers: trace, debug, info, warn, error.
+- Context.logger(Class<?>) so annotation runners can log as the user test class.
+- RequestBuilder.variables() hook for subclasses.
+
+### Changed
+
+- Updated RequestBuilder to implement RequestProvider.
+- Changed build() to resolve variables through build(variables()).
+- build(Map<String, ?> vars) for request variable substitution.
+- buildRaw() to avoid recursive variable resolution.
+
 ## 1.1.4
 
 ### Added

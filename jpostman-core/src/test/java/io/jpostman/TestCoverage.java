@@ -1282,7 +1282,7 @@ public class TestCoverage {
 		assertEquals(req.getBody().getRaw(),
 				"{\"username\":\"emmy\",\"single\":\"true\",\"age\":\"25\",\"note\":\"age=10\"}");
 
-		assertEquals(req.builder().build(null).log(),
+		assertEquals(req.builder().build((Environment) null).log(),
 				"[POST  ] Primitive Body                           -> \n" + "Body: [raw/json] {\n"
 						+ "  \"username\": \"emmy\",\n" + "  \"single\": \"true\",\n" + "  \"age\": \"25\",\n"
 						+ "  \"note\": \"age=10\"\n" + "}");
@@ -1773,5 +1773,13 @@ public class TestCoverage {
 		assertThrows(NullPointerException.class, () -> context.request(null));
 
 		assertThrows(IllegalArgumentException.class, () -> context.request("UNKNOWN_REQUEST"));
+
+		JPostman.Context ctx = context.logger(TestCoverage.class);
+		assertEquals(ctx.log().getName(), TestCoverage.class.getName());
+		context.trace("=== {} ==", "TRACE");
+		context.debug("=== {} ==", "DEBUG");
+		context.info("=== {} ==", "INFO");
+		context.warn("=== {} ==", "WARN");
+		context.error("=== {} ==", "ERROR");
 	}
 }

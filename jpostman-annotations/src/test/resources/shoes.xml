@@ -1,0 +1,10 @@
+<product>
+  <productTitle>Running Shoes</productTitle>
+  <productDesc>Comfortable running shoes for daily workouts</productDesc>
+  <productPrice>90</productPrice>
+  <productDiscount>15</productDiscount>
+  <productStock>45</productStock>
+  <productRating>4.4</productRating>
+  <productBrand>Nike</productBrand>
+  <productCategory>sports</productCategory>
+</product>

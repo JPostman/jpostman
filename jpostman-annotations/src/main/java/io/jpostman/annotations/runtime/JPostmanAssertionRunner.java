@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import io.jpostman.annotations.JPostmanAssert;
 
@@ -115,19 +116,35 @@ final class JPostmanAssertionRunner<C> {
 		return sections;
 	}
 
+	/**
+	 * Resolves the effective assertion rules for a request.
+	 *
+	 * <p>
+	 * A section matching the current Postman request name is authoritative. When it
+	 * exists, only that section and its own {@code extends} chain are used. This
+	 * keeps request-specific sections independent from configured
+	 * {@link JPostmanAssert} sections such as {@code product}. When no request
+	 * section exists, configured sections are applied.
+	 * </p>
+	 *
+	 * @param rules       loaded assertion rule sections
+	 * @param sections    configured assertion sections from {@link JPostmanAssert}
+	 * @param requestName current Postman request name
+	 * @return resolved assertion rules
+	 */
 	private Map<String, String> resolveAssertionRules(Map<String, Map<String, String>> rules, String[] sections,
 			String requestName) {
+
+		if (requestName != null && rules.containsKey(requestName)) {
+			return resolveAssertionSection(rules, requestName, new LinkedHashSet<>());
+		}
 
 		Map<String, String> resolved = new LinkedHashMap<>();
 		String[] selected = sections == null || sections.length == 0 ? new String[] { "default" } : sections;
 		for (String section : selected) {
 			if (section != null && !section.isBlank()) {
-				resolved.putAll(resolveAssertionSection(rules, section.trim(), new LinkedHashSet<>()));
+				mergeAssertionRules(resolved, resolveAssertionSection(rules, section.trim(), new LinkedHashSet<>()));
 			}
-		}
-
-		if (requestName != null && rules.containsKey(requestName)) {
-			resolved.putAll(resolveAssertionSection(rules, requestName, new LinkedHashSet<>()));
 		}
 
 		return resolved;
@@ -150,18 +167,111 @@ final class JPostmanAssertionRunner<C> {
 		String parentList = values.get("extends");
 		if (parentList != null && !parentList.isBlank()) {
 			for (String parent : splitValues(parentList)) {
-				resolved.putAll(resolveAssertionSection(rules, parent, resolving));
+				mergeAssertionRules(resolved, resolveAssertionSection(rules, parent, resolving));
 			}
 		}
 
 		for (Map.Entry<String, String> entry : values.entrySet()) {
 			if (!"extends".equals(entry.getKey())) {
-				resolved.put(entry.getKey(), entry.getValue());
+				mergeAssertionRule(resolved, entry.getKey(), entry.getValue());
 			}
 		}
 
 		resolving.remove(section);
 		return resolved;
+	}
+
+	/**
+	 * Merges assertion rules while preserving inherited parent assertions.
+	 *
+	 * <p>
+	 * Repeatable assertion keys are appended so inherited checks are not lost when
+	 * a child section defines the same key. Singleton keys, such as statusCode,
+	 * keep the latest value so a request-specific section can override a parent
+	 * default.
+	 * </p>
+	 *
+	 * @param target target rule map to update
+	 * @param source source rule map to merge
+	 */
+	private void mergeAssertionRules(Map<String, String> target, Map<String, String> source) {
+		for (Map.Entry<String, String> entry : source.entrySet()) {
+			mergeAssertionRule(target, entry.getKey(), entry.getValue());
+		}
+	}
+
+	/**
+	 * Merges a single assertion rule into an existing rule map.
+	 *
+	 * <p>
+	 * Repeatable rules use comma-separated values, so parent and child values are
+	 * combined. Non-repeatable rules replace the previous value.
+	 * </p>
+	 *
+	 * @param target target rule map to update
+	 * @param key    assertion rule key
+	 * @param value  assertion rule value
+	 */
+	private void mergeAssertionRule(Map<String, String> target, String key, String value) {
+		if (key == null || key.isBlank()) {
+			return;
+		}
+
+		if (!isRepeatableRule(key)) {
+			target.put(key, value);
+			return;
+		}
+
+		String current = target.get(key);
+		if (current == null || current.isBlank()) {
+			target.put(key, value);
+			return;
+		}
+
+		if (value == null || value.isBlank()) {
+			return;
+		}
+
+		target.put(key, appendRuleValues(current, value));
+	}
+
+	/**
+	 * Appends repeatable rule values while removing duplicates.
+	 *
+	 * <p>
+	 * This preserves parent/child ordering and prevents duplicated assertions when
+	 * multiple selected sections inherit the same parent rule.
+	 * </p>
+	 *
+	 * @param current current comma-separated rule values
+	 * @param value   values to append
+	 * @return comma-separated values with duplicates removed
+	 */
+	private String appendRuleValues(String current, String value) {
+		LinkedHashSet<String> result = new LinkedHashSet<>();
+		result.addAll(splitValues(current));
+		result.addAll(splitValues(value));
+		return String.join(",", result);
+	}
+
+	/**
+	 * Returns whether an assertion rule can safely accumulate inherited values.
+	 *
+	 * @param key assertion rule key
+	 * @return {@code true} for repeatable assertion keys; otherwise {@code false}
+	 */
+	private boolean isRepeatableRule(String key) {
+		switch (key) {
+		case "exists":
+		case "notExists":
+		case "pathNotNull":
+		case "pathEquals":
+		case "compare":
+		case "allMatch":
+			return true;
+		default:
+			return false;
+		}
 	}
 
 	private Object assertionTarget(C ctx, boolean soft, boolean log) throws Exception {
@@ -232,9 +342,52 @@ final class JPostmanAssertionRunner<C> {
 						+ comparison.operator + " " + expected + " but was " + actual);
 			}
 			return;
+		case "allMatch":
+			for (AllMatchRule rule : parseAllMatchRules(value)) {
+				invokeAssertion(asserts, "allMatch", rule.comparison.path, rule.predicate(), rule.message);
+			}
+			return;
 		default:
 			throw new IllegalStateException("Unsupported JPostman assertion rule: " + key);
 		}
+	}
+
+	private List<AllMatchRule> parseAllMatchRules(String expression) {
+		List<AllMatchRule> rules = new ArrayList<>();
+		String value = expression == null ? "" : expression.trim();
+		if (value.isBlank()) {
+			return rules;
+		}
+
+		if (value.contains("|")) {
+			rules.add(parseAllMatchRule(value));
+			return rules;
+		}
+
+		for (String condition : splitValues(value)) {
+			rules.add(parseAllMatchRule(condition));
+		}
+		return rules;
+	}
+
+	private AllMatchRule parseAllMatchRule(String expression) {
+		String value = expression == null ? "" : expression.trim();
+		String message = "";
+
+		int messageIndex = value.indexOf('|');
+		if (messageIndex >= 0) {
+			message = value.substring(messageIndex + 1).trim();
+			value = value.substring(0, messageIndex).trim();
+		}
+
+		Comparison comparison = Comparison.parseComparison(value);
+		Object expected = scalar(comparison.expected);
+
+		if (message.isBlank()) {
+			message = "Item: {}, Index: {} failed allMatch condition: " + value;
+		}
+
+		return new AllMatchRule(comparison, expected, message);
 	}
 
 	private Object invokePath(Object asserts, String path) throws Exception {
@@ -332,6 +485,22 @@ final class JPostmanAssertionRunner<C> {
 			return invokeCompatible(target, methodName, args);
 		} catch (IllegalStateException e) {
 			return null;
+		}
+	}
+
+	private static final class AllMatchRule {
+		private final Comparison comparison;
+		private final Object expected;
+		private final String message;
+
+		private AllMatchRule(Comparison comparison, Object expected, String message) {
+			this.comparison = comparison;
+			this.expected = expected;
+			this.message = message;
+		}
+
+		private Predicate<Object> predicate() {
+			return actual -> comparison.compare(actual, comparison.operator, expected);
 		}
 	}
 }

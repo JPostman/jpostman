@@ -42,7 +42,6 @@ import io.jpostman.annotations.JPostmanAssert;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanInfo;
-import io.jpostman.annotations.JPostmanReport;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
@@ -233,32 +232,6 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies direct plain and secret value injection in the TestNG/JUnit
-	 * framework bridge. Covers plain(TestNgContext/JUnitContext, String, Object)
-	 * and secret(TestNgContext/JUnitContext, String, Object).
-	 */
-	@Test
-	public void testNgFrameworkAddsPlainAndSecretValuesByKey() {
-		TestNgPostmanFramework testng = new TestNgPostmanFramework();
-		TestNgContext testngCtx = TestNgContext.create();
-
-		testng.plain(testngCtx, "username", "David");
-		testng.secret(testngCtx, "password", "secret123");
-
-		assertTrue(testngCtx.hasKey("username"));
-		assertTrue(testngCtx.hasKey("password"));
-
-		JUnitPostmanFramework junit = new JUnitPostmanFramework();
-		JUnitContext junitCtx = JUnitContext.create();
-
-		junit.plain(junitCtx, "username", "David");
-		junit.secret(junitCtx, "password", "secret123");
-
-		assertTrue(junitCtx.hasKey("username"));
-		assertTrue(junitCtx.hasKey("password"));
-	}
-
-	/**
 	 * Verifies that JUnitPostmanFramework delegates all runtime operations to a
 	 * real JUnitContext.
 	 *
@@ -436,7 +409,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("token-123", fixture.base.cache("accessToken"));
 		assertEquals(1, fixture.loginCount);
 		assertEquals(1, fixture.executorCount);
-		assertEquals("login", fixture.executorMethodName);
+		assertEquals("authExecutor", fixture.executorMethodName);
 	}
 
 	/**
@@ -618,7 +591,11 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(error.getMessage().contains("Invalid JPostman annotation usage"));
 		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidRequest"));
 		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidExecutor"));
-		assertEquals(2, error.getStackTrace().length);
+		assertTrue(error.getMessage().contains("@JPostmanResponse(cache) cannot be used with @Test"));
+		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidCachedResponse"));
+		assertTrue(error.getMessage().contains("@JPostmanRequest(cache) requires a non-void return value"));
+		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidCachedRequest"));
+		assertEquals(4, error.getStackTrace().length);
 
 		Constructor<JPostmanAnnotationValidator> constructor = JPostmanAnnotationValidator.class
 				.getDeclaredConstructor();
@@ -658,7 +635,8 @@ public class JPostmanAnnotationCoverageTest {
 		JUnitPostmanFramework framework = new JUnitPostmanFramework();
 		JUnitContext context = framework.create();
 		framework.request(context, collectionWithTwoRequests().getRequest("Get current auth user"));
-		framework.response(context, okExecutor("{\"id\":1,\"firstName\":\"John\",\"active\":true}"));
+		framework.response(context, okExecutor(
+				"{\"id\":1,\"firstName\":\"John\",\"active\":true,\"products\":[{\"stock\":5,\"price\":10,\"discount\":10},{\"stock\":2,\"price\":15,\"discount\":20}]}"));
 
 		JPostmanAssert annotation = AssertionFixture.class.getDeclaredMethod("assertWithRules")
 				.getAnnotation(JPostmanAssert.class);
@@ -720,7 +698,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertNotNull(fixture.base);
 		assertEquals(1, fixture.runnerDependencyCount);
 		assertEquals(1, fixture.executorCount);
-		assertEquals("runnerDependency", fixture.executorMethodName);
+		assertEquals("runnerExecutor", fixture.executorMethodName);
 		assertEquals("Login user and get tokens", fixture.executorRequestName);
 		assertEquals("runner-token", fixture.base.cache("runnerToken"));
 	}
@@ -750,11 +728,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, fixture.responseDependencyCount);
 		assertEquals(1, fixture.runnerDependencyCount);
 		assertEquals(3, fixture.executorCount);
-		assertEquals("response-cache-value", fixture.base.cache("responseDependencyCache"));
-		assertEquals("runner-cache-value", fixture.base.cache("runnerDependencyCache"));
-		assertTrue(fixture.executorMethodNames.contains("responseDependency"));
-		assertTrue(fixture.executorMethodNames.contains("runnerDependency"));
-		assertTrue(fixture.executorMethodNames.contains("mainResponse"));
+		assertEquals(3L, fixture.executorMethodNames.stream().filter("dependencyExecutor"::equals).count());
 	}
 
 	/**
@@ -784,6 +758,16 @@ public class JPostmanAnnotationCoverageTest {
 				() -> runner.run(new InvalidExecutorSignatureFixture(),
 						InvalidExecutorSignatureFixture.class.getDeclaredMethod("response")));
 		assertTrue(invalidExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
+
+		IllegalStateException legacyStringExecutor = assertThrows(IllegalStateException.class,
+				() -> runner.run(new LegacyStringExecutorFixture(),
+						LegacyStringExecutorFixture.class.getDeclaredMethod("response")));
+		assertTrue(legacyStringExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
+
+		IllegalStateException legacyRequestExecutor = assertThrows(IllegalStateException.class,
+				() -> runner.run(new LegacyRequestNameExecutorFixture(),
+						LegacyRequestNameExecutorFixture.class.getDeclaredMethod("response")));
+		assertTrue(legacyRequestExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
 
 		IllegalStateException nullExecutor = assertThrows(IllegalStateException.class,
 				() -> runner.run(new NullExecutorFixture(), NullExecutorFixture.class.getDeclaredMethod("response")));
@@ -1043,133 +1027,33 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * add(...) should only update the latest info. It should not change report
-	 * counters.
+	 * Verifies that a request-specific assertion section is authoritative when it
+	 * exists.
+	 *
+	 * <p>
+	 * Even when @JPostmanAssert selects the product section, the request named "Get
+	 * all products" must resolve only [Get all products] and its own extends chain.
+	 * It must not also merge the unrelated [product] section.
+	 * </p>
 	 */
 	@Test
-	public void addStoresLatestInfoWithoutCounting() {
-		JPostmanReport report = new JPostmanReport();
-		JPostmanInfo info = new JPostmanInfo("addNewProduct", "product", "Product", "Add a new product");
+	public void assertionRunnerUsesRequestSectionBeforeConfiguredSections() throws Exception {
+		JUnitPostmanFramework framework = new JUnitPostmanFramework();
+		JUnitContext context = framework.create();
 
-		report.add(info);
+		framework.request(context, collectionWithTwoRequests().getRequest("Get current auth user"));
+		framework.response(context, okExecutor("{}"));
 
-		assertSame(info, report.info);
-		assertEquals(0, report.total);
-		assertEquals(0, report.passed.size());
-	}
+		JPostmanAssert annotation = AssertionFixture.class
+				.getDeclaredMethod("assertRequestSectionOverridesConfiguredSections")
+				.getAnnotation(JPostmanAssert.class);
 
-	/**
-	 * A passed execution should update counters, latest info, status list, and
-	 * total duration.
-	 */
-	@Test
-	public void passedRecordsExecution() {
-		JPostmanReport report = new JPostmanReport();
-		JPostmanInfo info = new JPostmanInfo("addNewProduct", "product", "Product", "Add a new product");
-		info.duration = 250L;
+		AssertionError error = assertThrows(AssertionError.class, () -> new JPostmanAssertionRunner<>(framework)
+				.apply(AssertionFixture.class, context, annotation, "Get all products", true, false));
 
-		report.passed(info);
-
-		assertSame(info, report.info);
-		assertEquals(1, report.total);
-		assertEquals(250L, report.totalTime);
-		assertEquals(1, report.passed.size());
-	}
-
-	/**
-	 * Verifies JPostmanInfo helper methods used for logging and exact child
-	 * creation. Covers date formatting through log(), childExact(), and print().
-	 */
-	@Test
-	public void jpostmanInfoLogPrintAndChildExactAreCovered() {
-		JPostmanInfo parent = new JPostmanInfo("addNewProduct", "product", "Product", "Add a new product");
-
-		parent.methods.add("addNewProduct");
-		parent.params.put("hello", "world");
-		parent.start();
-		parent.end();
-
-		JPostmanInfo child = parent.childExact("getToken", "", "", "Login user and get tokens");
-
-		assertEquals("getToken", child.method);
-		assertEquals("", child.namespace);
-		assertEquals("", child.folder);
-		assertEquals("Login user and get tokens", child.request);
-
-		// childExact should share chain state with the parent.
-		assertSame(parent.methods, child.methods);
-		assertSame(parent.params, child.params);
-
-		String log = child.log();
-
-		assertTrue(log.contains("JPostmanInfo"));
-		assertTrue(log.contains("method=getToken"));
-		assertTrue(log.contains("request=Login user and get tokens"));
-
-		assertDoesNotThrow(child::print);
-	}
-
-	/**
-	 * Failed and skipped executions should be tracked in their own status lists.
-	 */
-	@Test
-	public void failedAndSkippedRecordExecutions() {
-		JPostmanReport report = new JPostmanReport();
-
-		report.failed(new JPostmanInfo("failedTest", "", "", "Failed request"));
-		report.skipped(new JPostmanInfo("skippedTest", "", "", "Skipped request"));
-
-		assertEquals(2, report.total);
-		assertEquals(1, report.failed.size());
-		assertEquals(1, report.skipped.size());
-	}
-
-	/**
-	 * clear(...) should reset runtime values but keep the same report object
-	 * reusable.
-	 */
-	@Test
-	public void clearResetsReport() {
-		JPostmanReport report = new JPostmanReport();
-
-		report.passed(new JPostmanInfo("passedTest", "", "", "Request"));
-		report.failed(new JPostmanInfo("failedTest", "", "", "Request"));
-
-		report.clear();
-
-		assertEquals(0, report.total);
-		assertEquals(0L, report.totalTime);
-		assertTrue(report.passed.isEmpty());
-		assertTrue(report.failed.isEmpty());
-		assertTrue(report.skipped.isEmpty());
-	}
-
-	/**
-	 * log(...) should include the main summary values.
-	 */
-	@Test
-	public void logIncludesSummaryValues() {
-		JPostmanReport report = new JPostmanReport();
-		JPostmanInfo info = new JPostmanInfo("addNewProduct", "product", "Product", "Add a new product");
-
-		report.passed(info);
-
-		String log = report.log();
-
-		assertTrue(log.contains("JPostmanReport"));
-		assertTrue(log.contains("total=1"));
-		assertTrue(log.contains("passed=1"));
-		assertTrue(log.contains("latest=addNewProduct"));
-	}
-
-	/**
-	 * print(...) only delegates to logger and should not fail.
-	 */
-	@Test
-	public void printDoesNotThrow() {
-		JPostmanReport report = new JPostmanReport();
-
-		assertDoesNotThrow(report::print);
+		assertTrue(error.getMessage().contains("Path not found: id"));
+		assertFalse(error.getMessage().contains("Path not found: title"));
+		assertFalse(error.getMessage().contains("Path not found: price"));
 	}
 
 	private static ApiExecutor okExecutor(String json) {
@@ -1324,10 +1208,10 @@ public class JPostmanAnnotationCoverageTest {
 		/**
 		 * Named executor selected by executor = "auth".
 		 */
-		@JPostmanExecutor(name = "auth", dependsOn = { "login" })
-		ApiExecutor authExecutor(JUnitContext context, String methodName) {
+		@JPostmanExecutor(id = "auth", dependsOn = { "login" })
+		ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodName = methodName;
+			executorMethodName = info.callee;
 
 			assertEquals("token-123", context.cache("accessToken"));
 			assertNotNull(context.request());
@@ -1383,6 +1267,10 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanAssert(rules = "classpath:annotation-assertions-unsupported.ini")
 		void assertUnsupportedRule() {
 		}
+
+		@JPostmanAssert(rules = "classpath:annotation-assertions-request-section.ini", sections = { "product" })
+		void assertRequestSectionOverridesConfiguredSections() {
+		}
 	}
 
 	private static final class RunnerFixture {
@@ -1409,11 +1297,11 @@ public class JPostmanAnnotationCoverageTest {
 		void explicitResponseForSkip() {
 		}
 
-		@JPostmanExecutor(name = "runner", dependsOn = { "runnerDependency" })
-		ApiExecutor runnerExecutor(JUnitContext context, String methodName, String requestName) {
+		@JPostmanExecutor(id = "runner", dependsOn = { "runnerDependency" })
+		ApiExecutor runnerExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodName = methodName;
-			executorRequestName = requestName;
+			executorMethodName = info.callee;
+			executorRequestName = info.request;
 			assertEquals("runner-token", context.cache("runnerToken"));
 			return okExecutor("{\"id\":1}");
 		}
@@ -1428,14 +1316,13 @@ public class JPostmanAnnotationCoverageTest {
 		private int executorCount;
 		private final List<String> executorMethodNames = new java.util.ArrayList<>();
 
-		@JPostmanResponse(request = "Get current auth user", executor = "dependency", cache = "responseDependencyCache", verify = 200)
+		@JPostmanResponse(request = "Get current auth user", executor = "dependency", verify = 200)
 		String responseDependency() {
 			responseDependencyCount++;
 			return "response-cache-value";
 		}
 
-		@JPostmanRunner(include = {
-				"Login user and get tokens" }, executor = "dependency", cache = "runnerDependencyCache", verify = 200)
+		@JPostmanRunner(include = { "Login user and get tokens" }, executor = "dependency", verify = 200)
 		String runnerDependency() {
 			runnerDependencyCount++;
 			return "runner-cache-value";
@@ -1446,12 +1333,12 @@ public class JPostmanAnnotationCoverageTest {
 		void mainResponse() {
 		}
 
-		@JPostmanExecutor(name = "dependency")
-		ApiExecutor dependencyExecutor(JUnitContext context, String methodName, String requestName) {
+		@JPostmanExecutor(id = "dependency")
+		ApiExecutor dependencyExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodNames.add(methodName);
+			executorMethodNames.add(info.callee);
 			assertNotNull(context.request());
-			assertNotNull(requestName);
+			assertNotNull(info.request);
 
 			return okExecutor("{\"id\":1,\"firstName\":\"John\"}");
 		}
@@ -1472,15 +1359,16 @@ public class JPostmanAnnotationCoverageTest {
 		private String executorRequestName;
 
 		@JPostmanRequest
-		void test(JUnitContext context, JPostmanInfo info) {
-			info.params.put("hello", "world");
+		void helloWorld(JUnitContext context, JPostmanInfo info) {
+			info.params("hello", "world");
 		}
 
-		@JPostmanResponse(request = "Get current auth user", dependsOn = { "test" }, executor = "info", verify = 200)
+		@JPostmanResponse(request = "Get current auth user", dependsOn = {
+				"helloWorld" }, executor = "info", verify = 200)
 		void response() {
 		}
 
-		@JPostmanExecutor(name = "info")
+		@JPostmanExecutor(id = "info")
 		ApiExecutor executor(JUnitContext context, JPostmanInfo info) {
 			value = String.valueOf(info.params.get("hello"));
 			executorRequestName = info.request;
@@ -1528,6 +1416,28 @@ public class JPostmanAnnotationCoverageTest {
 
 		@JPostmanExecutor
 		ApiExecutor badExecutor(String value) {
+			return okExecutor("{}");
+		}
+	}
+
+	private static final class LegacyStringExecutorFixture extends BaseContextFixture {
+		@JPostmanResponse(request = "Get current auth user", executor = "legacy")
+		void response() {
+		}
+
+		@JPostmanExecutor(id = "legacy")
+		ApiExecutor legacyExecutor(JUnitContext context, String methodName) {
+			return okExecutor("{}");
+		}
+	}
+
+	private static final class LegacyRequestNameExecutorFixture extends BaseContextFixture {
+		@JPostmanResponse(request = "Get current auth user", executor = "legacy")
+		void response() {
+		}
+
+		@JPostmanExecutor(id = "legacy")
+		ApiExecutor legacyExecutor(JUnitContext context, String methodName, String requestName) {
 			return okExecutor("{}");
 		}
 	}
@@ -1598,7 +1508,7 @@ public class JPostmanAnnotationCoverageTest {
 		void validTest() {
 		}
 
-		@JPostmanExecutor(name = "listener")
+		@JPostmanExecutor(id = "listener")
 		ApiExecutor listenerExecutor(TestNgContext context) {
 			executorCount++;
 			assertNotNull(context.request());
@@ -1617,6 +1527,15 @@ public class JPostmanAnnotationCoverageTest {
 		ApiExecutor invalidExecutor(JUnitContext context) {
 			return okExecutor("{}");
 		}
+
+		@Test
+		@JPostmanResponse(request = "Get current auth user", cache = "user")
+		void invalidCachedResponse() {
+		}
+
+		@JPostmanRequest(request = "Login user and get tokens", cache = "token")
+		void invalidCachedRequest() {
+		}
 	}
 
 	@JPostmanTestNgAnnotations
@@ -1628,5 +1547,9 @@ public class JPostmanAnnotationCoverageTest {
 		@SuppressWarnings("unused")
 		void plain() {
 		}
+	}
+
+	@JPostmanAssert(rules = "classpath:annotation-assertions-request-section.ini", sections = { "product" })
+	void assertRequestSectionOverridesConfiguredSections() {
 	}
 }

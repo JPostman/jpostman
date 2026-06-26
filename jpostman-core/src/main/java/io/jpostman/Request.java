@@ -1,14 +1,14 @@
 package io.jpostman;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 /**
  * Represents an HTTP request.
@@ -191,7 +191,7 @@ public final class Request implements RequestProvider {
 	 * {@code .done()} to return here, and finally {@link #build()} to get the
 	 * immutable {@link Request}.
 	 */
-	public static class RequestBuilder {
+	public static class RequestBuilder implements RequestProvider {
 
 		private final String name;
 		private final String method;
@@ -202,7 +202,7 @@ public final class Request implements RequestProvider {
 		private final Params<Auth> authBuilder;
 		private final Params<Body> bodyBuilder;
 
-		private RequestBuilder(Request req) {
+		protected RequestBuilder(Request req) {
 			this.name = req.name;
 			this.method = req.method;
 			this.folderName = req.folderName;
@@ -310,8 +310,38 @@ public final class Request implements RequestProvider {
 			return this;
 		}
 
-		/** Builds and returns the final {@link Request}. */
+		/**
+		 * Builds and returns the final {@link Request}.
+		 *
+		 * <p>
+		 * Subclasses can override {@link #variables()} to provide values used for
+		 * resolving {@code {{variable}}} tokens before the request is built.
+		 * </p>
+		 *
+		 * @return executable request
+		 */
+		@Override
 		public Request build() {
+			return build(variables());
+		}
+
+		/**
+		 * Returns variables used by {@link #build()}.
+		 *
+		 * <p>
+		 * The default builder has no variables. Secure request builders can override
+		 * this method and return resolved plain and protected values.
+		 * </p>
+		 *
+		 * @return variable values used for substitution, or {@code null} to build
+		 *         without resolving
+		 */
+		protected Map<String, ?> variables() {
+			return null;
+		}
+
+		/** Builds the request without applying request-level variable resolution. */
+		private Request buildRaw() {
 			return new Request(name, method, folderName, description, urlBuilder.end(), headerBuilder.end(),
 					bodyBuilder.end(), authBuilder.end());
 		}
@@ -324,12 +354,22 @@ public final class Request implements RequestProvider {
 		 * @return built request
 		 */
 		public Request build(Environment env) {
-			Map<String, String> vars = env == null ? Map.of() : env.getParams();
+			return build(env == null ? null : env.getParams());
+		}
+
+		/**
+		 * Resolves all {@code {{variable}}} tokens in the URL, headers, body, and auth
+		 * parameters using the provided variable map.
+		 *
+		 * @param vars variable values used for substitution; may be {@code null}
+		 * @return built request
+		 */
+		public Request build(Map<String, ?> vars) {
 			urlBuilder.resolve(vars);
 			headerBuilder.resolve(vars);
 			authBuilder.resolve(vars);
 			bodyBuilder.resolve(vars);
-			return build();
+			return buildRaw();
 		}
 
 		/**

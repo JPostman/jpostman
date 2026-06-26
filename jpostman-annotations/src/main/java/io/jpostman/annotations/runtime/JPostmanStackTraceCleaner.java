@@ -157,6 +157,20 @@ public final class JPostmanStackTraceCleaner {
 		return new StackTraceElement(className, methodName, fileName, lineNumber);
 	}
 
+	/**
+	 * Finds the source line number for a method in the local source tree.
+	 *
+	 * <p>
+	 * This is a best-effort helper used to make cleaned assertion failures point at
+	 * the user's test method. It searches common Maven source roots from the
+	 * current working directory upward.
+	 * </p>
+	 *
+	 * @param testClass  test class that owns the method
+	 * @param methodName Java method name to locate
+	 * @return one-based source line number, or {@code -1} when the source line
+	 *         cannot be found
+	 */
 	public static int findSourceLine(Class<?> testClass, String methodName) {
 		String relativePath = testClass.getName().replace('.', java.io.File.separatorChar) + ".java";
 		String[] sourceRoots = { "src/test/java", "src/main/java" };
