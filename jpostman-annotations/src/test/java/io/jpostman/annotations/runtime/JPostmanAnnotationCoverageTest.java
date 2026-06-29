@@ -912,21 +912,14 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies compact executor string values reject Java .class syntax with the
-	 * standard JPostman context error format.
+	 * Verifies compact executor string values also accept Java-style .class suffix
+	 * by normalizing it to a fully qualified class name.
 	 */
 	@Test
-	public void compactExecutorStringRejectsDotClassSyntaxWithFormattedMessage() {
+	public void compactExecutorStringAcceptsDotClassSuffix() {
 		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-				() -> runner.setup(new InvalidCompactExecutorSyntaxFixture()));
 
-		assertEquals("Invalid JPostman executor class: io.jpostman.restassured.RestAssuredExecutor.class\n"
-				+ "The executor value is a class name string, not Java code.\n"
-				+ "Use executor = \"io.jpostman.restassured.RestAssuredExecutor\",\n"
-				+ "or use executorClass = RestAssuredExecutor.class.\n"
-				+ "(@JPostmanContext: config=<default>, namespace=<default>, collection=" + COLLECTION
-				+ ", environment=<default>)\n", error.getMessage());
+		assertDoesNotThrow(() -> runner.setup(new CompactExecutorDotClassSyntaxFixture()));
 	}
 
 	/**
@@ -1415,8 +1408,8 @@ public class JPostmanAnnotationCoverageTest {
 	 * </p>
 	 */
 
-	private static final class InvalidCompactExecutorSyntaxFixture {
-		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executor = "io.jpostman.restassured.RestAssuredExecutor.class")
+	private static final class CompactExecutorDotClassSyntaxFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executor = "io.jpostman.annotations.runtime.JPostmanAnnotationCoverageTest$CoverageApplyExecutor.class")
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
 	}
 
@@ -1745,34 +1738,26 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
-	private static final class TagChainFixture {
-		@JPostmanContext(config = "", collection = COLLECTION)
-		private io.jpostman.JPostman.Context jctx;
-
+	private static final class TagChainFixture extends BaseContextFixture {
 		private String[] mouseTags;
 		private String[] shoesTags;
 		private String[] computerTags;
 
-		@JPostmanExecutor
-		private static ApiExecutor okExecutor() {
-			return () -> okResponse("{}");
-		}
-
-		@JPostmanResponse(tags = "keyboard", request = "Login user and get tokens", dependsOn = "getMouse")
+		@JPostmanResponse(tags = "keyboard", dependsOn = "TagChainFixture.getMouse")
 		void response() {
 		}
 
-		@JPostmanRequest(tags = "mouse", dependsOn = "getShoes")
+		@JPostmanResponse(tags = "mouse", dependsOn = "getShoes")
 		void getMouse(JPostmanInfo info) {
 			mouseTags = info.tags;
 		}
 
-		@JPostmanRequest(tags = "shoes", dependsOn = "getComputer")
+		@JPostmanResponse(tags = "shoes", dependsOn = "getComputer")
 		void getShoes(JPostmanInfo info) {
 			shoesTags = info.tags;
 		}
 
-		@JPostmanRequest(tags = "computer")
+		@JPostmanResponse(tags = "computer")
 		void getComputer(JPostmanInfo info) {
 			computerTags = info.tags;
 		}

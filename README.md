@@ -1,4 +1,4 @@
-# JPostman
+# JPostman Annotations
 
 [![Java](https://img.shields.io/badge/Java-11%2B-orange)](https://www.oracle.com/java/technologies/javase/jdk11-archive-downloads.html)
 [![Build](https://github.com/JPostman/jpostman/actions/workflows/build.yml/badge.svg)](https://github.com/JPostman/jpostman/actions/workflows/build.yml)
@@ -10,475 +10,773 @@
 
 <a href="https://www.youtube.com/@JPostmanApi"><img src="logo.png" width="100" alt="JPostman logo"></a>
 
----
+**JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests. It lets you run Postman collection requests from JUnit 5 or TestNG with very little test code. You can start with a single runner method, then add request overrides, dependencies, cached values, assertion rules, session executors, and reports only when you need them.
+
+## Maven Dependency
 
 [JPostmanApi on YouTube](https://www.youtube.com/@JPostmanApi)
 
 [JPostman Wiki](https://github.com/JPostman/jpostman/wiki)
 
 [JPostman API Documentation](https://jpostman.github.io/jpostman/)
+```xml
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-annotations</artifactId>
+    <version>REPLACE_WITH_LATEST_VERSION</version>
+    <scope>test</scope>
+</dependency>
 
-**JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java API tests.
-
-Instead of copying request URLs, headers, authentication, query parameters, and request bodies into Java code, JPostman keeps Postman as the source of truth. Export the collection and environment, load them in Java, override only what your test needs, resolve Postman-style templates, and execute the final request with the executor you prefer.
-
----
-
-## Modules
-
-This repository is one GitHub project with multiple Maven modules:
-
-|  |  |
-|---|---|
-| [`jpostman-core/`](https://jpostman.github.io/jpostman/io/jpostman/package-summary.html) | Framework-neutral parser, model, templates, and `ApiResponse` |
-| [`jpostman-secure/`](https://jpostman.github.io/jpostman/io/jpostman/secure/package-summary.html) | Secret-safe request and response helpers |
-| [`jpostman-testng/`](https://jpostman.github.io/jpostman/io/jpostman/testng/package-summary.html) | TestNG context, secure assertions, response verification, and reusable cache helpers |
-| [`jpostman-junit/`](https://jpostman.github.io/jpostman/io/jpostman/junit/package-summary.html) | JUnit 5 context, secure assertions, response verification, and failure printing support |
-| [`jpostman-annotations/`](https://github.com/JPostman/jpostman/tree/main/jpostman-annotations) | Optional annotation-based execution support for JPostman JUnit and TestNG tests |
-| [`jpostman-httpclient/`](https://jpostman.github.io/jpostman/io/jpostman/executor/HttpClientExecutor.html) | Optional Java 11 HttpClient executor |
-| [`jpostman-restassured/`](https://jpostman.github.io/jpostman/io/jpostman/restassured/RestAssuredExecutor.html) | Optional REST Assured executor adapter |
-| [`jpostman-playwright/`](https://jpostman.github.io/jpostman/io/jpostman/playwright/PlaywrightExecutor.html) | Optional Playwright APIRequestContext executor adapter |
-| [`jpostman-unirest/`](https://jpostman.github.io/jpostman/io/jpostman/unirest/UnirestExecutor.html) | Optional Unirest executor adapter |
-| [`jpostman-vault/`](https://jpostman.github.io/jpostman/io/jpostman/vault/package-summary.html) | Vault authentication and secret loading helpers |
-| [`jpostman-github/`](https://jpostman.github.io/jpostman/io/jpostman/github/package-summary.html) | GitHub Actions variable and secret integration utilities |
-| [`jpostman-kubernetes/`](https://jpostman.github.io/jpostman/io/jpostman/kubernetes/package-summary.html) | Kubernetes ConfigMap and Secret loading helpers |
-| [`jpostman-examples/`](https://github.com/JPostman/jpostman/tree/main/jpostman-examples/src/test/java/io/jpostman) | Sample TestNG tests; not published to Maven Central |
----
-
-## Exporting from Postman
-
-Export your Postman collection and environment, then place them under your test resources:
-
-```text
-src/test/resources/DummyJSON.postman_collection.json
-src/test/resources/DummyJSON.postman_environment.json
+<dependency>
+    <groupId>io.github.jpostman</groupId>
+    <artifactId>jpostman-httpclient</artifactId>
+    <version>REPLACE_WITH_LATEST_VERSION</version>
+    <scope>test</scope>
+</dependency>
 ```
 
-### Export Postman Collection and Environment
+Then configure the executor in `@JPostman.Context` or in `jpostman.properties`.
 
-Watch this short video showing how to export a Postman collection and environment:
-
-<a href="https://www.youtube.com/watch?v=UxFjeONEq60" target="_blank">
-  <img src="https://img.youtube.com/vi/UxFjeONEq60/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
-</a>
-
----
-
-## Basic Usage: JPostman Annotations
-
-JPostman annotations keep API tests focused on the flow, not setup code.
-
-You keep requests in Postman, export the collection and environment, and let JPostman prepare and execute the request from Java.
-
----
-
-## 1. Add `jpostman.properties`
-
-Place your exported Postman files under test resources:
-
-```text
-src/test/resources/DummyJSON.postman_collection.json
-src/test/resources/DummyJSON.postman_environment.json
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor"
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
 ```
 
-Create:
+You can also use another executor module if it better matches your project:
 
-```text
-src/test/resources/jpostman.properties
+- HTTP Client: https://github.com/JPostman/jpostman/tree/main/jpostman-httpclient
+- Playwright: https://github.com/JPostman/jpostman/tree/main/jpostman-playwright
+- REST Assured: https://github.com/JPostman/jpostman/tree/main/jpostman-restassured
+- Unirest: https://github.com/JPostman/jpostman/tree/main/jpostman-unirest
+
+
+## Executor Configuration
+
+Every `@JPostman.Response` and `@JPostman.Runner` needs an executor. The easiest setup is a context-level executor:
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor"
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
 ```
 
-Add the collection and environment:
+If you forget the executor, JPostman will stop before execution because it does not know how to send the request. Use one of these options:
+
+```java
+executor = "io.jpostman.httpclient.HttpClientExecutor"
+```
+
+or:
+
+```java
+executorClass = io.jpostman.httpclient.HttpClientExecutor.class
+```
+
+or define a custom method:
+
+```java
+@JPostman.Executor
+public ApiExecutor executor(JPostman.Test ctx, JPostman.Info info) {
+    return MyExecutor.apply(ctx.request());
+}
+```
+
+## One Import Style
+
+The compact facade keeps JPostman annotation usage simple:
+
+```java
+import io.jpostman.annotations.JPostman;
+```
+
+The examples below use only this JPostman import. Test framework annotations are written with fully qualified names so the examples stay focused on the JPostman API.
+
+## Minimal Runner
+
+The smallest useful test is a runner that executes collection requests.
+
+```java
+import io.jpostman.annotations.JPostman;
+
+@JPostman.TestNG
+public class ApiRunnerTest {
+
+    @JPostman.Context(
+            collection = "classpath:DummyJSON.all_product_collection.json",
+            executor = "io.jpostman.httpclient.HttpClientExecutor"
+    )
+    private JPostman.Runtime<JPostman.Test> jpostman;
+
+    @Test
+    @JPostman.Runner
+    public void runCollection() {
+    }
+}
+```
+
+What this does:
+
+- Loads the Postman collection.
+- Uses the configured executor to run requests.
+- Lets JPostman handle request execution and status verification.
+
+## Run a Folder
+
+Use `folder` when you want to limit execution to requests inside a specific collection folder. Without `folder`, `@JPostman.Runner` runs matching requests from the collection root.
+
+```java
+import io.jpostman.annotations.JPostman;
+
+@JPostman.TestNG
+public class ProductRunnerTest {
+
+    @JPostman.Context(
+            collection = "classpath:DummyJSON.all_product_collection.json",
+            executor = "io.jpostman.httpclient.HttpClientExecutor"
+    )
+    private JPostman.Runtime<JPostman.Test> jpostman;
+
+    @Test
+    @JPostman.Runner(folder = "Product")
+    public void runProductFolder() {
+    }
+}
+```
+
+## Run Specific Requests
+
+Use `include` to run only selected requests.
+
+```java
+@Test
+@JPostman.Runner(
+        folder = "Product",
+        include = { "Get all products", "Add a new product" }
+)
+public void runSelectedProductRequests() {
+}
+```
+
+Use `exclude` when you want to run a folder or collection except for specific requests.
+
+```java
+@Test
+@JPostman.Runner(
+        folder = "Product",
+        exclude = "Delete a product"
+)
+public void runProductFolderExceptDelete() {
+}
+```
+
+## Session Executor
+
+Use `session = true` when your executor supports reusable state, such as cookies, authentication state, or a shared REST Assured session.
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor",
+        session = true
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+With `session = true`, JPostman creates the context executor once and reuses it for each request. Before each request, JPostman updates the executor with the current request.
+
+Use this when your API flow depends on state shared across requests. Leave it as `false` when each request should be independent.
+
+## Override Verification Status Code
+
+The context can define the default status code:
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor",
+        verifyStatusCode = 200
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+Then individual runners or responses can override it:
+
+```java
+@Test
+@JPostman.Response(
+        folder = "Product",
+        request = "Add a new product",
+        dependsOn = "prepareProduct",
+        verify = 201
+)
+public void addProduct() {
+}
+```
+
+Use this when most requests return `200`, but create operations return `201`, delete operations return `200` or `204`, or error tests expect a different status.
+
+## Skipping Tests
+
+Use `skip = true` to disable a response test.
+
+```java
+@Test
+@JPostman.Response(
+        request = "Get current auth user",
+        skip = true
+)
+public void disabledUserTest() {
+}
+```
+
+Use `skipReason` when you want the reason to appear in test output. A non-empty `skipReason` also means the response is skipped, so `skip = true` is not required.
+
+```java
+@Test
+@JPostman.Response(
+        request = "Get current auth user",
+        skipReason = "Temporarily disabled while testing session executor"
+)
+public void disabledWithReason() {
+}
+```
+
+Use `skipAll = true` to disable all response and runner tests by default.
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor",
+        skipAll = true
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+When `skipAll = true` is set on the context, all `@JPostman.Response` and `@JPostman.Runner` methods are skipped by default. Use `enabled = true` on a specific response when you want that method to run anyway.
+
+```java
+@Test
+@JPostman.Response(
+        request = "Get current auth user",
+        enabled = true
+)
+public void runEvenWhenSkipAllIsEnabled() {
+}
+```
+
+Do not define `enabled` and `skip` or `skipReason` on the same annotation.
+
+## Report Summary
+
+Inject `@JPostman.ReportContext` to print an execution summary.
+
+```java
+@JPostman.ReportContext
+private JPostman.Report report;
+
+@org.testng.annotations.AfterClass
+public void afterAllTests() {
+    report.summary();
+}
+```
+
+## JUnit 5
+
+Use `@JPostman.JUnit` instead of `@JPostman.TestNG` when running with JUnit 5.
+
+```java
+import io.jpostman.annotations.JPostman;
+
+@JPostman.JUnit(printFailures = true)
+public class UserApiJUnitTest {
+
+    @JPostman.Context(
+            collection = "classpath:DummyJSON.all_product_collection.json",
+            executor = "io.jpostman.httpclient.HttpClientExecutor",
+            session = true
+    )
+    private JPostman.Runtime<JPostman.Test> jpostman;
+
+    @Test
+    @JPostman.Response(request = "Get current auth user")
+    public void getCurrentUser() {
+    }
+}
+```
+
+`@JPostman.JUnit` uses per-class lifecycle, so injected fields can be used from non-static `@BeforeAll` and `@AfterAll` methods.
+
+## `jpostman.properties`
+
+By default, context configuration can be loaded from:
+
+```text
+classpath:jpostman.properties
+```
+
+If this file exists, `@JPostman.Context` loads it automatically. This lets you keep shared setup such as `collection`, `executor`, `rules`, `dataload`, and `assertions` in one place instead of copying it into every test class.
+
+Example:
 
 ```properties
-collection=classpath:DummyJSON.postman_collection.json
+collection=classpath:DummyJSON.all_product_collection.json
 environment=classpath:DummyJSON.postman_environment.json
+executor=io.jpostman.httpclient.HttpClientExecutor
+rules=classpath:demo_test_rule.ini
+dataload=classpath:product-data.ini
+assertions=classpath:assertions.ini
 ```
 
-Rules are optional. Add them only when you need secure filtering or masking:
+Then the test can use only the default context annotation:
+
+```java
+@JPostman.Context
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+Namespace-specific values are also supported:
+
+```properties
+collection.product=classpath:Product.postman_collection.json
+dataload.product=classpath:product-data.ini
+```
+
+Then use the namespace in annotations:
+
+```java
+@Test
+@JPostman.Runner(namespace = "product", folder = "Product")
+public void runProductNamespace() {
+}
+```
+
+You can also access a namespace through the runtime facade:
+
+```java
+jpostman.ctx("product").response().print();
+```
+
+## Rules File
+
+JPostman can load reusable secure rules from a rules file:
 
 ```properties
 rules=classpath:demo_test_rule.ini
 ```
 
-classpath: means the file is loaded from the Java test resources folder, usually:
+Rules are useful for shared response cleanup, such as redacting sensitive values, filtering noisy fields, and keeping logs easier to read.
 
-```properties
-src/test/resources/demo_test_rule.ini
+Example `demo_test_rule.ini`:
+
+```ini
+[default]
+unsecret=base_url
+redact=email
+headersFilter=Date
+
+[user]
+extends=default
+redact=phone[:3],/address/address
+redact=ip,bloodGroup,height,weight,eyeColor,/hair
+
+[product]
+extends=default
+redact=/**/tags,/**/dimensions,/**/meta,/**/images,thumbnail
+filter=id,title,description,price,/**/reviews
+filterList=/**/reviews[0],/**/reviews/*/rating,/**/reviews/*/reviewerName,/**/reviews/*/comment
 ```
 
-You can also use a regular file path:
-
-```properties
-rules=src/test/resources/demo_test_rule.ini
-```
-
-or an absolute path:
-
-```properties
-rules=/path/to/demo_test_rule.ini
-```
----
-
-## 2. Context Annotations
-
-Use `@JPostmanContext` when you need direct access to the loaded Postman collection or environment.
-
-```java
-import io.jpostman.JPostman;
-import io.jpostman.annotations.JPostmanContext;
-
-@JPostmanContext
-private JPostman.Context ctx;
-```
-
-Example:
+Then select a rule section from a response or runner:
 
 ```java
 @Test
-public void printPostmanFiles() {
-    ctx.getCollection().print();
-    ctx.getEnvironment().print();
-}
-```
-
-Use `@JPostmanTestContext` for the active JUnit or TestNG execution context.
-
-```java
-import io.jpostman.annotations.JPostmanTestContext;
-import io.jpostman.junit.JUnitContext;
-
-@JPostmanTestContext
-private JUnitContext api;
-```
-
-The test context is used to execute requests, verify responses, read cache values, and print the active response.
-
-```java
-api.ctx().verify().print();
-```
-
----
-
-## 3. Simple JUnit Test
-
-This is the smallest JUnit annotation example.
-
-```java
-import org.junit.jupiter.api.Test;
-
-import io.jpostman.ApiExecutor;
-import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanResponse;
-import io.jpostman.annotations.JPostmanTestContext;
-import io.jpostman.junit.JPostmanJUnit;
-import io.jpostman.junit.JUnitContext;
-import io.jpostman.restassured.RestAssuredExecutor;
-
-@JPostmanJUnit
-public class DemoJUnitTest {
-
-    @JPostmanTestContext
-    private JUnitContext api;
-
-    @JPostmanExecutor
-    public ApiExecutor defaultExecutor(JUnitContext context) {
-        return RestAssuredExecutor.apply(context.request());
-    }
-
-    @JPostmanResponse(request = "Get current auth user")
-    @Test
-    public void getCurrentAuthUser() {
-        api.ctx().print();
-    }
-}
-```
-
-JPostman will load the collection, find the request by name, execute it, and verify the response status.
-
----
-
-## 4. Simple TestNG Test
-
-The same idea works with TestNG.
-
-```java
-import org.testng.annotations.Test;
-
-import io.jpostman.ApiExecutor;
-import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanResponse;
-import io.jpostman.annotations.JPostmanTestContext;
-import io.jpostman.restassured.RestAssuredExecutor;
-import io.jpostman.testng.JPostmanTestNG;
-import io.jpostman.testng.TestNgContext;
-
-@JPostmanTestNG
-public class DemoTestNgTest {
-
-    @JPostmanTestContext
-    private TestNgContext api;
-
-    @JPostmanExecutor
-    public ApiExecutor defaultExecutor(TestNgContext context) {
-        return RestAssuredExecutor.apply(context.request());
-    }
-
-    @JPostmanResponse(request = "Get current auth user")
-    @Test
-    public void getCurrentAuthUser() {
-        api.ctx().print();
-    }
-}
-```
-
----
-
-## 5. Rules and Response Filters
-
-Use `rule` when you want to apply a named secure rule section.
-
-```java
-@JPostmanResponse(
-    request = "Get current auth user",
-    rule = "user",
-    verify = 200
-)
-@Test
-public void getCurrentAuthUser() {
-}
-```
-
-Use `filter` when you want to keep only selected fields from the response.
-
-```java
-@JPostmanResponse(
-    request = "Get current auth user",
-    rule = "user",
-    filter = { "id", "firstName", "lastName", "gender" },
-    verify = 200
-)
-@Test
-public void getCurrentAuthUser() {
-}
-```
-
-Rules and filters are optional. Use them only when a test needs secure output or a smaller response view.
-
----
-
-## 6. Executors
-
-Executors control how the prepared request is sent.
-
-Default executor:
-
-```java
-@JPostmanExecutor
-public ApiExecutor defaultExecutor(JUnitContext context) {
-    return RestAssuredExecutor.apply(context.request());
-}
-```
-
-Named executor with authentication:
-
-```java
-@JPostmanExecutor(name = "auth", dependsOn = "getToken")
-public ApiExecutor authExecutor(JUnitContext context, String methodName) {
-    return RestAssuredExecutor.apply(context.request())
-            .auth()
-            .oauth2(context.cache("getToken"));
-}
-```
-
-Then use the executor by name:
-
-```java
-@JPostmanResponse(
-    request = "Get current auth user",
-    executor = "auth",
-    verify = 200
-)
-@Test
-public void getCurrentAuthUser() {
-}
-```
-
----
-
-## 7. Cache and Dependencies
-
-Use `@JPostmanRequest` for a helper request that returns a value, such as a token.
-
-If `cache` is not provided, JPostman stores the returned value using the method name.
-
-```text
-getToken() -> api.cache("getToken")
-```
-
-Use a custom cache key when you want a different name.
-
-```java
-@JPostmanRequest(
-    request = "Login user and get tokens",
-    cache = "accessToken"
-)
-```
-
-Then read it with:
-
-```java
-context.cache("accessToken")
-```
-
-Use `dependsOn` when one request must run before another.
-
-```java
-@JPostmanExecutor(name = "auth", dependsOn = "getToken")
-```
-
-Before the `auth` executor runs, JPostman runs `getToken` and stores the returned token in cache.
-
-For multiple dependencies:
-
-```java
-dependsOn = { "getToken", "prepareUser" }
-```
-
----
-
-## 8. Full JUnit Example
-
-```java
-import org.junit.jupiter.api.Test;
-
-import io.jpostman.ApiExecutor;
-import io.jpostman.JPostman;
-import io.jpostman.annotations.JPostmanContext;
-import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanRequest;
-import io.jpostman.annotations.JPostmanResponse;
-import io.jpostman.annotations.JPostmanTestContext;
-import io.jpostman.junit.JPostmanJUnit;
-import io.jpostman.junit.JUnitContext;
-import io.jpostman.restassured.RestAssuredExecutor;
-
-@JPostmanJUnit
-public class DemoJUnitTest {
-
-    @JPostmanContext
-    private JPostman.Context ctx;
-
-    @JPostmanTestContext
-    private JUnitContext api;
-
-    @Test
-    public void printLoadedContext() {
-        ctx.getCollection().print();
-        ctx.getEnvironment().print();
-    }
-
-    @JPostmanExecutor
-    public ApiExecutor defaultExecutor(JUnitContext context) {
-        return RestAssuredExecutor.apply(context.request());
-    }
-
-    @JPostmanExecutor(name = "auth", dependsOn = "getToken")
-    public ApiExecutor authExecutor(JUnitContext context, String methodName) {
-        return RestAssuredExecutor.apply(context.request())
-                .auth()
-                .oauth2(context.cache("getToken"));
-    }
-
-    @JPostmanRequest(request = "Login user and get tokens")
-    public String getToken() {
-        return api.response(c -> RestAssuredExecutor.execute(c.request()))
-                .asserts(true)
-                    .exists("accessToken", "Access token not found")
-                    .verify()
-                .path("accessToken");
-    }
-
-    @JPostmanResponse(
+@JPostman.Response(
         request = "Get current auth user",
         rule = "user",
-        filter = { "id", "firstName", "lastName", "gender" },
-        executor = "auth",
-        verify = 200,
-        soft = true,
-        log = true
+        verify = 200
+)
+public void getCurrentUser() {
+}
+```
+
+For more rule examples, see the secure module template:
+
+https://github.com/JPostman/jpostman/blob/main/jpostman-secure/src/test/resources/secure-rules.ini
+
+## Use Data Files
+
+Load reusable request data files at the context level with `dataload`.
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor",
+        dataload = "classpath:product-data.ini"
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+Then select a data section from a request, response, or runner with `data`.
+
+```java
+@JPostman.Request(
+        folder = "Product",
+        request = "Add a new product",
+        data = "product"
+)
+public void prepareProduct() {
+}
+
+@Test
+@JPostman.Response(tags = "mouse", dependsOn = "prepareProduct", verify = 201)
+public void addMouse() {
+}
+```
+
+Naming rule:
+
+```text
+dataload = loads INI data files at context setup time
+data     = selects a section from loaded data files
+```
+
+For more dataload examples, see:
+
+https://github.com/JPostman/jpostman/blob/main/jpostman-annotations/src/test/resources/templates/annotation-dataload.ini
+
+## Assertion Rules
+
+Load reusable assertion files from the context with `assertions`.
+
+```java
+@JPostman.Context(
+        collection = "classpath:DummyJSON.all_product_collection.json",
+        executor = "io.jpostman.httpclient.HttpClientExecutor",
+        assertions = "classpath:assertions.ini"
+)
+private JPostman.Runtime<JPostman.Test> jpostman;
+```
+
+Then select assertion sections from a response or runner with `asserts`.
+
+```java
+@Test
+@JPostman.Runner(
+        folder = "Product",
+        include = "Get all products",
+        asserts = "product",
+        soft = true
+)
+public void verifyProducts() {
+}
+```
+
+Naming rule:
+
+```text
+assertions = loads assertion INI files at context setup time
+asserts    = selects assertion sections from loaded assertion files
+```
+
+For more assertion examples, see:
+
+https://github.com/JPostman/jpostman/blob/main/jpostman-annotations/src/test/resources/templates/annotation-assertions.ini
+
+## Authentication or Header Preparation
+
+Use `@JPostman.Request` when a test needs to update the next request before execution.
+
+```java
+@JPostman.Request
+public void applyAuth(JPostman.Info info) {
+    info.sauth("oauth2", "ACCESS_TOKEN_VALUE");
+}
+
+@Test
+@JPostman.Response(
+        request = "Get current auth user",
+        dependsOn = "applyAuth",
+        verify = 200
+)
+public void getCurrentUser() {
+}
+```
+
+For login flows, create a login response dependency, cache the returned value, and then apply it from a request helper. If you need direct cache access in the helper, use the framework-specific context type such as `TestNgContext` or `JUnitContext`. The compact `JPostman.Test` facade is best for simple request/response access with one JPostman import.
+
+### Cache a Login Token
+
+For authentication flows, a login request can run first and cache the returned token. The next request helper can read that cached value and apply it to the request.
+
+```java
+@JPostman.Response(
+        request = "Login user and get tokens",
+        cache = "token"
+)
+public String login(TestNgContext ctx) {
+    return ctx.asserts(true)
+            .exists("accessToken", "Access token not found")
+            .verify()
+            .path("accessToken");
+}
+
+@JPostman.Request(dependsOn = "login")
+public void applyAuth(TestNgContext ctx, JPostman.Info info) {
+    info.sauth("oauth2", ctx.cache("token"));
+}
+
+@Test
+@JPostman.Response(
+        request = "Get current auth user",
+        dependsOn = "applyAuth",
+        verify = 200
+)
+public void getCurrentUser() {
+}
+```
+
+Both `@JPostman.Request` and `@JPostman.Response` can use the `cache` attribute for one-time setup steps such as login, token creation, or preparing shared data.
+If the method returns a value, JPostman stores the returned value in the cache. When `cache` is empty, the method name is used as the cache key.
+For `void` methods, use `cache = ""` when you want the method to participate in the one-time cache/dependency flow, then store values manually in the context.
+
+## Use Tags to Reuse One Request Helper for Multiple Test Cases
+
+Tags let one request helper prepare different data for different response tests.
+
+```java
+@JPostman.Request(
+        folder = "Product",
+        request = "Add a new product"
+)
+public void prepareProduct(JPostman.Info info) {
+    info.tags()
+            .has("mouse").then(i -> i.body(
+                    "title", "Wireless Mouse",
+                    "price", 25,
+                    "stock", 120
+            ))
+            .has("keyboard").then(i -> i.body(
+                    "title", "Gaming Keyboard",
+                    "price", 75,
+                    "stock", 60
+            ));
+}
+
+@Test
+@JPostman.Response(tags = "mouse", dependsOn = "prepareProduct", verify = 201)
+public void addMouse() {
+}
+
+@Test
+@JPostman.Response(tags = "keyboard", dependsOn = "prepareProduct", verify = 201)
+public void addKeyboard() {
+}
+```
+
+Each response method calls the same request helper, but the tag controls which body values are applied.
+
+
+## Common Rules
+
+- Use `executor = "fully.qualified.ClassName"` for string executor configuration.
+- If a string executor value ends with `.class`, JPostman normalizes the suffix automatically.
+- Use `executorClass = SomeExecutor.class` when you want real Java class syntax.
+- Use `session = true` only when the executor supports reusable state.
+- Use `@JPostman.Request` to prepare or modify a request.
+- Use `@JPostman.Response` to execute one request and handle its response.
+- Use `@JPostman.Runner` to execute multiple collection requests.
+- Use `rules` to load secure rules and `rule` to select a rule section.
+- Use `dataload` to load data files and `data` to select a section.
+- Use `assertions` to load assertion files and `asserts` to select sections.
+
+
+## Final Example: Custom Product Preload and Shared INI Data
+
+Sometimes a collection request is reusable, but each test needs different body, header, path, query, or auth values. You can define those values directly in Java with `JPostman.Info`, or move them into a shared INI file and select them with `data`.
+
+### Option 1: Preload values in Java
+
+This example uses one request helper and tags to prepare different product payloads. The comments show the matching INI property that can replace each Java line later.
+
+```java
+import io.jpostman.annotations.JPostman;
+
+@JPostman.TestNG
+public class ProductPreloadTest {
+
+    @JPostman.Context
+    private JPostman.Runtime<JPostman.Test> jpostman;
+
+    @JPostman.Request(
+            namespace = "product",
+            folder = "Product",
+            request = "Add a new product"
     )
-    @Test
-    public void getCurrentAuthUser() {
-        api.ctx().verify().print();
+    public void prepareProduct(JPostman.Info info) {
+        info.tags()
+                                                               // [product.category]
+                .has("mouse", "keyboard").then(i -> {          // tags = mouse, keyboard
+                    i.body("category", "electronics");         // body.category = electronics
+                })
+                                                               // [product.discount]
+                .any("mouse", "shoes").then(i -> {             // anyTags = mouse, shoes
+                    i.body("productDiscount", 15);             // body.productDiscount = 15
+                })
+                                                               // [product.mouse]
+                .has("mouse").then(i -> {                      // tags = mouse
+                    i.sbody("title", "Wireless Mouse",         // sbody.title = Wireless Mouse
+                            "description",                     // sbody.description = A simple wireless mouse
+                            "A simple wireless mouse",
+                            "price", 25,                       // sbody.price = 25
+                            "stock", 120,                      // sbody.stock = 120
+                            "rating", 4.3,                     // sbody.rating = 4.3
+                            "brand", "Logitech");              // sbody.brand = Logitech
+                })
+                                                               // [product.keyboard]
+                .has("keyboard").then(i -> {                   // tags = keyboard
+                    i.spath("hello", "world");                 // spath.hello = world
+                    i.sheaders("hello", "world");              // sheaders.hello = world
+                    i.sbody("productTitle", "Gaming Keyboard", // sbody.productTitle = Gaming Keyboard
+                            "productDesc",                     // sbody.productDesc = Mechanical keyboard with RGB
+                            "Mechanical keyboard with RGB",
+                            "productPrice", 75,                // sbody.productPrice = 75
+                            "productDiscount", 10,             // sbody.productDiscount = 10
+                            "productStock", 60,                // sbody.productStock = 60
+                            "productRating", 4.6,              // sbody.productRating = 4.6
+                            "productBrand", "Razer");          // sbody.productBrand = Razer
+                })
+                                                               // [product.shoes]
+                .has("shoes").then(i -> {                      // tags = shoes
+                    i.body("productTitle", "Running Shoes",    // body.productTitle = Running Shoes
+                            "productDesc",                     // body.productDesc = Comfortable running shoes
+                            "Comfortable running shoes",
+                            "productPrice", 90,                // body.productPrice = 90
+                            "productStock", 45,                // body.productStock = 45
+                            "productRating", 4.4,              // body.productRating = 4.4
+                            "productBrand", "Nike",            // body.productBrand = Nike
+                            "productCategory", "sports");      // body.productCategory = sports
+                });
     }
 
-    @JPostmanResponse(
-        folder = "Product",
-        request = "Get all products",
-        rule = "product"
-    )
     @Test
-    public void getAllProducts() {
-        api.ctx().print();
+    @JPostman.Response(tags = "mouse", dependsOn = "prepareProduct", verify = 201)
+    public void addMouse() {
+    }
+
+    @Test
+    @JPostman.Response(tags = "keyboard", dependsOn = "prepareProduct", verify = 201)
+    public void addKeyboard() {
+    }
+
+    @Test
+    @JPostman.Response(tags = "shoes", dependsOn = "prepareProduct", verify = 201)
+    public void addShoes() {
     }
 }
 ```
 
-## 9. Logging
+This works well when the setup is small. When the same setup is needed by multiple test classes, move it to a shared data file.
 
-JPostman uses logging for request and response output. To see formatted logs during tests, add a Logback test configuration file:
+### Option 2: Move preload values to `product-data.ini`
 
-```text
-src/test/resources/logback-test.xml
+`dataload` loads one or more INI files during context setup. Each section name must be unique across all loaded data files.
+
+```java
+@JPostman.Context
+private JPostman.Runtime<JPostman.Test> jpostman;
 ```
 
-This file is used only during tests. It keeps normal logs readable and prints JPostman `TRACE` logs in a cleaner format.
+Then select the shared data with `data = "product"`:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-    <!-- Standard console logs: DEBUG, INFO, WARN, ERROR -->
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>DEBUG</level>
-        </filter>
+```java
+@JPostman.Request(
+        namespace = "product",
+        folder = "Product",
+        request = "Add a new product",
+        data = "product"
+)
+public void prepareProduct() {
+}
 
-        <encoder>
-            <pattern>%-5level %logger - %msg%n</pattern>
-        </encoder>
-    </appender>
+@Test
+@JPostman.Response(tags = "mouse", dependsOn = "prepareProduct", verify = 201)
+public void addMouse() {
+}
 
-    <!-- JPostman TRACE logs only -->
-    <appender name="CONSOLE_TRACE" class="ch.qos.logback.core.ConsoleAppender">
-        <filter class="ch.qos.logback.classic.filter.LevelFilter">
-            <level>TRACE</level>
-            <onMatch>ACCEPT</onMatch>
-            <onMismatch>DENY</onMismatch>
-        </filter>
+@Test
+@JPostman.Response(tags = "keyboard", dependsOn = "prepareProduct", verify = 201)
+public void addKeyboard() {
+}
 
-        <encoder>
-            <pattern>%cyan(%msg%n%n)</pattern>
-        </encoder>
-    </appender>
-
-    <!-- Reduce noisy third-party logs -->
-    <logger name="com.github.jknack.handlebars" level="WARN" />
-    <logger name="org.testng" level="WARN" />
-
-    <!-- Show JPostman request/response logs -->
-    <logger name="io.jpostman" level="TRACE" additivity="false">
-        <appender-ref ref="CONSOLE_TRACE" />
-    </logger>
-
-    <!-- Default logging for everything else -->
-    <root level="DEBUG">
-        <appender-ref ref="CONSOLE" />
-    </root>
-</configuration>
+@Test
+@JPostman.Response(tags = "shoes", dependsOn = "prepareProduct", verify = 201)
+public void addShoes() {
+}
 ```
 
----
+The data file can contain shared sections and tag-specific sections:
 
-## Why This Is Easy
+```ini
+########################## PRODUCT ##########################
 
-JPostman keeps Postman as the source of truth and lets Java tests stay small.
+[product.category]
+tags = mouse, keyboard
+body.category = electronics
+
+[product.discount]
+anyTags = mouse, shoes
+body.productDiscount = 15
+
+[product.mouse]
+tags = mouse
+sbody.title = Wireless Mouse
+sbody.description = A simple wireless mouse
+sbody.price = 25
+sbody.stock = 120
+sbody.rating = 4.3
+sbody.brand = Logitech
+
+[product.keyboard]
+tags = keyboard
+spath.hello = world
+sheaders.hello = world
+sbody.productTitle = Gaming Keyboard
+sbody.productDesc = Mechanical keyboard with RGB
+sbody.productPrice = 75
+sbody.productDiscount = 10
+sbody.productStock = 60
+sbody.productRating = 4.6
+sbody.productBrand = Razer
+
+[product.shoes]
+tags = shoes
+body.productTitle = Running Shoes
+body.productDesc = Comfortable running shoes
+body.productPrice = 90
+body.productStock = 45
+body.productRating = 4.4
+body.productBrand = Nike
+body.productCategory = sports
+```
+
+Using the same `product-data.ini` file removes repeated preload code from every test class. You can update the product payload in one place and reuse it across TestNG and JUnit tests.
+
+### `body` vs `sbody`, `headers` vs `sheaders`, and other secure helpers
+
+JPostman provides normal and secure value helpers:
+
+| Helper | Secure helper | Target |
+| --- | --- | --- |
+| `body(...)` | `sbody(...)` | Request body values |
+| `query(...)` | `squery(...)` | Query string values |
+| `headers(...)` | `sheaders(...)` | Header values |
+| `path(...)` | `spath(...)` | Path variables |
+| `auth(...)` | `sauth(...)` | Authentication values |
+
+Use the normal helper when the value can safely appear in logs. Use the secure helper when the value should be masked or treated as sensitive in JPostman secure output.
+

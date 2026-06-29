@@ -163,11 +163,7 @@ final class JPostmanRuntimeOptions {
 
 		String name = value.trim();
 		if (name.endsWith(".class")) {
-			String suggested = name.substring(0, name.length() - ".class".length());
-			throw new IllegalArgumentException(JPostmanErrors.message(annotation,
-					"Invalid JPostman executor class: " + name,
-					"The executor value is a class name string, not Java code.",
-					"Use executor = \"" + suggested + "\",", "or use executorClass = RestAssuredExecutor.class."));
+			name = name.substring(0, name.length() - ".class".length()).trim();
 		}
 
 		try {
