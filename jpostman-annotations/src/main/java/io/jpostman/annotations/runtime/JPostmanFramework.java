@@ -1,8 +1,11 @@
 package io.jpostman.annotations.runtime;
 
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.Request;
@@ -110,6 +113,32 @@ public interface JPostmanFramework<C> {
 	C request(C context, Request request);
 
 	/**
+	 * Applies a Postman request to the context after applying request values from
+	 * {@link JPostmanInfo}.
+	 *
+	 * <p>
+	 * This lets request helper methods call {@code info.body(...)},
+	 * {@code info.query(...)}, {@code info.headers(...)}, {@code info.path(...)},
+	 * or {@code info.auth(...)} while executor methods can stay focused on choosing
+	 * an {@link ApiExecutor}:
+	 * </p>
+	 *
+	 * <pre>
+	 * return RestAssuredExecutor.apply(ctx.request());
+	 * </pre>
+	 *
+	 * @param context framework context
+	 * @param request original Postman request
+	 * @param info    current annotation execution information
+	 * @return context with the customized request applied
+	 */
+	default C request(C context, Request request, JPostmanInfo info) {
+		C result = request(context, applyRequestValues(request, info));
+		applySecureRequestMetadata(result, info);
+		return result;
+	}
+
+	/**
 	 * Executes the request using the supplied executor and stores the response.
 	 *
 	 * @param context  framework context
@@ -117,6 +146,130 @@ public interface JPostmanFramework<C> {
 	 * @return context with the response applied
 	 */
 	C response(C context, ApiExecutor executor);
+
+	/** Applies request values collected in {@link JPostmanInfo} to a request. */
+	static Request applyRequestValues(Request request, JPostmanInfo info) {
+		if (request == null || info == null || !info.hasRequestValues()) {
+			return request;
+		}
+
+		/*
+		 * Important: RequestBuilder.ParamStep.end(Map) resolves variables that already
+		 * exist in that request section. It does not add a new header/body/query entry.
+		 * For annotation runtime values we need add/replace behavior, so use add(...)
+		 * for body/query/headers/auth.
+		 */
+		Request.RequestBuilder builder = request.builder();
+
+		applyRequestValues(builder.url(), info.query);
+		applyRequestValues(builder.headers(), info.headers);
+
+		/*
+		 * Body is different from headers/query values. A Postman body is often a raw
+		 * JSON template containing placeholders such as {{productTitle}} and numeric
+		 * placeholders such as {{productPrice}}. That raw template is not always valid
+		 * JSON until variables are resolved, so Body.add/set can fail before
+		 * resolution. Use end(Map) for body values so the existing request body
+		 * placeholders are resolved first.
+		 */
+		if (info.body != null && !info.body.isEmpty()) {
+			builder.body().end(info.body);
+		}
+
+		applyAuthValues(builder.auth(), builder.headers(), info.auth);
+
+		if (info.path != null && !info.path.isEmpty()) {
+			builder.url().end(info.path);
+		}
+
+		return builder.build();
+	}
+
+	private static void applyRequestValues(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
+		if (step == null || values == null || values.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			if (entry.getKey() != null) {
+				step.add(entry.getKey(), entry.getValue());
+			}
+		}
+	}
+
+	private static void applyAuthValues(Request.RequestBuilder.ParamStep auth, Request.RequestBuilder.ParamStep headers,
+			Map<String, Object> values) {
+		if (values == null || values.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			if (entry.getKey() == null) {
+				continue;
+			}
+			String key = entry.getKey();
+			Object value = entry.getValue();
+			Object rawValue = JPostmanInfo.reveal(value);
+
+			/*
+			 * oauth2 and bearer are friendly aliases for HTTP bearer-token auth. Apply the
+			 * real HTTP Authorization header so every executor can use the token. For
+			 * normal auth(...), also update the request bearer token field so SecureRequest
+			 * logs show Auth: [bearer] {token=...}. For secret sauth(...), do not copy the
+			 * value into auth params because some core logs print auth params directly; the
+			 * Authorization header is already masked by secure logs.
+			 */
+			if ("oauth2".equalsIgnoreCase(key) || "bearer".equalsIgnoreCase(key)) {
+				if (headers != null && rawValue != null) {
+					headers.add("Authorization", "Bearer " + rawValue);
+				}
+				if (auth != null && rawValue != null && !isSecretValue(value)) {
+					auth.add("token", rawValue);
+				}
+				continue;
+			}
+
+			if (auth != null) {
+				auth.add(key, rawValue);
+			}
+		}
+	}
+
+	private static boolean isSecretValue(Object value) {
+		return JPostmanInfo.isSecretValue(value);
+	}
+
+	private static void applySecureRequestMetadata(Object context, JPostmanInfo info) {
+		if (context == null || info == null) {
+			return;
+		}
+		Map<String, Object> secrets = info.secretValues();
+		String[] secretHeaders = info.secretHeaders();
+		if ((secrets == null || secrets.isEmpty()) && (secretHeaders == null || secretHeaders.length == 0)) {
+			return;
+		}
+		try {
+			Object secureRequest = context.getClass().getMethod("request").invoke(context);
+			if (secureRequest == null) {
+				return;
+			}
+			if (secrets != null && !secrets.isEmpty()) {
+				try {
+					secureRequest.getClass().getMethod("secret", Map.class).invoke(secureRequest, secrets);
+				} catch (ReflectiveOperationException | RuntimeException ignored) {
+					// Older secure modules may not expose SecureRequest.secret(Map).
+				}
+			}
+			if (secretHeaders != null && secretHeaders.length > 0) {
+				try {
+					secureRequest.getClass().getMethod("headers", String[].class).invoke(secureRequest,
+							(Object) secretHeaders);
+				} catch (ReflectiveOperationException | RuntimeException ignored) {
+					// Older secure modules may not expose SecureRequest.headers(String...).
+				}
+			}
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			// Context implementation does not expose a secure request view.
+		}
+	}
 
 	/**
 	 * Returns whether the context currently has a response.
@@ -148,6 +301,14 @@ public interface JPostmanFramework<C> {
 	}
 
 	/**
+	 * Enables soft assertion collection for the supplied context.
+	 *
+	 * @param context framework context
+	 * @param log     whether request/response diagnostics should be collected
+	 */
+	void soft(C context, boolean log);
+
+	/**
 	 * Verifies the response status code.
 	 *
 	 * @param context    framework context
@@ -156,6 +317,27 @@ public interface JPostmanFramework<C> {
 	 * @param log        whether to attach secure log output to failures
 	 */
 	void verify(C context, int statusCode, boolean soft, boolean log);
+
+	/**
+	 * Verifies the response status code and includes current annotation location in
+	 * the assertion message when the underlying assertion API supports custom
+	 * messages.
+	 *
+	 * <p>
+	 * This overload is used by the annotation runner so soft assertion failures
+	 * keep the Postman folder/request that produced each failure. The older
+	 * overload is kept for compatibility with tests and custom framework bridges.
+	 * </p>
+	 *
+	 * @param context    framework context
+	 * @param statusCode expected HTTP status code
+	 * @param soft       whether to use soft assertions
+	 * @param log        whether to attach secure log output to failures
+	 * @param info       current annotation execution information
+	 */
+	default void verify(C context, int statusCode, boolean soft, boolean log, JPostmanInfo info) {
+		verify(context, statusCode, soft, log);
+	}
 
 	/**
 	 * Reads a cached value from the context.
@@ -274,6 +456,33 @@ public interface JPostmanFramework<C> {
 	}
 
 	/**
+	 * Returns cache keys when the underlying context exposes its cache map.
+	 *
+	 * @param context framework context
+	 * @return cache keys, or an empty set when unavailable
+	 */
+	default Set<String> cacheKeys(C context) {
+		Set<String> result = new LinkedHashSet<>();
+		if (context == null) {
+			return result;
+		}
+		try {
+			Method cache = context.getClass().getMethod("cache");
+			Object values = cache.invoke(context);
+			if (values instanceof Map<?, ?>) {
+				for (Object key : ((Map<?, ?>) values).keySet()) {
+					if (key != null) {
+						result.add(String.valueOf(key));
+					}
+				}
+			}
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// Older context implementations may not expose the cache map.
+		}
+		return result;
+	}
+
+	/**
 	 * Checks whether a cache entry exists for the given key.
 	 *
 	 * <p>
@@ -337,6 +546,265 @@ public interface JPostmanFramework<C> {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			// Older context implementations may not expose the cache map.
 		}
+	}
+
+	/**
+	 * Returns best-effort diagnostic output for the current context.
+	 *
+	 * <p>
+	 * This is used when request execution fails before assertion/verification can
+	 * print the normal secure request/response log. Implementations may override
+	 * this, but the default reflection-based version supports common JPostman
+	 * methods such as {@code log()}, {@code request().log()}, and
+	 * {@code response().log()}.
+	 * </p>
+	 *
+	 * @param context framework context
+	 * @return diagnostic text, or an empty string when unavailable
+	 */
+	default String diagnosticLog(C context) {
+		if (context == null) {
+			return "";
+		}
+
+		StringBuilder result = new StringBuilder();
+
+		for (String methodName : new String[] { "log" }) {
+			try {
+				Method method = context.getClass().getMethod(methodName);
+				if (method.getReturnType() != Void.TYPE) {
+					Object value = method.invoke(context);
+					if (value != null && !String.valueOf(value).isBlank()) {
+						result.append(String.valueOf(value));
+					}
+				}
+			} catch (NoSuchMethodException e) {
+				// Try request/response logs below.
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				// Diagnostics must never hide the original execution failure.
+			}
+		}
+
+		for (String ownerName : new String[] { "request", "response" }) {
+			try {
+				Method ownerMethod = context.getClass().getMethod(ownerName);
+				if (ownerMethod.getReturnType() == Void.TYPE) {
+					continue;
+				}
+				Object owner = ownerMethod.invoke(context);
+				if (owner == null) {
+					continue;
+				}
+				try {
+					Method log = owner.getClass().getMethod("log");
+					if (log.getReturnType() != Void.TYPE) {
+						Object value = log.invoke(owner);
+						if (value != null && !String.valueOf(value).isBlank()) {
+							if (result.length() > 0) {
+								result.append(JPostmanErrors.ENDL);
+							}
+							result.append(String.valueOf(value));
+						}
+					}
+				} catch (NoSuchMethodException e) {
+					// Object does not expose log().
+				}
+			} catch (NoSuchMethodException e) {
+				// Context does not expose this object.
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				// Diagnostics must never hide the original execution failure.
+			}
+		}
+
+		return result.toString();
+	}
+
+	/**
+	 * Invokes a framework assertion object's {@code statusCode} assertion while
+	 * passing the current JPostman location when supported.
+	 *
+	 * <p>
+	 * Newer JPostman assertion APIs may expose {@code statusCode(int, String)}.
+	 * When present, this method is preferred so soft assertion collections contain
+	 * the folder/request for each individual failure. Older APIs are still
+	 * supported through {@code statusCode(int)}. For hard assertions on older APIs,
+	 * the thrown message is wrapped with the location suffix.
+	 * </p>
+	 *
+	 * @param assertions assertion target returned by {@code context.asserts(...)}
+	 *                   or {@code context.soft(...)}
+	 * @param statusCode expected HTTP status code
+	 * @param info       current annotation execution information
+	 */
+	static void statusCode(Object context, Object assertions, int statusCode, JPostmanInfo info) {
+		statusCode(context, assertions, statusCode, info, false, false, "");
+	}
+
+	static void statusCode(Object context, Object assertions, int statusCode, JPostmanInfo info, boolean soft,
+			boolean log, String diagnosticLog) {
+		String message = statusCodePrefix(info);
+		if (soft && log) {
+			int actualStatusCode = actualStatusCode(context);
+			String diagnostic = value(diagnosticLog).trim();
+			if (actualStatusCode >= 0 && actualStatusCode != statusCode && !diagnostic.isBlank()) {
+				message = statusCodeMessage(info, statusCode, actualStatusCode, diagnostic);
+			}
+		}
+		try {
+			invokeStatusCode(assertions, statusCode, message);
+		} catch (AssertionError e) {
+			String detail = log ? appendDiagnostic(e.getMessage(), diagnosticLog) : value(e.getMessage());
+			AssertionError error = new AssertionError(endWithNewLine(detail), e);
+			copySuppressed(e, error);
+			throw error;
+		}
+	}
+
+	private static String statusCodePrefix(JPostmanInfo info) {
+		if (info == null) {
+			return "";
+		}
+		return JPostmanErrors.suffix(info) + "\nStatus code mismatch:";
+	}
+
+	private static String statusCodeMessage(JPostmanInfo info, int expected, int actual, String diagnosticLog) {
+		StringBuilder message = new StringBuilder();
+		message.append(JPostmanErrors.suffix(info));
+		message.append(JPostmanErrors.ENDL);
+		message.append("Status code mismatch: expected [").append(expected).append("] but found [").append(actual)
+				.append("]");
+		String diagnostic = value(diagnosticLog).trim();
+		if (!diagnostic.isBlank()) {
+			message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append(diagnostic);
+		}
+		return endWithNewLine(message.toString());
+	}
+
+	private static String appendDiagnostic(String message, String diagnosticLog) {
+		String result = value(message).stripTrailing();
+		String diagnostic = value(diagnosticLog).trim();
+		if (diagnostic.isBlank() || result.contains(diagnostic)) {
+			return result;
+		}
+		return result + JPostmanErrors.ENDL + JPostmanErrors.ENDL + diagnostic;
+	}
+
+	private static int actualStatusCode(Object context) {
+		Object response = responseObject(context);
+		if (response == null) {
+			return -1;
+		}
+		for (String methodName : new String[] { "statusCode", "getStatusCode", "status", "getStatus" }) {
+			try {
+				Method method = response.getClass().getMethod(methodName);
+				if (method.getReturnType() == Void.TYPE) {
+					continue;
+				}
+				Object value = method.invoke(response);
+				if (value instanceof Number) {
+					return ((Number) value).intValue();
+				}
+				if (value != null) {
+					return Integer.parseInt(String.valueOf(value));
+				}
+			} catch (NoSuchMethodException e) {
+				// Try the next common method name.
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				return -1;
+			}
+		}
+		return -1;
+	}
+
+	private static Object responseObject(Object context) {
+		if (context == null) {
+			return null;
+		}
+		try {
+			Method method = context.getClass().getMethod("response");
+			if (method.getReturnType() == Void.TYPE) {
+				return null;
+			}
+			return method.invoke(context);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	private static String value(String value) {
+		return value == null ? "" : value;
+	}
+
+	private static boolean invokeStatusCode(Object assertions, int statusCode, String message) {
+		if (assertions == null) {
+			return false;
+		}
+		Class<?> type = assertions.getClass();
+		try {
+			Method method = type.getMethod("statusCode", int.class, String.class);
+			method.invoke(assertions, statusCode, message);
+			return true;
+		} catch (NoSuchMethodException e) {
+			return false;
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof AssertionError) {
+				throw (AssertionError) cause;
+			}
+			if (cause instanceof RuntimeException) {
+				throw (RuntimeException) cause;
+			}
+			throw new IllegalStateException("Failed to verify JPostman status code.", cause);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Failed to verify JPostman status code.", e);
+		}
+	}
+
+	private static void copySuppressed(Throwable source, Throwable target) {
+		if (source == null || target == null) {
+			return;
+		}
+		Throwable current = source;
+		while (current != null) {
+			for (Throwable suppressed : current.getSuppressed()) {
+				if (suppressed != null && suppressed != target) {
+					target.addSuppressed(suppressed);
+				}
+			}
+			current = current.getCause();
+		}
+	}
+
+	private static String endWithNewLine(String value) {
+		String result = value == null ? "" : value;
+		return result.endsWith(JPostmanErrors.ENDL) ? result : result + JPostmanErrors.ENDL;
+	}
+
+	/**
+	 * Creates a framework-specific skip/abort exception.
+	 *
+	 * <p>
+	 * The annotation runner uses this when JPostman cannot execute a generated
+	 * runner flow because required runtime pieces, such as a default executor, are
+	 * missing. Implementations should return the native skip exception for their
+	 * framework so the test is reported as skipped instead of passed or failed.
+	 * </p>
+	 *
+	 * @param info  annotation execution information used in the skip message
+	 * @param lines skip reason lines
+	 * @return framework-specific runtime exception
+	 */
+	default RuntimeException skipException(JPostmanInfo info, String... lines) {
+		return new IllegalStateException(getMessage(info, lines));
+	}
+
+	static String getMessage(JPostmanInfo info, String... lines) {
+		return JPostmanErrors.message(info, lines);
+	}
+
+	static String infoSuffix(JPostmanInfo info) {
+		String suffix = JPostmanErrors.suffix(info);
+		return suffix.isBlank() ? "" : " " + suffix;
 	}
 
 	/**

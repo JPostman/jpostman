@@ -41,7 +41,7 @@ public final class JPostmanStackTraceCleaner {
 		for (Throwable suppressed : root.getSuppressed()) {
 			String suppressedMessage = suppressed.getMessage();
 			if (suppressedMessage != null && !suppressedMessage.isBlank()) {
-				message.append(System.lineSeparator()).append(System.lineSeparator()).append(suppressedMessage);
+				message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append(suppressedMessage);
 			}
 		}
 
@@ -211,7 +211,7 @@ public final class JPostmanStackTraceCleaner {
 
 	private static int maxStackTrace(Class<?> testClass) {
 		try {
-			Properties properties = JPostmanResourceLoader.loadProperties("classpath:jpostman.properties", testClass);
+			Properties properties = JPostmanResourceLoader.loadProperties(JPostmanDataLoader.DEFAULT_CONFIG, testClass);
 			String value = properties.getProperty("max.stacktrace", "").trim();
 			if (!value.isBlank()) {
 				return Math.max(1, Integer.parseInt(value));
@@ -225,7 +225,7 @@ public final class JPostmanStackTraceCleaner {
 
 	private static Set<String> stackTraceFilter(Class<?> testClass) {
 		try {
-			Properties properties = JPostmanResourceLoader.loadProperties("classpath:jpostman.properties", testClass);
+			Properties properties = JPostmanResourceLoader.loadProperties(JPostmanDataLoader.DEFAULT_CONFIG, testClass);
 			String value = properties.getProperty("stacktrace.filter", "").trim();
 			if (!value.isBlank()) {
 				Set<String> filters = new java.util.LinkedHashSet<>();

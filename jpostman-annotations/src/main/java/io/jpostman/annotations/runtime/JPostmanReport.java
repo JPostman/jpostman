@@ -1,4 +1,4 @@
-package io.jpostman.annotations;
+package io.jpostman.annotations.runtime;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
  * public for easy inspection in user tests.
  * </p>
  */
-public final class JPostmanReport {
+public final class JPostmanReport implements io.jpostman.annotations.JPostman.Report {
 
 	private static final Logger log = LoggerFactory.getLogger(JPostmanReport.class);
 
@@ -159,7 +159,8 @@ public final class JPostmanReport {
 	public String log() {
 		return "===============================================" + "\nJPostman report" + "\nTotal tests run: " + total()
 				+ ", Passes: " + passed.size() + ", Failures: " + failed.size() + ", Skips: " + skipped.size()
-				+ ", Duration: " + duration() + " ms" + "\n===============================================";
+				+ ", Duration: " + JPostmanInfo.formatDuration(duration(), true)
+				+ "\n===============================================";
 	}
 
 	/** Prints {@link #log()} using trace level. */

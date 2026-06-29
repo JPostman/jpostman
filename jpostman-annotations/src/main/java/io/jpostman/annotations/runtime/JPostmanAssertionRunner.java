@@ -1,7 +1,8 @@
 package io.jpostman.annotations.runtime;
 
-import static io.jpostman.annotations.runtime.JPostmanResourceLoader.loadProperties;
 import static io.jpostman.annotations.runtime.JPostmanResourceLoader.open;
+import static io.jpostman.annotations.runtime.JPostmanResourceLoader.property;
+import static io.jpostman.annotations.runtime.JPostmanResourceLoader.propertyKey;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,14 +20,16 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Predicate;
 
-import io.jpostman.annotations.JPostmanAssert;
+import io.jpostman.annotations.JPostmanContext;
 
 /**
- * Loads and applies assertion rules declared by {@link JPostmanAssert}.
+ * Loads and applies assertion rules configured by @JPostmanContext/config.
  *
  * @param <C> framework context type
  */
 final class JPostmanAssertionRunner<C> {
+
+	private static final Set<String> REDUNDANT_ASSERTION_WARNINGS = new LinkedHashSet<>();
 
 	private final JPostmanFramework<C> framework;
 
@@ -34,26 +37,71 @@ final class JPostmanAssertionRunner<C> {
 		this.framework = framework;
 	}
 
-	void apply(Class<?> testClass, C ctx, JPostmanAssert annotation, String requestName, boolean soft, boolean log)
-			throws Exception {
+	static List<String> resolveLocations(String[] assertions, Properties properties, String namespace,
+			String configLocation, JPostmanContext info) {
 
-		String rulesLocation = assertionRulesLocation(annotation, testClass);
-		if (rulesLocation.isBlank()) {
-			String namespace = annotation.namespace();
+		List<String> result = new ArrayList<>();
+		Map<String, String> firstSource = new LinkedHashMap<>();
+
+		if (assertions != null) {
+			for (String value : assertions) {
+				addLocations(result, firstSource, value, "@JPostmanContext value: assertions", configLocation, info);
+			}
+		}
+
+		String key = propertyKey("assertions", namespace);
+		addLocations(result, firstSource, property(properties, "assertions", namespace), key, configLocation, info);
+
+		return result;
+	}
+
+	static Map<String, Map<String, String>> loadAssertionRules(Class<?> testClass, List<String> locations)
+			throws IOException {
+
+		Map<String, Map<String, String>> result = new LinkedHashMap<>();
+		Map<String, String> sectionSource = new LinkedHashMap<>();
+
+		if (locations == null) {
+			return result;
+		}
+
+		for (String location : locations) {
+			try (InputStream input = open(location, testClass)) {
+				Map<String, Map<String, String>> loaded = loadAssertionRules(input, location);
+				for (Map.Entry<String, Map<String, String>> entry : loaded.entrySet()) {
+					String section = entry.getKey();
+					if (section == null || section.isBlank()) {
+						continue;
+					}
+					String previous = sectionSource.putIfAbsent(section, location);
+					if (previous != null) {
+						throw new IllegalStateException(JPostmanErrors.message(JPostmanAssertionRunner.class,
+								"Duplicate JPostman assertion section: " + section,
+								"The same assertion section was found in more than one loaded assertion file.",
+								"Found in:", "- " + previous, "- " + location,
+								"Keep each assertion section name unique across loaded files."));
+					}
+					result.put(section, entry.getValue());
+				}
+			}
+		}
+
+		return result;
+	}
+
+	boolean apply(C ctx, Map<String, Map<String, String>> rules, String[] assertions, String requestName, boolean soft,
+			boolean log) throws Exception {
+
+		boolean explicitAssertions = hasAssertions(assertions);
+		if (explicitAssertions && (rules == null || rules.isEmpty())) {
 			throw new IllegalStateException(
-					"JPostman assertion rules are required. Configure @JPostmanAssert(rules=...), " + "assertions"
-							+ (namespace.isBlank() ? "" : "." + namespace)
-							+ ", or fallback property assertions in jpostman.properties.");
+					JPostmanErrors.message(JPostmanAssertionRunner.class, "No JPostman assertion files configured.",
+							"Add @JPostmanContext(assertions = {...}) or config properties key assertions."));
 		}
 
-		Map<String, Map<String, String>> rules;
-		try (InputStream input = open(rulesLocation, testClass)) {
-			rules = loadAssertionRules(input);
-		}
-
-		Map<String, String> resolved = resolveAssertionRules(rules, annotation.sections(), requestName);
+		Map<String, String> resolved = resolveAssertionRules(rules, assertions, requestName);
 		if (resolved.isEmpty()) {
-			return;
+			return false;
 		}
 
 		Object asserts = assertionTarget(ctx, soft, log);
@@ -64,29 +112,41 @@ final class JPostmanAssertionRunner<C> {
 		if (soft) {
 			invokeOptional(asserts, "assertAll");
 		}
+		return true;
 	}
 
-	private String assertionRulesLocation(JPostmanAssert annotation, Class<?> testClass) throws IOException {
-		if (!annotation.rules().isBlank()) {
-			return annotation.rules();
+	private static void addLocations(List<String> result, Map<String, String> firstSource, String value, String source,
+			String configLocation, JPostmanContext info) {
+		if (value == null || value.isBlank()) {
+			return;
 		}
 
-		Properties properties = loadProperties("classpath:jpostman.properties", testClass);
-		String namespace = annotation.namespace();
-		if (namespace != null && !namespace.isBlank()) {
-			String namespaced = properties.getProperty("assertions." + namespace, "").trim();
-			if (!namespaced.isBlank()) {
-				return namespaced;
+		for (String part : value.split(",")) {
+			String location = part.trim();
+			if (location.isBlank()) {
+				continue;
 			}
-		}
 
-		return properties.getProperty("assertions", "").trim();
+			String previous = firstSource.putIfAbsent(location, source);
+			if (previous != null) {
+				String warningKey = configLocation + "|" + source + "|" + location;
+				if (REDUNDANT_ASSERTION_WARNINGS.add(warningKey)) {
+					System.err.println(JPostmanErrors.message(info, "Redundant JPostman assertions mapping ignored.",
+							"The same assertion file is configured more than once.",
+							"Using " + previous + "=" + location,
+							"Ignored config mapping: " + configLocation + " -> " + source + "=" + location));
+				}
+				continue;
+			}
+
+			result.add(location);
+		}
 	}
 
-	private Map<String, Map<String, String>> loadAssertionRules(InputStream input) throws IOException {
+	private static Map<String, Map<String, String>> loadAssertionRules(InputStream input, String location)
+			throws IOException {
 		Map<String, Map<String, String>> sections = new LinkedHashMap<>();
 		String current = "";
-		sections.put(current, new LinkedHashMap<>());
 
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
 			String line;
@@ -98,13 +158,23 @@ final class JPostmanAssertionRunner<C> {
 
 				if (value.startsWith("[") && value.endsWith("]")) {
 					current = value.substring(1, value.length() - 1).trim();
-					sections.putIfAbsent(current, new LinkedHashMap<>());
+					if (sections.containsKey(current)) {
+						throw new IllegalStateException(JPostmanErrors.message(JPostmanAssertionRunner.class,
+								"Duplicate JPostman assertion section: " + current,
+								"The same assertion section appears more than once in one assertion file.",
+								"File: " + location, "Keep each assertion section name unique."));
+					}
+					sections.put(current, new LinkedHashMap<>());
 					continue;
 				}
 
 				int index = value.indexOf('=');
 				if (index < 0) {
 					throw new IllegalStateException("Invalid assertion rule line: " + line);
+				}
+
+				if (current.isBlank()) {
+					throw new IllegalStateException("Assertion rule is outside a section in " + location + ": " + line);
 				}
 
 				String key = value.substring(0, index).trim();
@@ -121,33 +191,59 @@ final class JPostmanAssertionRunner<C> {
 	 *
 	 * <p>
 	 * A section matching the current Postman request name is authoritative. When it
-	 * exists, only that section and its own {@code extends} chain are used. This
-	 * keeps request-specific sections independent from configured
-	 * {@link JPostmanAssert} sections such as {@code product}. When no request
-	 * section exists, configured sections are applied.
+	 * exists, only that section and its own {@code extends} chain are used. When no
+	 * request section exists, configured {@code asserts} sections are applied. If
+	 * no section is configured, the {@code default} assertion section is applied
+	 * when it exists.
 	 * </p>
-	 *
-	 * @param rules       loaded assertion rule sections
-	 * @param sections    configured assertion sections from {@link JPostmanAssert}
-	 * @param requestName current Postman request name
-	 * @return resolved assertion rules
 	 */
-	private Map<String, String> resolveAssertionRules(Map<String, Map<String, String>> rules, String[] sections,
+	private Map<String, String> resolveAssertionRules(Map<String, Map<String, String>> rules, String[] assertions,
 			String requestName) {
+		if (rules == null || rules.isEmpty()) {
+			return new LinkedHashMap<>();
+		}
+
+		Map<String, String> resolved = new LinkedHashMap<>();
+		boolean explicitAssertions = hasAssertions(assertions);
+
+		if (explicitAssertions) {
+			for (String section : assertions) {
+				if (section == null || section.isBlank()) {
+					continue;
+				}
+
+				String name = section.trim();
+				if (!rules.containsKey(name)) {
+					throw new IllegalStateException(JPostmanErrors.message(JPostmanAssertionRunner.class,
+							"JPostman assertion section not found: " + name));
+				}
+
+				mergeAssertionRules(resolved, resolveAssertionSection(rules, name, new LinkedHashSet<>()));
+			}
+			return resolved;
+		}
 
 		if (requestName != null && rules.containsKey(requestName)) {
 			return resolveAssertionSection(rules, requestName, new LinkedHashSet<>());
 		}
 
-		Map<String, String> resolved = new LinkedHashMap<>();
-		String[] selected = sections == null || sections.length == 0 ? new String[] { "default" } : sections;
-		for (String section : selected) {
-			if (section != null && !section.isBlank()) {
-				mergeAssertionRules(resolved, resolveAssertionSection(rules, section.trim(), new LinkedHashSet<>()));
-			}
+		if (rules.containsKey("default")) {
+			return resolveAssertionSection(rules, "default", new LinkedHashSet<>());
 		}
 
 		return resolved;
+	}
+
+	private static boolean hasAssertions(String[] assertions) {
+		if (assertions == null) {
+			return false;
+		}
+		for (String assertion : assertions) {
+			if (assertion != null && !assertion.isBlank()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private Map<String, String> resolveAssertionSection(Map<String, Map<String, String>> rules, String section,
@@ -181,37 +277,12 @@ final class JPostmanAssertionRunner<C> {
 		return resolved;
 	}
 
-	/**
-	 * Merges assertion rules while preserving inherited parent assertions.
-	 *
-	 * <p>
-	 * Repeatable assertion keys are appended so inherited checks are not lost when
-	 * a child section defines the same key. Singleton keys, such as statusCode,
-	 * keep the latest value so a request-specific section can override a parent
-	 * default.
-	 * </p>
-	 *
-	 * @param target target rule map to update
-	 * @param source source rule map to merge
-	 */
 	private void mergeAssertionRules(Map<String, String> target, Map<String, String> source) {
 		for (Map.Entry<String, String> entry : source.entrySet()) {
 			mergeAssertionRule(target, entry.getKey(), entry.getValue());
 		}
 	}
 
-	/**
-	 * Merges a single assertion rule into an existing rule map.
-	 *
-	 * <p>
-	 * Repeatable rules use comma-separated values, so parent and child values are
-	 * combined. Non-repeatable rules replace the previous value.
-	 * </p>
-	 *
-	 * @param target target rule map to update
-	 * @param key    assertion rule key
-	 * @param value  assertion rule value
-	 */
 	private void mergeAssertionRule(Map<String, String> target, String key, String value) {
 		if (key == null || key.isBlank()) {
 			return;
@@ -235,18 +306,6 @@ final class JPostmanAssertionRunner<C> {
 		target.put(key, appendRuleValues(current, value));
 	}
 
-	/**
-	 * Appends repeatable rule values while removing duplicates.
-	 *
-	 * <p>
-	 * This preserves parent/child ordering and prevents duplicated assertions when
-	 * multiple selected sections inherit the same parent rule.
-	 * </p>
-	 *
-	 * @param current current comma-separated rule values
-	 * @param value   values to append
-	 * @return comma-separated values with duplicates removed
-	 */
 	private String appendRuleValues(String current, String value) {
 		LinkedHashSet<String> result = new LinkedHashSet<>();
 		result.addAll(splitValues(current));
@@ -254,12 +313,6 @@ final class JPostmanAssertionRunner<C> {
 		return String.join(",", result);
 	}
 
-	/**
-	 * Returns whether an assertion rule can safely accumulate inherited values.
-	 *
-	 * @param key assertion rule key
-	 * @return {@code true} for repeatable assertion keys; otherwise {@code false}
-	 */
 	private boolean isRepeatableRule(String key) {
 		switch (key) {
 		case "exists":
@@ -332,12 +385,9 @@ final class JPostmanAssertionRunner<C> {
 		case "compare":
 			for (String expression : splitValues(value)) {
 				Comparison comparison = Comparison.parseComparison(expression);
-
 				Object actual = invokePath(asserts, comparison.path);
 				Object expected = scalar(comparison.expected);
-
 				boolean passed = comparison.compare(actual, comparison.operator, expected);
-
 				invokeAssertion(asserts, "isTrue", passed, "Expected path " + comparison.path + " "
 						+ comparison.operator + " " + expected + " but was " + actual);
 			}
@@ -358,12 +408,10 @@ final class JPostmanAssertionRunner<C> {
 		if (value.isBlank()) {
 			return rules;
 		}
-
 		if (value.contains("|")) {
 			rules.add(parseAllMatchRule(value));
 			return rules;
 		}
-
 		for (String condition : splitValues(value)) {
 			rules.add(parseAllMatchRule(condition));
 		}
@@ -373,20 +421,16 @@ final class JPostmanAssertionRunner<C> {
 	private AllMatchRule parseAllMatchRule(String expression) {
 		String value = expression == null ? "" : expression.trim();
 		String message = "";
-
 		int messageIndex = value.indexOf('|');
 		if (messageIndex >= 0) {
 			message = value.substring(messageIndex + 1).trim();
 			value = value.substring(0, messageIndex).trim();
 		}
-
 		Comparison comparison = Comparison.parseComparison(value);
 		Object expected = scalar(comparison.expected);
-
 		if (message.isBlank()) {
 			message = "Item: {}, Index: {} failed allMatch condition: " + value;
 		}
-
 		return new AllMatchRule(comparison, expected, message);
 	}
 
@@ -395,7 +439,6 @@ final class JPostmanAssertionRunner<C> {
 		if (context != null) {
 			return invokeCompatible(context, "path", path);
 		}
-
 		return invokeCompatible(asserts, "path", path);
 	}
 

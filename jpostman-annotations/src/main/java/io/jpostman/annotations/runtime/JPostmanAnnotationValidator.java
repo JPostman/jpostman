@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
@@ -41,12 +40,6 @@ public final class JPostmanAnnotationValidator {
 	 * <p>
 	 * {@code @JPostmanResponse(cache = "...")} methods are dependency/helper
 	 * methods and must not also be framework {@code @Test} methods.
-	 * </p>
-	 *
-	 * <p>
-	 * {@code @JPostmanRequest(cache = "...")} methods must return a value to cache.
-	 * Void request helpers with cache are rejected because the cache would not
-	 * contain the expected request result.
 	 * </p>
 	 *
 	 * @param testClass test class to validate
@@ -92,33 +85,34 @@ public final class JPostmanAnnotationValidator {
 
 	private static void collectInvalidMethod(Method method, List<Method> invalidHelpers, List<Method> invalidResponses,
 			List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
-		JPostmanRequest request = method.getAnnotation(JPostmanRequest.class);
-		if (request != null && !value(request.cache()).isBlank() && method.getReturnType() == Void.TYPE) {
-			invalidCachedRequests.add(method);
-		}
+		JPostmanRequest request = JPostmanAnnotations.request(method);
 
 		if (!isTestMethod(method)) {
 			return;
 		}
 
-		boolean jpostmanHelper = request != null || method.isAnnotationPresent(JPostmanExecutor.class);
+		boolean jpostmanHelper = request != null || JPostmanAnnotations.hasExecutor(method);
 
 		if (jpostmanHelper) {
 			invalidHelpers.add(method);
 		}
 
-		JPostmanResponse response = method.getAnnotation(JPostmanResponse.class);
+		JPostmanResponse response = JPostmanAnnotations.response(method);
 		if (response != null && method.getParameterCount() > 0) {
 			invalidResponses.add(method);
 		}
 
-		if (response != null && !value(response.cache()).isBlank()) {
+		if (response != null && cacheRequested(response.cache())) {
 			invalidCachedResponses.add(method);
 		}
 	}
 
 	private static String value(String value) {
 		return value == null ? "" : value.trim();
+	}
+
+	private static boolean cacheRequested(String cache) {
+		return !JPostmanResponse.NO_CACHE.equals(value(cache));
 	}
 
 	private static boolean isTestMethod(Method method) {
@@ -143,67 +137,66 @@ public final class JPostmanAnnotationValidator {
 			List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
 		StringBuilder message = new StringBuilder();
 
-		message.append("Invalid JPostman annotation usage.").append(System.lineSeparator())
-				.append(System.lineSeparator());
+		message.append("Invalid JPostman annotation usage.").append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL);
 
 		if (!invalidHelpers.isEmpty()) {
 			message.append("@JPostmanRequest and @JPostmanExecutor methods must not be annotated with @Test.")
-					.append(System.lineSeparator())
+					.append(JPostmanErrors.ENDL)
 					.append("They are helper methods invoked by JPostman, not test methods invoked by the test framework.")
-					.append(System.lineSeparator()).append(System.lineSeparator()).append("Invalid helper methods:")
-					.append(System.lineSeparator());
+					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid helper methods:")
+					.append(JPostmanErrors.ENDL);
 
 			for (Method method : invalidHelpers) {
-				message.append("- ").append(signature(method)).append(System.lineSeparator());
+				message.append("- ").append(signature(method)).append(JPostmanErrors.ENDL);
 			}
 		}
 
 		if (!invalidHelpers.isEmpty() && (!invalidResponses.isEmpty() || !invalidCachedResponses.isEmpty()
 				|| !invalidCachedRequests.isEmpty())) {
-			message.append(System.lineSeparator());
+			message.append(JPostmanErrors.ENDL);
 		}
 
 		if (!invalidResponses.isEmpty()) {
 			message.append("@JPostmanResponse methods annotated with @Test must not declare parameters.")
-					.append(System.lineSeparator())
+					.append(JPostmanErrors.ENDL)
 					.append("The test framework invokes @Test methods directly and only supports its own parameter injection rules.")
-					.append(System.lineSeparator())
+					.append(JPostmanErrors.ENDL)
 					.append("Use a no-argument @Test method, or move parameters to a JPostman helper method such as @JPostmanRequest or @JPostmanExecutor.")
-					.append(System.lineSeparator()).append(System.lineSeparator()).append("Invalid response methods:")
-					.append(System.lineSeparator());
+					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid response methods:")
+					.append(JPostmanErrors.ENDL);
 
 			for (Method method : invalidResponses) {
-				message.append("- ").append(signature(method)).append(System.lineSeparator());
+				message.append("- ").append(signature(method)).append(JPostmanErrors.ENDL);
 			}
 		}
 
 		if (!invalidResponses.isEmpty() && (!invalidCachedResponses.isEmpty() || !invalidCachedRequests.isEmpty())) {
-			message.append(System.lineSeparator());
+			message.append(JPostmanErrors.ENDL);
 		}
 
 		if (!invalidCachedResponses.isEmpty()) {
-			message.append("@JPostmanResponse(cache) cannot be used with @Test.").append(System.lineSeparator())
+			message.append("@JPostmanResponse(cache) cannot be used with @Test.").append(JPostmanErrors.ENDL)
 					.append("Remove @Test to use it as a cached dependency, or remove cache to keep it as a test.")
-					.append(System.lineSeparator()).append(System.lineSeparator())
-					.append("Invalid cached response methods:").append(System.lineSeparator());
+					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid cached response methods:")
+					.append(JPostmanErrors.ENDL);
 
 			for (Method method : invalidCachedResponses) {
-				message.append("- ").append(signature(method)).append(System.lineSeparator());
+				message.append("- ").append(signature(method)).append(JPostmanErrors.ENDL);
 			}
 		}
 
 		if (!invalidCachedResponses.isEmpty() && !invalidCachedRequests.isEmpty()) {
-			message.append(System.lineSeparator());
+			message.append(JPostmanErrors.ENDL);
 		}
 
 		if (!invalidCachedRequests.isEmpty()) {
-			message.append("@JPostmanRequest(cache) requires a non-void return value.").append(System.lineSeparator())
+			message.append("@JPostmanRequest(cache) requires a non-void return value.").append(JPostmanErrors.ENDL)
 					.append("Return the value to cache, or remove cache from the request method.")
-					.append(System.lineSeparator()).append(System.lineSeparator())
-					.append("Invalid cached request methods:").append(System.lineSeparator());
+					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid cached request methods:")
+					.append(JPostmanErrors.ENDL);
 
 			for (Method method : invalidCachedRequests) {
-				message.append("- ").append(signature(method)).append(System.lineSeparator());
+				message.append("- ").append(signature(method)).append(JPostmanErrors.ENDL);
 			}
 		}
 

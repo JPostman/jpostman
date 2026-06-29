@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.util.Properties;
 
 /**
@@ -15,16 +16,20 @@ final class JPostmanResourceLoader {
 	}
 
 	static Properties loadProperties(String location, Class<?> testClass) throws IOException {
+		return loadProperties(location, testClass, null);
+	}
+
+	static Properties loadProperties(String location, Class<?> testClass, Annotation annotation) throws IOException {
 		Properties properties = new Properties();
 
 		if (location == null || location.isBlank()) {
 			return properties;
 		}
 
-		try (InputStream input = open(location, testClass)) {
+		try (InputStream input = open(location, testClass, annotation)) {
 			properties.load(input);
 		} catch (IOException e) {
-			if (!"classpath:jpostman.properties".equals(location)) {
+			if (!JPostmanDataLoader.DEFAULT_CONFIG.equals(location)) {
 				throw e;
 			}
 		}
@@ -33,6 +38,10 @@ final class JPostmanResourceLoader {
 	}
 
 	static InputStream open(String location, Class<?> testClass) throws IOException {
+		return open(location, testClass, (Annotation) null);
+	}
+
+	static InputStream open(String location, Class<?> testClass, Annotation annotation) throws IOException {
 		String value = location == null ? "" : location.trim();
 		if (value.isBlank()) {
 			throw new IllegalArgumentException("Resource location must not be blank.");
@@ -46,7 +55,7 @@ final class JPostmanResourceLoader {
 
 			InputStream input = testClass.getClassLoader().getResourceAsStream(path);
 			if (input == null) {
-				throw new IOException("Classpath resource not found: " + value);
+				throw new IOException(JPostmanErrors.message(annotation, "Classpath resource not found: " + value));
 			}
 			return input;
 		}
@@ -54,11 +63,16 @@ final class JPostmanResourceLoader {
 		try {
 			return new FileInputStream(value);
 		} catch (FileNotFoundException e) {
-			InputStream input = testClass.getClassLoader().getResourceAsStream(value);
+			String resourcePath = value;
+			if (resourcePath.startsWith("/")) {
+				resourcePath = resourcePath.substring(1);
+			}
+
+			InputStream input = testClass.getClassLoader().getResourceAsStream(resourcePath);
 			if (input != null) {
 				return input;
 			}
-			throw e;
+			throw new IOException(JPostmanErrors.message(annotation, "File or classpath resource not found: " + value));
 		}
 	}
 

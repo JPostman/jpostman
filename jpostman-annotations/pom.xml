@@ -12,33 +12,31 @@
 
 	<artifactId>jpostman-annotations</artifactId>
 	<packaging>jar</packaging>
-	<version>1.0.4</version>
+	<!-- Update jpostman.annotations.version in parent -->
+	<version>2.0.1</version>
 
 	<name>JPostman Annotations</name>
 	<description>Annotation-based execution support for JPostman JUnit and
 		TestNG modules.</description>
 	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-annotations</url>
 
+
 	<dependencies>
 		<dependency>
-			<groupId>io.github.jpostman</groupId>
+			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-junit</artifactId>
-			<version>${project.parent.version}</version><!--$NO-MVN-MAN-VER$-->
 		</dependency>
 		<dependency>
-			<groupId>io.github.jpostman</groupId>
+			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-testng</artifactId>
-			<version>${project.parent.version}</version><!--$NO-MVN-MAN-VER$-->
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-core</artifactId>
-			<version>${project.parent.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-secure</artifactId>
-			<version>${project.parent.version}</version>
 		</dependency>
 	</dependencies>
 </project>

@@ -9,21 +9,17 @@ import java.util.Map;
 import java.util.Set;
 
 import org.testng.IAnnotationTransformer;
+import org.testng.IHookCallBack;
+import org.testng.IHookable;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestResult;
 import org.testng.SkipException;
 import org.testng.annotations.ITestAnnotation;
 
-import io.jpostman.annotations.JPostmanAnnotationEngine;
-import io.jpostman.annotations.JPostmanAssert;
-import io.jpostman.annotations.JPostmanContext;
-import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanRequest;
-import io.jpostman.annotations.JPostmanResponse;
-import io.jpostman.annotations.JPostmanRunner;
-import io.jpostman.annotations.JPostmanTestContext;
+import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
 import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
+import io.jpostman.annotations.runtime.JPostmanAnnotations;
 import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
 import io.jpostman.testng.TestNgContext;
 
@@ -45,7 +41,8 @@ import io.jpostman.testng.TestNgContext;
  * available in lifecycle methods.
  * </p>
  */
-public final class JPostmanTestNgAnnotationListener implements IInvokedMethodListener, IAnnotationTransformer {
+public final class JPostmanTestNgAnnotationListener
+		implements IInvokedMethodListener, IAnnotationTransformer, IHookable {
 
 	private final Set<Object> prepared = Collections.newSetFromMap(new IdentityHashMap<>());
 	private final Set<Object> reportedSetupFailures = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -94,15 +91,52 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 			throw new SkipException("Skipped because JPostman annotation setup failed.");
 		}
 
-		if (!invokedMethod.isTestMethod()) {
+		// Test-method annotation execution is handled by IHookable#run.
+		// Running it here is too early for TestNG to reliably short-circuit the
+		// actual test body when JPostman decides the test should be skipped, such as
+		// @JPostmanRunner(folder=...) resolving zero collection requests.
+	}
+
+	/**
+	 * Runs JPostman test annotations inside TestNG's hookable invocation path.
+	 *
+	 * <p>
+	 * This is the reliable place to prevent the user test body from running when
+	 * JPostman throws a framework skip, for example when @JPostmanRunner targets a
+	 * folder that contains zero requests.
+	 * </p>
+	 */
+	@Override
+	public void run(IHookCallBack callBack, ITestResult testResult) {
+		Object testInstance = testResult.getInstance();
+
+		if (!usesJPostmanAnnotations(testInstance)) {
+			callBack.runTestMethod(testResult);
 			return;
 		}
 
+		Throwable setupFailure = setupOnce(testInstance);
+		if (setupFailure != null) {
+			RuntimeException failure = asRuntime(setupFailure);
+			testResult.setThrowable(failure);
+			testResult.setStatus(markSetupFailureReported(testInstance) ? ITestResult.FAILURE : ITestResult.SKIP);
+			return;
+		}
+
+		Method testMethod = testResult.getMethod().getConstructorOrMethod().getMethod();
 		try {
-			Method testMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
 			JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
+			callBack.runTestMethod(testResult);
+		} catch (SkipException e) {
+			testResult.setThrowable(e);
+			testResult.setStatus(ITestResult.SKIP);
 		} catch (Throwable e) {
-			throw cleanFailure(invokedMethod, e);
+			AssertionError failure = JPostmanStackTraceCleaner.cleanFailure(testMethod.getDeclaringClass(), testMethod,
+					e);
+			testResult.setThrowable(failure);
+			testResult.setStatus(ITestResult.FAILURE);
+		} finally {
+			TestNgContext.clearCurrent();
 		}
 	}
 
@@ -153,22 +187,19 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 
 		Class<?> type = testInstance.getClass();
 
-		if (type.isAnnotationPresent(JPostmanTestNgAnnotations.class)) {
+		if (JPostmanAnnotations.hasTestNg(type)) {
 			return true;
 		}
 
 		for (Field field : type.getDeclaredFields()) {
-			if (field.isAnnotationPresent(JPostmanContext.class)
-					|| field.isAnnotationPresent(JPostmanTestContext.class)) {
+			if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)) {
 				return true;
 			}
 		}
 
 		for (Method method : type.getDeclaredMethods()) {
-			if (method.isAnnotationPresent(JPostmanRequest.class) || method.isAnnotationPresent(JPostmanResponse.class)
-					|| method.isAnnotationPresent(JPostmanRunner.class)
-					|| method.isAnnotationPresent(JPostmanExecutor.class)
-					|| method.isAnnotationPresent(JPostmanAssert.class)) {
+			if (JPostmanAnnotations.hasRequest(method) || JPostmanAnnotations.hasResponse(method)
+					|| JPostmanAnnotations.hasRunner(method) || JPostmanAnnotations.hasExecutor(method)) {
 				return true;
 			}
 		}
@@ -183,23 +214,19 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
-			if (current.isAnnotationPresent(JPostmanTestNgAnnotations.class)) {
+			if (JPostmanAnnotations.hasTestNg(current)) {
 				return true;
 			}
 
 			for (Field field : current.getDeclaredFields()) {
-				if (field.isAnnotationPresent(JPostmanContext.class)
-						|| field.isAnnotationPresent(JPostmanTestContext.class)) {
+				if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)) {
 					return true;
 				}
 			}
 
 			for (Method method : current.getDeclaredMethods()) {
-				if (method.isAnnotationPresent(JPostmanRequest.class)
-						|| method.isAnnotationPresent(JPostmanResponse.class)
-						|| method.isAnnotationPresent(JPostmanRunner.class)
-						|| method.isAnnotationPresent(JPostmanExecutor.class)
-						|| method.isAnnotationPresent(JPostmanAssert.class)) {
+				if (JPostmanAnnotations.hasRequest(method) || JPostmanAnnotations.hasResponse(method)
+						|| JPostmanAnnotations.hasRunner(method) || JPostmanAnnotations.hasExecutor(method)) {
 					return true;
 				}
 			}
@@ -250,11 +277,4 @@ public final class JPostmanTestNgAnnotationListener implements IInvokedMethodLis
 				throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage(),
 				throwable);
 	}
-
-	private static AssertionError cleanFailure(IInvokedMethod invokedMethod, Throwable error) {
-		Class<?> testClass = invokedMethod.getTestMethod().getRealClass();
-		Method testMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
-		return JPostmanStackTraceCleaner.cleanFailure(testClass, testMethod, error);
-	}
-
 }

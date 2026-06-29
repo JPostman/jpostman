@@ -7,13 +7,19 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Prepares and executes a Postman request before a test method runs.
+ * Executes a prepared Postman request and exposes the response to the method
+ * body.
  *
  * <p>
  * A response method is the top-level test entry point for a single request. It
- * may define request location values directly, or it may use
- * {@link #dependsOn()} to let a {@link JPostmanRequest} helper prepare request
- * data and location.
+ * may define request location values directly, or use {@link #dependsOn()} to
+ * run one or more {@link JPostmanRequest} helpers first.
+ * </p>
+ *
+ * <p>
+ * Difference from {@link JPostmanRequest}: response methods execute the request
+ * first, then the method body can read {@code ctx.response()}, assert values,
+ * or return/cache data from the executed response.
  * </p>
  */
 @Target(METHOD)
@@ -21,11 +27,16 @@ import java.lang.annotation.Target;
 public @interface JPostmanResponse {
 
 	/**
-	 * Logical id for this response execution.
-	 *
-	 * @return response id, or empty string when not defined
+	 * Internal sentinel used to distinguish omitted cache from explicit cache = "".
 	 */
-	String id() default "";
+	String NO_CACHE = "__jpostman_no_cache__";
+
+	/**
+	 * Logical tags for this response execution.
+	 *
+	 * @return response tags, or empty array when not defined
+	 */
+	String[] tags() default {};
 
 	/**
 	 * Context namespace to use. Empty means default context.
@@ -70,13 +81,6 @@ public @interface JPostmanResponse {
 	String[] dependsOn() default {};
 
 	/**
-	 * Request helper method to run after this response chain completes.
-	 *
-	 * @return next request helper method name
-	 */
-	String next() default "";
-
-	/**
 	 * Expected HTTP status code.
 	 *
 	 * <p>
@@ -94,24 +98,27 @@ public @interface JPostmanResponse {
 	int verify() default -1;
 
 	/**
-	 * Named executor method to use. Empty means default execution.
+	 * @JPostmanExecutor id to use. Empty means default execution.
 	 *
 	 * @return executor id
 	 */
 	String executor() default "";
 
 	/**
-	 * Cache key used to store the context after this response runs.
+	 * Cache key for this response dependency.
 	 *
 	 * <p>
-	 * Empty means the response context is not cached. When set, JPostman stores the
-	 * active framework context after the response is executed, so later data
-	 * expressions can read response values using {@code {{jpostman:path[key]}}}.
+	 * When omitted, this response is not cached. When set to an empty string,
+	 * JPostman caches the dependency by the Java method name to prevent a second
+	 * call in the same run. When set to a non-empty value, that value is used as
+	 * the cache key. Non-void methods store their returned value; void methods
+	 * store the executed framework context.
 	 * </p>
 	 *
-	 * @return cache key, or empty string when response caching is disabled
+	 * @return cache key, empty string to cache by method name, or {@link #NO_CACHE}
+	 *         when omitted
 	 */
-	String cache() default "";
+	String cache() default NO_CACHE;
 
 	/**
 	 * Whether to attach secure log details to assertion failures.
@@ -126,4 +133,47 @@ public @interface JPostmanResponse {
 	 * @return {@code true} to use soft assertions
 	 */
 	boolean soft() default false;
+
+	/**
+	 * Optional data group or data section to apply before request execution.
+	 *
+	 * <p>
+	 * Use this for request data loaded by {@link JPostmanContext#dataload()}. For
+	 * example, {@code data = "product"} applies the product data group, while
+	 * {@code data = "product.mouse"} applies an exact data section.
+	 * </p>
+	 *
+	 * @return data group or section name, or empty string when no data should be
+	 *         applied
+	 */
+	String data() default "";
+
+	/**
+	 * Optional assertion rule sections to apply after response execution.
+	 *
+	 * <p>
+	 * Assertion files are loaded by {@link JPostmanContext#assertions()} or the
+	 * {@code assertions} config property. This selector only chooses sections from
+	 * those already-loaded files. Java reserves the word {@code assert}, so the
+	 * annotation member is named {@code asserts}.
+	 * </p>
+	 *
+	 * @return assertion rule sections, or empty array to use request-name/default
+	 *         resolution
+	 */
+	String[] asserts() default {};
+
+	/**
+	 * Local annotation debug level for this response execution.
+	 *
+	 * <p>
+	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
+	 * values override the context debug level for this response invocation.
+	 * Supported values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * </p>
+	 *
+	 * @return local debug level, or empty string to inherit from the context
+	 */
+	String logLevel() default "";
+
 }

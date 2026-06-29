@@ -1,11 +1,12 @@
-package io.jpostman.annotations;
+package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.Method;
 
-import io.jpostman.annotations.runtime.JPostmanAnnotationRunner;
-import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
-import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
-import io.jpostman.annotations.runtime.JUnitPostmanFramework;
+import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanRequest;
+import io.jpostman.annotations.JPostmanResponse;
+import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.testng.TestNgPostmanFramework;
 
 /**
@@ -120,6 +121,10 @@ public final class JPostmanAnnotationEngine {
 	 * @return throwable with cleaned stack trace
 	 */
 	public static Throwable cleanJUnitFailure(Object testInstance, Method testMethod, Throwable error) {
+		if (testMethod == null) {
+			return JPostmanStackTraceCleaner.rootCause(error);
+		}
+
 		Throwable root = JPostmanStackTraceCleaner.rootCause(error);
 		if (root instanceof AssertionError) {
 			return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error);

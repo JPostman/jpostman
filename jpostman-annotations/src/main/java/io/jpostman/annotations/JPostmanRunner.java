@@ -22,11 +22,11 @@ import java.lang.annotation.Target;
 public @interface JPostmanRunner {
 
 	/**
-	 * Logical id for this runner execution.
+	 * Logical tags for this runner execution.
 	 *
-	 * @return runner id, or empty string when not defined
+	 * @return runner tags, or empty array when not defined
 	 */
-	String id() default "";
+	String[] tags() default {};
 
 	/**
 	 * Context namespace to use. Empty means the default context.
@@ -94,9 +94,9 @@ public @interface JPostmanRunner {
 	int verify() default -1;
 
 	/**
-	 * Named executor method to use. Empty means default execution.
+	 * @JPostmanExecutor id to use. Empty means default execution.
 	 *
-	 * @return executor name
+	 * @return executor id
 	 */
 	String executor() default "";
 
@@ -113,4 +113,47 @@ public @interface JPostmanRunner {
 	 * @return {@code true} to use soft assertions
 	 */
 	boolean soft() default false;
+
+	/**
+	 * Optional data group or data section to apply before request execution.
+	 *
+	 * <p>
+	 * Use this for request data loaded by {@link JPostmanContext#dataload()}. For
+	 * example, {@code data = "product"} applies the product data group, while
+	 * {@code data = "product.mouse"} applies an exact data section.
+	 * </p>
+	 *
+	 * @return data group or section name, or empty string when no data should be
+	 *         applied
+	 */
+	String data() default "";
+
+	/**
+	 * Optional assertion rule sections to apply after response execution.
+	 *
+	 * <p>
+	 * Assertion files are loaded by {@link JPostmanContext#assertions()} or the
+	 * {@code assertions} config property. This selector only chooses sections from
+	 * those already-loaded files. Java reserves the word {@code assert}, so the
+	 * annotation member is named {@code asserts}.
+	 * </p>
+	 *
+	 * @return assertion rule sections, or empty array to use request-name/default
+	 *         resolution
+	 */
+	String[] asserts() default {};
+
+	/**
+	 * Local annotation debug level for this runner execution.
+	 *
+	 * <p>
+	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
+	 * values override the context debug level for this runner invocation. Supported
+	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * </p>
+	 *
+	 * @return local debug level, or empty string to inherit from the context
+	 */
+	String logLevel() default "";
+
 }

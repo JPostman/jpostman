@@ -2,10 +2,13 @@ package io.jpostman.annotations.testng;
 
 import java.io.InputStream;
 
+import org.testng.SkipException;
+
 import io.jpostman.ApiExecutor;
 import io.jpostman.Environment;
 import io.jpostman.Request;
 import io.jpostman.annotations.runtime.JPostmanFramework;
+import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.testng.TestNgContext;
 
 /**
@@ -90,12 +93,21 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 
 	/** {@inheritDoc} */
 	@Override
+	public void soft(TestNgContext context, boolean log) {
+		context.soft(log);
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void verify(TestNgContext context, int statusCode, boolean soft, boolean log) {
-		if (soft) {
-			context.soft(log).statusCode(statusCode);
-			return;
-		}
-		context.asserts(log).statusCode(statusCode);
+		verify(context, statusCode, soft, log, null);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void verify(TestNgContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info) {
+		Object assertions = soft ? context.soft(log) : context.asserts(log);
+		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog(context));
 	}
 
 	/** {@inheritDoc} */
@@ -108,6 +120,12 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 	@Override
 	public void cache(TestNgContext context, String key, Object value) {
 		context.cache(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public RuntimeException skipException(JPostmanInfo info, String... lines) {
+		return new SkipException(JPostmanFramework.getMessage(info, lines));
 	}
 
 	/** {@inheritDoc} */

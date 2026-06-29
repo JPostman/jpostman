@@ -25,7 +25,7 @@ public @interface JPostmanTestContext {
 	 *
 	 * @return context configuration location
 	 */
-	String config() default "classpath:jpostman.properties";
+	String config() default "classpath:jpostman.properties"; // JPostmanDataLoader.DEFAULT_CONFIG
 
 	/**
 	 * Optional Postman collection location.

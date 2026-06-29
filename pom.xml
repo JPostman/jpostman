@@ -6,6 +6,7 @@
 
 	<groupId>io.github.jpostman</groupId>
 	<artifactId>jpostman-parent</artifactId>
+	<!-- Update jpostman.version -->
 	<version>1.2.6</version>
 	<packaging>pom</packaging>
 
@@ -60,6 +61,9 @@
 	</scm>
 
 	<properties>
+		<jpostman.version>1.2.6</jpostman.version>
+		<jpostman.annotations.version>2.0.1</jpostman.annotations.version>
+
 		<java.version>11</java.version>
 		<maven.compiler.release>${java.version}</maven.compiler.release>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -98,62 +102,62 @@
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-core</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-secure</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-httpclient</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-restassured</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-playwright</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-unirest</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-testng</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-junit</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-annotations</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.annotations.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-github</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-kubernetes</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-vault</artifactId>
-				<version>${project.version}</version>
+				<version>${jpostman.version}</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

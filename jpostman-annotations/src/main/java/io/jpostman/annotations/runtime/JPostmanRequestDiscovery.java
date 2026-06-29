@@ -22,7 +22,11 @@ final class JPostmanRequestDiscovery {
 	List<String> runnerRequestNames(Collection collection, String folder) {
 		Object container = collection;
 		if (folder != null && !folder.isBlank()) {
-			container = collection.getFolder(folder);
+			try {
+				container = collection.getFolder(folder);
+			} catch (AssertionError | RuntimeException e) {
+				return new ArrayList<>();
+			}
 		}
 
 		List<String> names = new ArrayList<>();
@@ -34,7 +38,7 @@ final class JPostmanRequestDiscovery {
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
-				JPostmanResponse response = method.getAnnotation(JPostmanResponse.class);
+				JPostmanResponse response = JPostmanAnnotations.response(method);
 				if (response == null) {
 					continue;
 				}

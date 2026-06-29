@@ -1,5 +1,6 @@
 package io.jpostman.annotations.runtime;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.opentest4j.TestAbortedException;
+import org.testng.IHookCallBack;
 import org.testng.IInvokedMethod;
 import org.testng.ITestNGMethod;
 import org.testng.ITestResult;
@@ -37,11 +39,8 @@ import io.jpostman.ApiResponse;
 import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.Request;
-import io.jpostman.annotations.JPostmanAnnotationEngine;
-import io.jpostman.annotations.JPostmanAssert;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
-import io.jpostman.annotations.JPostmanInfo;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
@@ -53,6 +52,8 @@ import io.jpostman.junit.JUnitContext;
 import io.jpostman.testng.TestNgContext;
 
 public class JPostmanAnnotationCoverageTest {
+
+	private static final String COLLECTION = "classpath:annotation-test-collection.json";
 
 	/**
 	 * Verifies that JUnitContext and TestNgContext can check plain and protected
@@ -173,7 +174,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		IllegalStateException error = assertThrows(IllegalStateException.class, () -> contexts.resolve("missing"));
 
-		assertEquals("No @JPostmanTestContext found for namespace: missing", error.getMessage());
+		assertEquals("No JPostman runtime context found for namespace: missing", error.getMessage());
 	}
 
 	/**
@@ -190,6 +191,7 @@ public class JPostmanAnnotationCoverageTest {
 		TestNgPostmanFramework framework = new TestNgPostmanFramework();
 
 		assertEquals("TestNG", framework.name());
+		assertTrue(framework.skipException(null, "skip") instanceof SkipException);
 		assertEquals(TestNgContext.class, framework.contextType());
 
 		TestNgContext context = framework.create();
@@ -245,6 +247,7 @@ public class JPostmanAnnotationCoverageTest {
 		JUnitPostmanFramework framework = new JUnitPostmanFramework();
 
 		assertEquals("JUnit", framework.name());
+		assertTrue(framework.skipException(null, "skip") instanceof TestAbortedException);
 		assertEquals(JUnitContext.class, framework.contextType());
 
 		JUnitContext context = framework.create();
@@ -551,7 +554,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		IllegalStateException error = assertThrows(IllegalStateException.class, contexts::firstContext);
 
-		assertEquals("No @JPostmanTestContext found.", error.getMessage());
+		assertEquals("No JPostman runtime context found.", error.getMessage());
 	}
 
 	/**
@@ -559,23 +562,22 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	@Test
 	public void resourceLoaderCoversPropertyOpenAndFallbackHelpers() throws Exception {
-		Properties properties = JPostmanResourceLoader.loadProperties("classpath:jpostman.properties",
+		Properties properties = JPostmanResourceLoader.loadProperties(JPostmanDataLoader.DEFAULT_CONFIG,
 				JPostmanAnnotationCoverageTest.class);
 
-		assertNotNull(JPostmanResourceLoader.open("classpath:annotation-test-collection.json",
-				JPostmanAnnotationCoverageTest.class));
+		assertNotNull(JPostmanResourceLoader.open(COLLECTION, JPostmanAnnotationCoverageTest.class));
 		assertEquals("collection.product", JPostmanResourceLoader.propertyKey("collection", "product"));
 		assertEquals("rules", JPostmanResourceLoader.propertyKey("rules", ""));
-		assertEquals("classpath:annotation-test-collection.json",
-				JPostmanResourceLoader.property(properties, "collection", ""));
-		assertEquals("classpath:annotation-test-collection.json",
-				JPostmanResourceLoader.property(properties, "collection", "product"));
+		assertEquals(COLLECTION, JPostmanResourceLoader.property(properties, "collection", ""));
+		assertEquals(COLLECTION, JPostmanResourceLoader.property(properties, "collection", "product"));
 		assertEquals("annotation", JPostmanResourceLoader.firstNonBlank("annotation", "fallback"));
 		assertEquals("fallback", JPostmanResourceLoader.firstNonBlank(" ", "fallback"));
 		assertEquals("", JPostmanResourceLoader.firstNonBlank(null, null));
 
-		assertThrows(FileNotFoundException.class,
+		IOException missing = assertThrows(IOException.class,
 				() -> JPostmanResourceLoader.open("missing-resource.json", JPostmanAnnotationCoverageTest.class));
+		assertTrue(missing.getMessage().contains("File or classpath resource not found: missing-resource.json"),
+				"Actual message: " + missing.getMessage());
 	}
 
 	/**
@@ -588,14 +590,20 @@ public class JPostmanAnnotationCoverageTest {
 		AssertionError error = assertThrows(AssertionError.class,
 				() -> JPostmanAnnotationValidator.validateTestClass(InvalidHelperFixture.class));
 
-		assertTrue(error.getMessage().contains("Invalid JPostman annotation usage"));
-		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidRequest"));
-		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidExecutor"));
-		assertTrue(error.getMessage().contains("@JPostmanResponse(cache) cannot be used with @Test"));
-		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidCachedResponse"));
-		assertTrue(error.getMessage().contains("@JPostmanRequest(cache) requires a non-void return value"));
-		assertTrue(error.getMessage().contains("InvalidHelperFixture.invalidCachedRequest"));
-		assertEquals(4, error.getStackTrace().length);
+		String message = error.getMessage();
+		assertTrue(message.contains("- InvalidHelperFixture.invalidRequest()\n"));
+		message = message.replace("- InvalidHelperFixture.invalidRequest()\n", "");
+
+		assertTrue(message.contains("- InvalidHelperFixture.invalidExecutor(JUnitContext)\n"));
+		message = message.replace("- InvalidHelperFixture.invalidExecutor(JUnitContext)\n", "");
+
+		assertEquals(message, "Invalid JPostman annotation usage.\n" + "\n"
+				+ "@JPostmanRequest and @JPostmanExecutor methods must not be annotated with @Test.\n"
+				+ "They are helper methods invoked by JPostman, not test methods invoked by the test framework.\n"
+				+ "\nInvalid helper methods:\n\n" + "@JPostmanResponse(cache) cannot be used with @Test.\n"
+				+ "Remove @Test to use it as a cached dependency, or remove cache to keep it as a test.\n" + "\n"
+				+ "Invalid cached response methods:\n" + "- InvalidHelperFixture.invalidCachedResponse()\n");
+		assertEquals(3, error.getStackTrace().length);
 
 		Constructor<JPostmanAnnotationValidator> constructor = JPostmanAnnotationValidator.class
 				.getDeclaredConstructor();
@@ -638,11 +646,11 @@ public class JPostmanAnnotationCoverageTest {
 		framework.response(context, okExecutor(
 				"{\"id\":1,\"firstName\":\"John\",\"active\":true,\"products\":[{\"stock\":5,\"price\":10,\"discount\":10},{\"stock\":2,\"price\":15,\"discount\":20}]}"));
 
-		JPostmanAssert annotation = AssertionFixture.class.getDeclaredMethod("assertWithRules")
-				.getAnnotation(JPostmanAssert.class);
+		Map<String, Map<String, String>> rules = JPostmanAssertionRunner.loadAssertionRules(AssertionFixture.class,
+				List.of("classpath:annotation-test-assertions.ini"));
 
-		assertDoesNotThrow(() -> new JPostmanAssertionRunner<>(framework).apply(AssertionFixture.class, context,
-				annotation, "Get current auth user", false, false));
+		assertDoesNotThrow(() -> new JPostmanAssertionRunner<>(framework).apply(context, rules, new String[] { "base" },
+				"Get current auth user", false, false));
 	}
 
 	/**
@@ -657,28 +665,24 @@ public class JPostmanAnnotationCoverageTest {
 		framework.response(context, okExecutor("{\"id\":1}"));
 		JPostmanAssertionRunner<JUnitContext> runner = new JPostmanAssertionRunner<>(framework);
 
-		JPostmanAssert missing = AssertionFixture.class.getDeclaredMethod("assertMissingRules")
-				.getAnnotation(JPostmanAssert.class);
-		IllegalStateException missingError = assertThrows(IllegalStateException.class,
-				() -> runner.apply(AssertionFixture.class, context, missing, "Get current auth user", false, false));
-		assertTrue(missingError.getMessage().contains("JPostman assertion rules are required"));
+		IllegalStateException missingError = assertThrows(IllegalStateException.class, () -> runner.apply(context,
+				Map.of(), new String[] { "missing" }, "Get current auth user", false, false));
+		assertTrue(missingError.getMessage().contains("No JPostman assertion files configured"));
 
-		JPostmanAssert invalid = AssertionFixture.class.getDeclaredMethod("assertInvalidRuleLine")
-				.getAnnotation(JPostmanAssert.class);
-		IllegalStateException invalidLine = assertThrows(IllegalStateException.class,
-				() -> runner.apply(AssertionFixture.class, context, invalid, "Get current auth user", false, false));
+		IllegalStateException invalidLine = assertThrows(IllegalStateException.class, () -> JPostmanAssertionRunner
+				.loadAssertionRules(AssertionFixture.class, List.of("classpath:annotation-test-invalid.ini")));
 		assertTrue(invalidLine.getMessage().contains("Invalid assertion rule line"));
 
-		JPostmanAssert circular = AssertionFixture.class.getDeclaredMethod("assertCircularRules")
-				.getAnnotation(JPostmanAssert.class);
-		IllegalStateException circularError = assertThrows(IllegalStateException.class,
-				() -> runner.apply(AssertionFixture.class, context, circular, "Get current auth user", false, false));
+		Map<String, Map<String, String>> circularRules = JPostmanAssertionRunner
+				.loadAssertionRules(AssertionFixture.class, List.of("classpath:annotation-test-assertions.ini"));
+		IllegalStateException circularError = assertThrows(IllegalStateException.class, () -> runner.apply(context,
+				circularRules, new String[] { "a" }, "Get current auth user", false, false));
 		assertTrue(circularError.getMessage().contains("Circular assertion rule inheritance"));
 
-		JPostmanAssert unsupported = AssertionFixture.class.getDeclaredMethod("assertUnsupportedRule")
-				.getAnnotation(JPostmanAssert.class);
-		IllegalStateException unsupportedError = assertThrows(IllegalStateException.class, () -> runner
-				.apply(AssertionFixture.class, context, unsupported, "Get current auth user", false, false));
+		Map<String, Map<String, String>> unsupportedRules = JPostmanAssertionRunner
+				.loadAssertionRules(AssertionFixture.class, List.of("classpath:annotation-test-assertions.ini"));
+		IllegalStateException unsupportedError = assertThrows(IllegalStateException.class, () -> runner.apply(context,
+				unsupportedRules, new String[] { "unsupported" }, "Get current auth user", false, false));
 		assertTrue(unsupportedError.getMessage().contains("Unsupported JPostman assertion rule"));
 	}
 
@@ -701,6 +705,66 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("runnerExecutor", fixture.executorMethodName);
 		assertEquals("Login user and get tokens", fixture.executorRequestName);
 		assertEquals("runner-token", fixture.base.cache("runnerToken"));
+	}
+
+	/**
+	 * Verifies that @JPostmanRunner does not silently pass when no default executor
+	 * is configured. TestNG should report this as skipped.
+	 */
+	@Test
+	public void runnerSkipsWhenNoDefaultExecutorConfiguredForTestNg() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		TestNgRunnerWithoutExecutorFixture fixture = new TestNgRunnerWithoutExecutorFixture();
+		Method method = TestNgRunnerWithoutExecutorFixture.class.getDeclaredMethod("productRunner");
+
+		SkipException skipped = assertThrows(SkipException.class, () -> runner.run(fixture, method));
+
+		assertTrue(skipped.getMessage().contains("No default @JPostmanExecutor"),
+				"Actual message: " + skipped.getMessage());
+	}
+
+	/**
+	 * Verifies that executor configuration errors are reported before any request
+	 * flow runs, with the same user-friendly validation style as invalid @Test
+	 * helpers.
+	 */
+	@Test
+	public void executorValidationReportsDuplicateIdsDefaultsSignatureAndReturnBeforeRun() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> runner.setup(new InvalidExecutorValidationFixture()));
+
+		assertTrue(error.getMessage().contains("Invalid JPostman annotation usage"));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor ids must be unique"));
+		assertTrue(error.getMessage().contains("id=\"duplicate\""));
+		assertTrue(error.getMessage().contains("Only one default @JPostmanExecutor is allowed"));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor methods have unsupported parameters"));
+		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badSignature"));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor"));
+		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badReturn"));
+		assertTrue(error.getStackTrace().length >= 6);
+	}
+
+	/**
+	 * Verifies that explicit status verification and assertion sections are
+	 * mutually exclusive.
+	 */
+	@Test
+	public void verifyAndAssertsCannotBeUsedTogether() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+
+		AssertionError responseError = assertThrows(AssertionError.class,
+				() -> runner.run(new InvalidVerifyAndAssertsResponseFixture(),
+						InvalidVerifyAndAssertsResponseFixture.class.getDeclaredMethod("response")));
+		assertTrue(responseError.getMessage().contains("@JPostmanResponse cannot use verify and asserts together."),
+				"Actual message: " + responseError.getMessage());
+
+		AssertionError runnerError = assertThrows(AssertionError.class,
+				() -> runner.run(new InvalidVerifyAndAssertsRunnerFixture(),
+						InvalidVerifyAndAssertsRunnerFixture.class.getDeclaredMethod("runner")));
+		assertTrue(runnerError.getMessage().contains("@JPostmanRunner cannot use verify and asserts together."),
+				"Actual message: " + runnerError.getMessage());
 	}
 
 	/**
@@ -738,44 +802,88 @@ public class JPostmanAnnotationCoverageTest {
 	public void runnerReportsDependencyAndExecutorErrors() throws Exception {
 		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
 
-		IllegalStateException missingDependency = assertThrows(IllegalStateException.class, () -> runner
+		AssertionError missingDependency = assertThrows(AssertionError.class, () -> runner
 				.run(new MissingDependencyFixture(), MissingDependencyFixture.class.getDeclaredMethod("response")));
 		assertTrue(missingDependency.getMessage().contains("Dependency method not found"));
 
-		IllegalStateException plainDependency = assertThrows(IllegalStateException.class, () -> runner
+		AssertionError plainDependency = assertThrows(AssertionError.class, () -> runner
 				.run(new PlainDependencyFixture(), PlainDependencyFixture.class.getDeclaredMethod("response")));
 		assertTrue(plainDependency.getMessage().contains("Dependency method must be annotated"));
 
-		IllegalStateException nullDependency = assertThrows(IllegalStateException.class, () -> runner
-				.run(new NullDependencyFixture(), NullDependencyFixture.class.getDeclaredMethod("response")));
+		AssertionError nullDependency = assertThrows(AssertionError.class, () -> runner.run(new NullDependencyFixture(),
+				NullDependencyFixture.class.getDeclaredMethod("response")));
 		assertTrue(nullDependency.getMessage().contains("Dependency method returned null"));
 
-		IllegalStateException missingExecutor = assertThrows(IllegalStateException.class, () -> runner
+		AssertionError missingExecutor = assertThrows(AssertionError.class, () -> runner
 				.run(new MissingExecutorFixture(), MissingExecutorFixture.class.getDeclaredMethod("response")));
 		assertTrue(missingExecutor.getMessage().contains("JPostman executor not found"));
 
-		IllegalStateException invalidExecutor = assertThrows(IllegalStateException.class,
+		AssertionError invalidExecutor = assertThrows(AssertionError.class,
 				() -> runner.run(new InvalidExecutorSignatureFixture(),
 						InvalidExecutorSignatureFixture.class.getDeclaredMethod("response")));
-		assertTrue(invalidExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
+		assertTrue(invalidExecutor.getMessage().contains("@JPostmanExecutor methods have unsupported parameters."));
 
-		IllegalStateException legacyStringExecutor = assertThrows(IllegalStateException.class,
+		AssertionError legacyStringExecutor = assertThrows(AssertionError.class,
 				() -> runner.run(new LegacyStringExecutorFixture(),
 						LegacyStringExecutorFixture.class.getDeclaredMethod("response")));
-		assertTrue(legacyStringExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
+		assertTrue(legacyStringExecutor.getMessage().contains("LegacyStringExecutorFixture.legacyExecutor"));
+		assertTrue(legacyStringExecutor.getMessage().contains("JUnitContext"));
+		assertTrue(legacyStringExecutor.getMessage().contains("String"));
+		assertTrue(legacyStringExecutor.getMessage()
+				.contains("Supported signatures are: (), (context), (JPostmanInfo), or (context, JPostmanInfo)."));
 
-		IllegalStateException legacyRequestExecutor = assertThrows(IllegalStateException.class,
+		AssertionError legacyRequestExecutor = assertThrows(AssertionError.class,
 				() -> runner.run(new LegacyRequestNameExecutorFixture(),
 						LegacyRequestNameExecutorFixture.class.getDeclaredMethod("response")));
-		assertTrue(legacyRequestExecutor.getMessage().contains("@JPostmanExecutor method must accept"));
+		assertTrue(legacyRequestExecutor.getMessage().contains("LegacyRequestNameExecutorFixture.legacyExecutor"));
+		assertTrue(legacyRequestExecutor.getMessage().contains("JUnitContext"));
+		assertTrue(legacyRequestExecutor.getMessage().contains("String"));
+		assertTrue(legacyRequestExecutor.getMessage()
+				.contains("Supported signatures are: (), (context), (JPostmanInfo), or (context, JPostmanInfo)."));
 
-		IllegalStateException nullExecutor = assertThrows(IllegalStateException.class,
+		AssertionError nullExecutor = assertThrows(AssertionError.class,
 				() -> runner.run(new NullExecutorFixture(), NullExecutorFixture.class.getDeclaredMethod("response")));
 		assertTrue(nullExecutor.getMessage().contains("JPostman executor returned null"));
 
-		IllegalStateException wrongExecutorType = assertThrows(IllegalStateException.class, () -> runner
+		AssertionError wrongExecutorType = assertThrows(AssertionError.class, () -> runner
 				.run(new WrongExecutorTypeFixture(), WrongExecutorTypeFixture.class.getDeclaredMethod("response")));
-		assertTrue(wrongExecutorType.getMessage().contains("JPostman executor must return ApiExecutor"));
+		assertTrue(wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor."));
+	}
+
+	/**
+	 * Verifies JPostmanInfo keeps a single tag chain and searches only
+	 * {@link JPostmanInfo#tags}.
+	 */
+	@Test
+	public void infoCanSearchSingleTagChain() {
+		JPostmanInfo parent = new JPostmanInfo(new String[] { "auth", "login" }, "", "login", "", "",
+				"Login user and get tokens");
+		JPostmanInfo child = parent.child("getCurrentAuthUser", new String[] { "user", "profile" }, "", "", "",
+				"Get current auth user");
+		JPostmanInfo next = child.withTags("orders", "profile");
+
+		assertArrayEquals(new String[] { "auth", "login", "user", "profile" }, child.tags);
+		assertArrayEquals(new String[] { "auth", "login", "user", "profile", "orders" }, next.tags);
+		assertTrue(child.hasTag("profile"));
+		assertTrue(child.hasTag("auth"));
+		assertTrue(child.hasTag("missing", "login"));
+		assertFalse(child.hasTag("missing", "other"));
+	}
+
+	/**
+	 * Verifies dependency calls receive a single accumulated tag chain. The current
+	 * annotation tags are appended only when calling the next dependency.
+	 */
+	@Test
+	public void responseDependencyTagsAreAccumulatedForNextCalls() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		TagChainFixture fixture = new TagChainFixture();
+
+		runner.run(fixture, TagChainFixture.class.getDeclaredMethod("response"));
+
+		assertArrayEquals(new String[] { "keyboard" }, fixture.mouseTags);
+		assertArrayEquals(new String[] { "keyboard", "mouse" }, fixture.shoesTags);
+		assertArrayEquals(new String[] { "keyboard", "mouse", "shoes" }, fixture.computerTags);
 	}
 
 	/**
@@ -785,8 +893,8 @@ public class JPostmanAnnotationCoverageTest {
 	public void runnerReportsCircularDependenciesAndPassesJPostmanInfo() throws Exception {
 		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
 
-		IllegalStateException circular = assertThrows(IllegalStateException.class, () -> runner
-				.run(new CircularDependencyFixture(), CircularDependencyFixture.class.getDeclaredMethod("response")));
+		AssertionError circular = assertThrows(AssertionError.class, () -> runner.run(new CircularDependencyFixture(),
+				CircularDependencyFixture.class.getDeclaredMethod("response")));
 		assertTrue(circular.getMessage().contains("Circular JPostman dependency detected"));
 		assertTrue(circular.getMessage().contains("response -> requestDependency -> response"));
 
@@ -813,7 +921,41 @@ public class JPostmanAnnotationCoverageTest {
 
 		IllegalStateException error = assertThrows(IllegalStateException.class,
 				() -> runner.setup(new InvalidCoreContextFixture()));
-		assertTrue(error.getMessage().contains("@JPostmanContext field must be JPostman.Context"));
+		assertTrue(error.getMessage()
+				.contains("field must be io.jpostman.JPostman.Context, JPostmanRuntime, or JPostman.Runtime"));
+	}
+
+	/**
+	 * Verifies that an empty collection configuration fails clearly when no
+	 * annotation value and no properties fallback are available.
+	 */
+	@Test
+	public void contextRunnerRejectsBlankCollectionWhenConfigDisabled() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+
+		IllegalStateException error = assertThrows(IllegalStateException.class,
+				() -> runner.setup(new CollectionRequiredFixture()));
+
+		assertTrue(error.getMessage().contains("JPostman collection is required"));
+		assertTrue(error.getMessage().contains("@JPostmanContext(collection"));
+	}
+
+	/**
+	 * Verifies that an explicitly configured properties file is required.
+	 *
+	 * <p>
+	 * The default classpath:jpostman.properties is optional, but a user-provided
+	 * config location must fail if it cannot be opened.
+	 * </p>
+	 */
+	@Test
+	public void contextRunnerRejectsExplicitMissingConfigFile() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+
+		IOException error = assertThrows(IOException.class, () -> runner.setup(new MissingConfigFixture()));
+
+		assertTrue(error.getMessage().contains("Classpath resource not found: classpath:missing-jpostman.properties"),
+				"Actual message: " + error.getMessage());
 	}
 
 	/**
@@ -945,11 +1087,10 @@ public class JPostmanAnnotationCoverageTest {
 		assertNotNull(lifecycle.base);
 
 		Method validTest = ListenerTestNgFixture.class.getDeclaredMethod("validTest");
-		assertDoesNotThrow(
-				() -> listener.beforeInvocation(invokedMethod(validTest, true, false), testResult(lifecycle)));
+		assertDoesNotThrow(() -> listener.run(hookCallBack(), testResult(lifecycle, validTest)));
 		assertEquals(1, lifecycle.executorCount);
-		assertNotNull(TestNgContext.current().response());
-		TestNgContext.clearCurrent();
+		assertNotNull(lifecycle.base.response());
+		assertThrows(AssertionError.class, () -> TestNgContext.current());
 
 		InvalidHelperFixture invalid = new InvalidHelperFixture();
 		IInvokedMethod invalidMethod = invokedMethod(InvalidHelperFixture.class.getDeclaredMethod("invalidRequest"),
@@ -961,25 +1102,6 @@ public class JPostmanAnnotationCoverageTest {
 		SkipException skipped = assertThrows(SkipException.class,
 				() -> listener.beforeInvocation(invalidMethod, testResult(invalid)));
 		assertTrue(skipped.getMessage().contains("JPostman annotation setup failed"));
-	}
-
-	/**
-	 * Verifies the private listener cleanFailure helper through reflection.
-	 */
-	@Test
-	public void testNgListenerCleanFailureIsCovered() throws Exception {
-		Method plain = EmptyFixture.class.getDeclaredMethod("plain");
-		IInvokedMethod invoked = invokedMethod(plain, true, false);
-
-		Method cleanFailure = JPostmanTestNgAnnotationListener.class.getDeclaredMethod("cleanFailure",
-				IInvokedMethod.class, Throwable.class);
-		cleanFailure.setAccessible(true);
-
-		AssertionError cleaned = (AssertionError) cleanFailure.invoke(null, invoked,
-				new InvocationTargetException(new AssertionError("listener boom")));
-
-		assertTrue(cleaned.getMessage().contains("listener boom"));
-		assertTrue(cleaned.getStackTrace().length > 0);
 	}
 
 	/**
@@ -1031,9 +1153,9 @@ public class JPostmanAnnotationCoverageTest {
 	 * exists.
 	 *
 	 * <p>
-	 * Even when @JPostmanAssert selects the product section, the request named "Get
-	 * all products" must resolve only [Get all products] and its own extends chain.
-	 * It must not also merge the unrelated [product] section.
+	 * Even when asserts selects the product section, the request named "Get all
+	 * products" must resolve only [Get all products] and its own extends chain. It
+	 * must not also merge the unrelated [product] section.
 	 * </p>
 	 */
 	@Test
@@ -1044,12 +1166,11 @@ public class JPostmanAnnotationCoverageTest {
 		framework.request(context, collectionWithTwoRequests().getRequest("Get current auth user"));
 		framework.response(context, okExecutor("{}"));
 
-		JPostmanAssert annotation = AssertionFixture.class
-				.getDeclaredMethod("assertRequestSectionOverridesConfiguredSections")
-				.getAnnotation(JPostmanAssert.class);
+		Map<String, Map<String, String>> rules = JPostmanAssertionRunner.loadAssertionRules(AssertionFixture.class,
+				List.of("classpath:annotation-test-assertions.ini"));
 
 		AssertionError error = assertThrows(AssertionError.class, () -> new JPostmanAssertionRunner<>(framework)
-				.apply(AssertionFixture.class, context, annotation, "Get all products", true, false));
+				.apply(context, rules, new String[0], "Get all products", true, false));
 
 		assertTrue(error.getMessage().contains("Path not found: id"));
 		assertFalse(error.getMessage().contains("Path not found: title"));
@@ -1099,14 +1220,26 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	private static ITestResult testResult(Object instance) {
-		return testResult(instance, new AtomicReference<>(), ITestResult.SUCCESS);
+		return testResult(instance, new AtomicReference<>(), ITestResult.SUCCESS, null);
+	}
+
+	private static ITestResult testResult(Object instance, Method javaMethod) {
+		return testResult(instance, new AtomicReference<>(), ITestResult.SUCCESS, javaMethod);
 	}
 
 	private static ITestResult testResult(Object instance, AtomicReference<Throwable> throwable, int status) {
+		return testResult(instance, throwable, status, null);
+	}
+
+	private static ITestResult testResult(Object instance, AtomicReference<Throwable> throwable, int status,
+			Method javaMethod) {
 		return (ITestResult) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
 				new Class<?>[] { ITestResult.class }, (proxy, method, args) -> {
 					if ("getInstance".equals(method.getName())) {
 						return instance;
+					}
+					if ("getMethod".equals(method.getName()) && javaMethod != null) {
+						return testNgMethod(javaMethod);
 					}
 					if ("getThrowable".equals(method.getName())) {
 						return throwable.get();
@@ -1120,6 +1253,11 @@ public class JPostmanAnnotationCoverageTest {
 					}
 					return defaultValue(method.getReturnType());
 				});
+	}
+
+	private static IHookCallBack hookCallBack() {
+		return (IHookCallBack) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
+				new Class<?>[] { IHookCallBack.class }, (proxy, method, args) -> defaultValue(method.getReturnType()));
 	}
 
 	private static Object defaultValue(Class<?> type) {
@@ -1180,6 +1318,9 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	private static final class RequestFixture {
 
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		/** Default namespace context injected by the annotation runner. */
 		@JPostmanTestContext
 		private JUnitContext base;
@@ -1206,7 +1347,7 @@ public class JPostmanAnnotationCoverageTest {
 		}
 
 		/**
-		 * Named executor selected by executor = "auth".
+		 * Named executor selected by unique id: executor = "auth".
 		 */
 		@JPostmanExecutor(id = "auth", dependsOn = { "login" })
 		ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
@@ -1235,6 +1376,9 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	private static final class ProductFixture {
 
+		@JPostmanContext(namespace = "product")
+		private io.jpostman.JPostman.Context loadedProduct;
+
 		@JPostmanTestContext(namespace = "product")
 		private JUnitContext product;
 
@@ -1247,33 +1391,31 @@ public class JPostmanAnnotationCoverageTest {
 		private JUnitContext ctx;
 	}
 
+	@SuppressWarnings("unused")
 	private static final class AssertionFixture {
-		@JPostmanAssert(rules = "classpath:annotation-assertions.ini", sections = { "base" })
 		void assertWithRules() {
 		}
 
-		@JPostmanAssert
 		void assertMissingRules() {
 		}
 
-		@JPostmanAssert(rules = "classpath:annotation-assertions-invalid-line.ini")
 		void assertInvalidRuleLine() {
 		}
 
-		@JPostmanAssert(rules = "classpath:annotation-assertions-circular.ini", sections = { "a" })
 		void assertCircularRules() {
 		}
 
-		@JPostmanAssert(rules = "classpath:annotation-assertions-unsupported.ini")
 		void assertUnsupportedRule() {
 		}
 
-		@JPostmanAssert(rules = "classpath:annotation-assertions-request-section.ini", sections = { "product" })
 		void assertRequestSectionOverridesConfiguredSections() {
 		}
 	}
 
 	private static final class RunnerFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		@JPostmanTestContext
 		private JUnitContext base;
 
@@ -1307,7 +1449,66 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class TestNgRunnerWithoutExecutorFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
+		@JPostmanTestContext
+		private TestNgContext base;
+
+		@JPostmanRunner(include = { "Login user and get tokens" }, verify = 200)
+		void productRunner() {
+		}
+	}
+
+	private static final class InvalidExecutorValidationFixture {
+		@JPostmanExecutor(id = "duplicate")
+		ApiExecutor duplicateOne() {
+			return okExecutor("{}");
+		}
+
+		@JPostmanExecutor(id = "duplicate")
+		ApiExecutor duplicateTwo() {
+			return okExecutor("{}");
+		}
+
+		@JPostmanExecutor
+		ApiExecutor defaultOne() {
+			return okExecutor("{}");
+		}
+
+		@JPostmanExecutor
+		ApiExecutor defaultTwo() {
+			return okExecutor("{}");
+		}
+
+		@JPostmanExecutor(id = "badSignature")
+		ApiExecutor badSignature(String unsupported) {
+			return okExecutor("{}");
+		}
+
+		@JPostmanExecutor(id = "badReturn")
+		String badReturn() {
+			return "not an executor";
+		}
+	}
+
+	private static final class InvalidVerifyAndAssertsResponseFixture extends BaseResponseFixture {
+		@JPostmanResponse(request = "Get current auth user", verify = 200, asserts = { "product" })
+		void response() {
+		}
+	}
+
+	private static final class InvalidVerifyAndAssertsRunnerFixture extends BaseResponseFixture {
+		@JPostmanRunner(include = { "Login user and get tokens" }, verify = 200, asserts = { "product" })
+		void runner() {
+		}
+	}
+
 	private static final class ResponseAndRunnerDependencyFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		@JPostmanTestContext
 		private JUnitContext base;
 
@@ -1344,6 +1545,31 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class TagChainFixture extends BaseContextFixture {
+		private String[] mouseTags;
+		private String[] shoesTags;
+		private String[] computerTags;
+
+		@JPostmanResponse(tags = "keyboard", dependsOn = "TagChainFixture.getMouse")
+		void response() {
+		}
+
+		@JPostmanResponse(tags = "mouse", dependsOn = "getShoes")
+		void getMouse(JPostmanInfo info) {
+			mouseTags = info.tags;
+		}
+
+		@JPostmanResponse(tags = "shoes", dependsOn = "getComputer")
+		void getShoes(JPostmanInfo info) {
+			shoesTags = info.tags;
+		}
+
+		@JPostmanResponse(tags = "computer")
+		void getComputer(JPostmanInfo info) {
+			computerTags = info.tags;
+		}
+	}
+
 	private static final class CircularDependencyFixture extends BaseResponseFixture {
 		@JPostmanRequest(dependsOn = { "response" })
 		void requestDependency() {
@@ -1360,7 +1586,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		@JPostmanRequest
 		void helloWorld(JUnitContext context, JPostmanInfo info) {
-			info.params("hello", "world");
+			info.body("hello", "world");
 		}
 
 		@JPostmanResponse(request = "Get current auth user", dependsOn = {
@@ -1370,7 +1596,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		@JPostmanExecutor(id = "info")
 		ApiExecutor executor(JUnitContext context, JPostmanInfo info) {
-			value = String.valueOf(info.params.get("hello"));
+			value = String.valueOf(info.body.get("hello"));
 			executorRequestName = info.request;
 			return okExecutor("{\"id\":1}");
 		}
@@ -1421,22 +1647,22 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	private static final class LegacyStringExecutorFixture extends BaseContextFixture {
-		@JPostmanResponse(request = "Get current auth user", executor = "legacy")
+		@JPostmanResponse(request = "Get current auth user", executor = "legacyExecutor")
 		void response() {
 		}
 
-		@JPostmanExecutor(id = "legacy")
+		@JPostmanExecutor
 		ApiExecutor legacyExecutor(JUnitContext context, String methodName) {
 			return okExecutor("{}");
 		}
 	}
 
 	private static final class LegacyRequestNameExecutorFixture extends BaseContextFixture {
-		@JPostmanResponse(request = "Get current auth user", executor = "legacy")
+		@JPostmanResponse(request = "Get current auth user", executor = "legacyExecutor")
 		void response() {
 		}
 
-		@JPostmanExecutor(id = "legacy")
+		@JPostmanExecutor
 		ApiExecutor legacyExecutor(JUnitContext context, String methodName, String requestName) {
 			return okExecutor("{}");
 		}
@@ -1472,6 +1698,9 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	private static class BaseContextFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		@JPostmanTestContext
 		private JUnitContext base;
 	}
@@ -1489,12 +1718,28 @@ public class JPostmanAnnotationCoverageTest {
 		private String loaded;
 	}
 
+	private static final class CollectionRequiredFixture {
+		@JPostmanContext(config = "")
+		private io.jpostman.JPostman.Context loaded;
+	}
+
+	private static final class MissingConfigFixture {
+		@JPostmanContext(config = "classpath:missing-jpostman.properties")
+		private io.jpostman.JPostman.Context loaded;
+	}
+
 	private static final class TestNgContextFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		@JPostmanTestContext
 		private TestNgContext base;
 	}
 
 	private static final class ListenerTestNgFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
 		@JPostmanTestContext
 		private TestNgContext base;
 
@@ -1504,6 +1749,7 @@ public class JPostmanAnnotationCoverageTest {
 		void beforeClass() {
 		}
 
+		@org.testng.annotations.Test
 		@JPostmanResponse(request = "Get current auth user", executor = "listener", verify = 200)
 		void validTest() {
 		}
@@ -1549,7 +1795,36 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
-	@JPostmanAssert(rules = "classpath:annotation-assertions-request-section.ini", sections = { "product" })
-	void assertRequestSectionOverridesConfiguredSections() {
+	private static final class CompactJPostmanRuntimeAliasFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<JUnitContext> jctx;
 	}
+
+	@Test
+	public void contextRunnerInjectsCompactJPostmanFacadeRuntime() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		CompactJPostmanRuntimeAliasFixture fixture = new CompactJPostmanRuntimeAliasFixture();
+
+		runner.setup(fixture);
+
+		assertNotNull(fixture.jctx);
+		assertNotNull(fixture.jctx.context());
+		assertNotNull(fixture.jctx.getCollection());
+	}
+
+	@io.jpostman.annotations.JPostman.JUnit(printFailures = true)
+	private static final class CompactJPostmanJUnitAnnotationFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<JUnitContext> jctx;
+	}
+
+	@Test
+	public void compactJPostmanJUnitAnnotationExposesPrintFailures() {
+		io.jpostman.annotations.JPostman.JUnit annotation = CompactJPostmanJUnitAnnotationFixture.class
+				.getAnnotation(io.jpostman.annotations.JPostman.JUnit.class);
+
+		assertNotNull(annotation);
+		assertTrue(annotation.printFailures());
+	}
+
 }

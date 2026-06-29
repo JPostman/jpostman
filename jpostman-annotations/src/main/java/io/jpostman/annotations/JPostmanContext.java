@@ -6,13 +6,33 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
+import io.jpostman.annotations.runtime.JPostmanInfo;
+import io.jpostman.annotations.runtime.JPostmanRuntime;
+
 /**
- * Injects the loaded JPostman core context.
+ * Injects the loaded JPostman context.
  *
  * <p>
- * Use this when the test needs direct access to the loaded Postman collection
- * or environment.
+ * A field may use the core {@link io.jpostman.JPostman.Context} type when it
+ * only needs direct access to the loaded Postman collection/environment. A
+ * field may also use {@link JPostmanRuntime} or the compact
+ * {@link io.jpostman.annotations.JPostman.Context} alias when it needs
+ * annotation-runtime access such as the active framework context,
+ * namespace-specific contexts, or the current {@link JPostmanInfo}.
  * </p>
+ *
+ * <pre>
+ * {@code @JPostmanContext(collection = "classpath:collection.json")
+ * private JPostmanRuntime<TestNgContext> jctx;
+ *
+ * // Or with the compact facade import:
+ * private io.jpostman.annotations.JPostman.Runtime<TestNgContext> jctx;
+ *
+ * jctx.ctx(); // default framework context
+ * jctx.ctx("product"); // namespace-specific framework context
+ * jctx.info(); // current JPostmanInfo
+ * }
+ * </pre>
  */
 @Target(FIELD)
 @Retention(RUNTIME)
@@ -30,7 +50,7 @@ public @interface JPostmanContext {
 	 *
 	 * @return context configuration location
 	 */
-	String config() default "classpath:jpostman.properties";
+	String config() default "classpath:jpostman.properties"; // JPostmanDataLoader.DEFAULT_CONFIG
 
 	/**
 	 * Optional Postman collection location.
@@ -54,17 +74,33 @@ public @interface JPostmanContext {
 	String rules() default "";
 
 	/**
-	 * Optional data files to load for {@link JPostmanData}.
+	 * Optional data files to load for annotation data resolvers.
 	 *
 	 * <p>
 	 * Locations may use the same format as other JPostman resources, for example
 	 * {@code classpath:product-data.ini} or a file-system path. Multiple files are
-	 * loaded in declaration order, and later files override earlier sections.
+	 * loaded in declaration order. Section names must be unique across all loaded
+	 * data files; duplicate section names fail fast instead of being overridden.
 	 * </p>
 	 *
 	 * @return data file locations
 	 */
 	String[] dataload() default {};
+
+	/**
+	 * Optional assertion rule files to load for annotation assertions.
+	 *
+	 * <p>
+	 * Locations may use the same format as other JPostman resources, for example
+	 * {@code classpath:annotation-test-assertions.ini} or a file-system path.
+	 * Multiple files are loaded in declaration order. Section names must be unique
+	 * across all loaded assertion files; duplicate section names fail fast instead
+	 * of being overridden.
+	 * </p>
+	 *
+	 * @return assertion rule file locations
+	 */
+	String[] assertions() default {};
 
 	/**
 	 * Default HTTP status code used when a response or runner does not specify
@@ -87,16 +123,53 @@ public @interface JPostmanContext {
 	int verifyStatusCode() default 200;
 
 	/**
-	 * Default secure log behavior for JPostman response verification.
+	 * Default API executor class for this context.
+	 *
+	 * <p>
+	 * When configured, JPostman can execute requests without a code-defined default
+	 * {@link JPostmanExecutor} method. For non-session execution, the executor
+	 * class must provide a static {@code apply(request)} method returning
+	 * {@link io.jpostman.ApiExecutor}. For session execution, it must provide a
+	 * static {@code create()} method returning {@link io.jpostman.ApiExecutor}.
+	 * </p>
+	 *
+	 * @return executor class, or {@link Void} when no context executor is
+	 *         configured
+	 */
+	Class<?> executor() default Void.class;
+
+	/**
+	 * Enables session executor mode for the context default executor.
+	 *
+	 * <p>
+	 * When {@code false}, JPostman creates the default executor with
+	 * {@code executor.apply(ctx.request())}. When {@code true}, JPostman creates
+	 * and reuses the default executor with {@code executor.create()}.
+	 * </p>
+	 *
+	 * @return {@code true} to use session mode; {@code false} to create an executor
+	 *         per request
+	 */
+	boolean session() default false;
+
+	/**
+	 * Enables secure request/response logging by default for this JPostman context.
+	 *
+	 * <p>
+	 * This is a class-level/default logging flag. When enabled, annotation-driven
+	 * executions such as {@code @JPostmanRunner}, {@code @JPostmanRequest}, and
+	 * {@code @JPostmanResponse} will collect secure request/response logs unless
+	 * the implementation explicitly defines another logging policy.
+	 * </p>
 	 *
 	 * <p>
 	 * Note: Java boolean annotation values cannot distinguish between an omitted
-	 * value and an explicit {@code false}. This value is treated as a class-level
-	 * default that enables response logging when a response/runner also does not
-	 * enable it.
+	 * value and an explicit {@code false}. Therefore, a local annotation value such
+	 * as {@code log = false} is treated the same as omitting {@code log}. It does
+	 * not override this global {@code logs = true} value.
 	 * </p>
 	 *
-	 * @return {@code true} to enable default secure response logging
+	 * @return {@code true} to enable secure request/response logging by default
 	 */
 	boolean logs() default false;
 
@@ -106,7 +179,7 @@ public @interface JPostmanContext {
 	 *
 	 * @return annotation debug level
 	 */
-	String debug() default "info";
+	String logLevel() default "info";
 
 	/**
 	 * Format used when debug level is DEBUG or TRACE.

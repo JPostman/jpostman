@@ -1,15 +1,23 @@
 package io.jpostman.annotations.runtime;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.jpostman.Collection;
 
 final class PreparedContexts<C> {
-	private final Map<String, PreparedContext<C>> values = new HashMap<>();
+
+	@FunctionalInterface
+	interface MissingContextFactory<C> {
+		PreparedContext<C> create(String namespace) throws Exception;
+	}
+
+	private final Map<String, PreparedContext<C>> values = new ConcurrentHashMap<>();
 	private final List<PreparedContext<C>> active = new ArrayList<>();
+	private MissingContextFactory<C> missingContextFactory;
+	private JPostmanInfo info;
 
 	boolean isEmpty() {
 		return values.isEmpty();
@@ -30,10 +38,25 @@ final class PreparedContexts<C> {
 	PreparedContext<C> resolve(String namespace) {
 		String key = normalize(namespace);
 		PreparedContext<C> context = values.get(key);
-		if (context == null) {
-			throw new IllegalStateException("No @JPostmanTestContext found for namespace: " + key);
+		if (context != null) {
+			return context;
 		}
-		return context;
+
+		if (missingContextFactory != null) {
+			try {
+				PreparedContext<C> created = missingContextFactory.create(key);
+				if (created != null) {
+					PreparedContext<C> existing = values.putIfAbsent(key, created);
+					return existing == null ? created : existing;
+				}
+			} catch (RuntimeException e) {
+				throw e;
+			} catch (Exception e) {
+				throw new IllegalStateException("Unable to create JPostman runtime context for namespace: " + key, e);
+			}
+		}
+
+		throw new IllegalStateException("No JPostman runtime context found for namespace: " + key);
 	}
 
 	C context(String namespace) {
@@ -41,10 +64,15 @@ final class PreparedContexts<C> {
 	}
 
 	C firstContext() {
+		PreparedContext<C> context = firstPreparedContext();
+		return context.context;
+	}
+
+	PreparedContext<C> firstPreparedContext() {
 		if (values.isEmpty()) {
-			throw new IllegalStateException("No @JPostmanTestContext found.");
+			throw new IllegalStateException("No JPostman runtime context found.");
 		}
-		return values.values().iterator().next().context;
+		return values.values().iterator().next();
 	}
 
 	Collection collection(String namespace) {
@@ -62,6 +90,18 @@ final class PreparedContexts<C> {
 	void update(String namespace, C context) {
 		resolve(namespace).update(context);
 		updateActive(context);
+	}
+
+	void missingContextFactory(MissingContextFactory<C> missingContextFactory) {
+		this.missingContextFactory = missingContextFactory;
+	}
+
+	void info(JPostmanInfo info) {
+		this.info = info;
+	}
+
+	JPostmanInfo info() {
+		return info;
 	}
 
 	void addActive(PreparedContext<C> context) {

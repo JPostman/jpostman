@@ -5,6 +5,9 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import io.jpostman.annotations.runtime.JPostmanInfo;
+import io.jpostman.annotations.runtime.JPostmanReport;
+
 /**
  * Injects a {@link JPostmanReport} into a test class field.
  *

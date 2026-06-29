@@ -2,6 +2,8 @@ package io.jpostman.annotations.runtime;
 
 import java.io.InputStream;
 
+import org.opentest4j.TestAbortedException;
+
 import io.jpostman.ApiExecutor;
 import io.jpostman.Environment;
 import io.jpostman.Request;
@@ -89,12 +91,21 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 
 	/** {@inheritDoc} */
 	@Override
+	public void soft(JUnitContext context, boolean log) {
+		context.soft(log);
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log) {
-		if (soft) {
-			context.soft(log).statusCode(statusCode);
-			return;
-		}
-		context.asserts(log).statusCode(statusCode);
+		verify(context, statusCode, soft, log, null);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info) {
+		Object assertions = soft ? context.soft(log) : context.asserts(log);
+		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog(context));
 	}
 
 	/** {@inheritDoc} */
@@ -107,6 +118,12 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 	@Override
 	public void cache(JUnitContext context, String key, Object value) {
 		context.cache(key, value);
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public RuntimeException skipException(JPostmanInfo info, String... lines) {
+		return new TestAbortedException(JPostmanFramework.getMessage(info, lines));
 	}
 
 	/** {@inheritDoc} */
