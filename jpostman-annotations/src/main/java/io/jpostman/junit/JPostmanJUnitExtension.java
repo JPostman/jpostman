@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import org.junit.jupiter.api.extension.TestInstancePostProcessor;
+import org.opentest4j.TestAbortedException;
 
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
@@ -65,7 +66,9 @@ public final class JPostmanJUnitExtension
 			invocation.proceed();
 		} catch (Throwable error) {
 			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, testMethod, error);
-			printFailure(extensionContext, cleaned);
+			if (!(cleaned instanceof TestAbortedException)) {
+				printFailure(extensionContext, cleaned);
+			}
 			throw cleaned;
 		} finally {
 			JUnitContext.clearCurrent();

@@ -14,6 +14,7 @@ import java.util.Set;
 import io.jpostman.ApiExecutor;
 import io.jpostman.Collection;
 import io.jpostman.Request;
+import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
@@ -103,6 +104,19 @@ public final class JPostmanAnnotationRunner<C> {
 		add(report, info);
 		info.methods.add(testMethod.getName());
 		debug(testInstance, info);
+
+		if (responseAnnotation != null) {
+			validateResponseSkipEnabled(responseAnnotation, info);
+			if (skipTopLevelResponse(responseAnnotation, info)) {
+				skipped(report, info);
+				throw JPostmanErrors.skip(framework, info, responseSkipLines(responseAnnotation, info));
+			}
+		}
+
+		if (runnerAnnotation != null && skipTopLevelRunner(runnerAnnotation, info)) {
+			skipped(report, info);
+			throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
+		}
 
 		if (requestAnnotation != null) {
 			runAnnotatedRequest(testInstance, prepared, current.collection, requestAnnotation, info,
@@ -316,7 +330,14 @@ public final class JPostmanAnnotationRunner<C> {
 				.annotation("@JPostmanResponse").debug(annotation.logLevel());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
-		add(report(testInstance), info);
+		JPostmanReport report = report(testInstance);
+		add(report, info);
+
+		validateResponseSkipEnabled(annotation, info);
+		if (skipResponse(annotation)) {
+			skipped(report, info);
+			throw JPostmanErrors.skip(framework, info, responseSkipLines(annotation));
+		}
 
 		Object cached = cachedResponseValue(resolver, info, cache);
 		if (cached != null) {
@@ -379,6 +400,18 @@ public final class JPostmanAnnotationRunner<C> {
 		String requestNamespace = value(annotation.namespace());
 		String requestFolder = value(annotation.folder());
 		String requestName = value(annotation.request());
+		if (skipRequest(annotation)) {
+			/*
+			 * When @JPostmanRequest/@JPostman.Request is reached through dependsOn,
+			 * skip=true means skip this helper dependency only. The request name is
+			 * optional in this path because the helper may only exist to select tags or
+			 * block a dependency branch. Runner request skipping is handled separately by
+			 * JPostmanRequestDiscovery, where request/folder/namespace are used to match
+			 * collection requests.
+			 */
+			dependencyInfo.methods.add(dependencyMethod.getName());
+			return;
+		}
 		/*
 		 * Request helpers use their own annotation namespace for execution and cache
 		 * storage. Blank namespace means the default @JPostmanTestContext, even when
@@ -596,6 +629,11 @@ public final class JPostmanAnnotationRunner<C> {
 			if (requestDiscovery.hasExplicitResponse(testInstance.getClass(), info.namespace, info.folder,
 					requestName)) {
 				skipped.add(requestName + " (handled by explicit @JPostmanResponse)");
+				continue;
+			}
+
+			if (requestDiscovery.hasSkippedRequest(testInstance.getClass(), info.namespace, info.folder, requestName)) {
+				skipped.add(requestName + " (skipped by @JPostmanRequest)");
 				continue;
 			}
 
@@ -1089,6 +1127,63 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
+	private void skipped(JPostmanReport report, JPostmanInfo info) {
+		if (report != null) {
+			report.skipped(info);
+		}
+	}
+
+	private void validateResponseSkipEnabled(JPostmanResponse annotation, JPostmanInfo info) {
+		if (annotation != null && annotation.enabled() && skipResponse(annotation)) {
+			throw JPostmanErrors.usage(info, "Invalid JPostman skip configuration.",
+					"enabled and skip cannot be defined on the same @JPostmanResponse annotation.",
+					"Use enabled = true to override @JPostmanContext(skipAll = true),",
+					"or use skip = true / skipReason to disable this response.");
+		}
+	}
+
+	private boolean skipTopLevelResponse(JPostmanResponse annotation, JPostmanInfo info) {
+		return skipResponse(annotation) || skipAll(info) && annotation != null && !annotation.enabled();
+	}
+
+	private boolean skipTopLevelRunner(JPostmanRunner annotation, JPostmanInfo info) {
+		return annotation != null && skipAll(info) && !annotation.enabled();
+	}
+
+	private boolean skipAll(JPostmanInfo info) {
+		return info != null && info.context != null && info.context.skipAll();
+	}
+
+	private boolean skipResponse(JPostmanResponse annotation) {
+		return annotation != null && (annotation.skip() || !value(annotation.skipReason()).trim().isBlank());
+	}
+
+	private boolean skipRequest(JPostmanRequest annotation) {
+		return annotation != null && (annotation.skip() || !value(annotation.skipReason()).trim().isBlank());
+	}
+
+	private String[] responseSkipLines(JPostmanResponse annotation) {
+		return responseSkipLines(annotation, null);
+	}
+
+	private String[] responseSkipLines(JPostmanResponse annotation, JPostmanInfo info) {
+		String reason = annotation == null ? "" : value(annotation.skipReason()).trim();
+		if (!reason.isBlank()) {
+			return new String[] { "JPostman response skipped.", reason };
+		}
+		if (skipAll(info) && annotation != null && !annotation.enabled()) {
+			return new String[] { "JPostman response skipped.", "@JPostmanContext(skipAll = true) is enabled." };
+		}
+		return new String[] { "JPostman response skipped." };
+	}
+
+	private String[] runnerSkipLines(JPostmanRunner annotation, JPostmanInfo info) {
+		if (skipAll(info) && annotation != null && !annotation.enabled()) {
+			return new String[] { "JPostman runner skipped.", "@JPostmanContext(skipAll = true) is enabled." };
+		}
+		return new String[] { "JPostman runner skipped." };
+	}
+
 	private String value(String value) {
 		return value == null ? "" : value;
 	}
@@ -1307,6 +1402,9 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 		if (types.length == 1 && framework.contextType().isAssignableFrom(types[0])) {
 			return invoke(testInstance, method, ctx);
+		}
+		if (types.length == 1 && JPostman.Test.class.isAssignableFrom(types[0])) {
+			return invoke(testInstance, method, JPostmanTestProxy.wrap(ctx));
 		}
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
@@ -1547,13 +1645,17 @@ public final class JPostmanAnnotationRunner<C> {
 			return true;
 		}
 		if (types.length == 1) {
-			return framework.contextType().isAssignableFrom(types[0]) || isInfoParameter(types[0]);
+			return framework.contextType().isAssignableFrom(types[0]) || JPostman.Test.class.isAssignableFrom(types[0])
+					|| isInfoParameter(types[0]);
 		}
 		if (types.length == 2) {
-			return framework.contextType().isAssignableFrom(types[0])
+			return (framework.contextType().isAssignableFrom(types[0])
+					|| JPostman.Test.class.isAssignableFrom(types[0]))
 					&& (isInfoParameter(types[1]) || String.class.isAssignableFrom(types[1]));
 		}
-		return types.length == 3 && framework.contextType().isAssignableFrom(types[0])
+		return types.length == 3
+				&& (framework.contextType().isAssignableFrom(types[0])
+						|| JPostman.Test.class.isAssignableFrom(types[0]))
 				&& String.class.isAssignableFrom(types[1]) && String.class.isAssignableFrom(types[2]);
 	}
 
@@ -1578,16 +1680,22 @@ public final class JPostmanAnnotationRunner<C> {
 		if (types.length == 1 && framework.contextType().isAssignableFrom(types[0])) {
 			return invoke(testInstance, method, ctx);
 		}
+		if (types.length == 1 && JPostman.Test.class.isAssignableFrom(types[0])) {
+			return invoke(testInstance, method, JPostmanTestProxy.wrap(ctx));
+		}
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
 		}
 		if (types.length == 2 && isInfoParameter(types[1])) {
-			return invoke(testInstance, method, ctx, info);
+			Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
+			return invoke(testInstance, method, contextArg, info);
 		}
 		if (types.length == 2) {
-			return invoke(testInstance, method, ctx, info.callee);
+			Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
+			return invoke(testInstance, method, contextArg, info.callee);
 		}
-		return invoke(testInstance, method, ctx, info.callee, info.request);
+		Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
+		return invoke(testInstance, method, contextArg, info.callee, info.request);
 	}
 
 	private Object invoke(Object testInstance, Method method, Object... args) throws Exception {

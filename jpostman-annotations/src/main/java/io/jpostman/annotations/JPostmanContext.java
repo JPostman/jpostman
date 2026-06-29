@@ -153,6 +153,18 @@ public @interface JPostmanContext {
 	boolean session() default false;
 
 	/**
+	 * Skips all JPostman response and runner test executions by default.
+	 *
+	 * <p>
+	 * Individual response or runner annotations can opt back in with
+	 * {@code enabled = true}.
+	 * </p>
+	 *
+	 * @return {@code true} to skip all JPostman test executions by default
+	 */
+	boolean skipAll() default false;
+
+	/**
 	 * Enables secure request/response logging by default for this JPostman context.
 	 *
 	 * <p>
@@ -174,15 +186,15 @@ public @interface JPostmanContext {
 	boolean logs() default false;
 
 	/**
-	 * Annotation debug level. Supported values are TRACE, DEBUG, INFO, WARN, ERROR.
+	 * Annotation log level. Supported values are TRACE, DEBUG, INFO, WARN, ERROR.
 	 * Values are case-insensitive. INFO disables automatic annotation debug output.
 	 *
-	 * @return annotation debug level
+	 * @return annotation log level
 	 */
 	String logLevel() default "info";
 
 	/**
-	 * Format used when debug level is DEBUG or TRACE.
+	 * Format used when log level is DEBUG or TRACE.
 	 *
 	 * <p>
 	 * Uses {@link java.text.MessageFormat} syntax. Argument {@code {0}} is the

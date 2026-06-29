@@ -150,15 +150,36 @@ public @interface JPostmanRequest {
 	String[] asserts() default {};
 
 	/**
-	 * Local annotation debug level for this request helper.
+	 * Skips the configured request when it is discovered by a runner or request
+	 * dependency.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
-	 * values override the context debug level for this request invocation.
-	 * Supported values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * This option requires a concrete {@link #request()} value so JPostman can
+	 * identify which collection request should be skipped.
 	 * </p>
 	 *
-	 * @return local debug level, or empty string to inherit from the context
+	 * @return {@code true} to skip the configured request
+	 */
+	boolean skip() default false;
+
+	/**
+	 * Optional reason used when this request helper or matched runner request is
+	 * skipped.
+	 *
+	 * @return skip reason, or empty string when not provided
+	 */
+	String skipReason() default "";
+
+	/**
+	 * Local annotation log level for this request helper.
+	 *
+	 * <p>
+	 * Empty means inherit the {@link JPostmanContext#logLevel()} value. Non-empty
+	 * values override the context log level for this request invocation. Supported
+	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * </p>
+	 *
+	 * @return local log level, or empty string to inherit from the context
 	 */
 	String logLevel() default "";
 

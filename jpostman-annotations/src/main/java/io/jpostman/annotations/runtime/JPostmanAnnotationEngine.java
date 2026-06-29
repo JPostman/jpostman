@@ -67,8 +67,24 @@ public final class JPostmanAnnotationEngine {
 		try {
 			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).run(testInstance, testMethod);
 		} catch (Throwable e) {
+			Throwable root = JPostmanStackTraceCleaner.rootCause(e);
+			if (JPostmanStackTraceCleaner.isJUnitSkip(root)) {
+				throw asException(JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, root));
+			}
 			throw JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, e);
 		}
+	}
+
+	private static Exception asException(Throwable throwable) {
+		if (throwable instanceof Exception) {
+			return (Exception) throwable;
+		}
+
+		if (throwable instanceof Error) {
+			throw (Error) throwable;
+		}
+
+		return new RuntimeException(throwable);
 	}
 
 	/**

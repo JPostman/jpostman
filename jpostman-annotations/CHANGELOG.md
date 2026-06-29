@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.2
+
+### Added
+
+- Added `skipAll` to `@JPostmanContext` and compact `@JPostman.Context` to disable JPostman response and runner test executions by default.
+- Added `enabled` to `@JPostmanResponse`, `@JPostmanRunner`, and compact response/runner annotations so selected tests can run while `skipAll` is active.
+- Added `skip` and `skipReason` to `@JPostmanRequest`, `@JPostmanResponse`, and compact request/response annotations. A non-empty `skipReason` now also marks the annotation as skipped.
+- Added compact `JPostman.Test` support for framework-neutral TestNG/JUnit method parameters.
+- Added compact runtime support for `JPostman.Runtime<JPostman.Test>`.
+- Added `executorClass` to compact `@JPostman.Context` and kept string-based `executor` for fully qualified executor class names.
+
+### Changed
+
+- Changed JPostman request helper validation so only `@JPostmanRequest` methods are blocked from also being annotated with `@Test`.
+- Changed skip handling so response and runner skips are recorded in `JPostmanReport` before framework skip exceptions are thrown.
+- Changed TestNG skip handling to clean `SkipException` stack traces using the same stack trace filter used for failures.
+
 ## 2.0.1
 
 ### Added

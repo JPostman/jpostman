@@ -594,16 +594,16 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(message.contains("- InvalidHelperFixture.invalidRequest()\n"));
 		message = message.replace("- InvalidHelperFixture.invalidRequest()\n", "");
 
-		assertTrue(message.contains("- InvalidHelperFixture.invalidExecutor(JUnitContext)\n"));
-		message = message.replace("- InvalidHelperFixture.invalidExecutor(JUnitContext)\n", "");
+		assertTrue(message.contains("- InvalidHelperFixture.invalidCachedResponse()\n"));
+		message = message.replace("- InvalidHelperFixture.invalidCachedResponse()\n", "");
 
-		assertEquals(message, "Invalid JPostman annotation usage.\n" + "\n"
-				+ "@JPostmanRequest and @JPostmanExecutor methods must not be annotated with @Test.\n"
-				+ "They are helper methods invoked by JPostman, not test methods invoked by the test framework.\n"
-				+ "\nInvalid helper methods:\n\n" + "@JPostmanResponse(cache) cannot be used with @Test.\n"
-				+ "Remove @Test to use it as a cached dependency, or remove cache to keep it as a test.\n" + "\n"
-				+ "Invalid cached response methods:\n" + "- InvalidHelperFixture.invalidCachedResponse()\n");
-		assertEquals(3, error.getStackTrace().length);
+		assertEquals(message, "Invalid JPostman annotation usage.\n\n"
+				+ "@JPostmanRequest methods must not be annotated with @Test.\n"
+				+ "They are request helper methods invoked by JPostman, not test methods invoked by the test framework.\n"
+				+ "\nInvalid helper methods:\n\n@JPostmanResponse(cache) cannot be used with @Test.\n"
+				+ "Remove @Test to use it as a cached dependency, or remove cache to keep it as a test.\n\n"
+				+ "Invalid cached response methods:\n");
+		assertEquals(2, error.getStackTrace().length);
 
 		Constructor<JPostmanAnnotationValidator> constructor = JPostmanAnnotationValidator.class
 				.getDeclaredConstructor();
@@ -848,6 +848,104 @@ public class JPostmanAnnotationCoverageTest {
 		AssertionError wrongExecutorType = assertThrows(AssertionError.class, () -> runner
 				.run(new WrongExecutorTypeFixture(), WrongExecutorTypeFixture.class.getDeclaredMethod("response")));
 		assertTrue(wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor."));
+	}
+
+	/**
+	 * Verifies compact JPostman.Test proxy invocation, context-level default
+	 * executor creation with apply(request), and report injection in one annotation
+	 * execution.
+	 */
+	@Test
+	public void compactTestProxyContextApplyExecutorAndReportAreCovered() throws Exception {
+		CoverageApplyExecutor.reset();
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		CompactApplyExecutorReportFixture fixture = new CompactApplyExecutorReportFixture();
+		Method method = CompactApplyExecutorReportFixture.class.getDeclaredMethod("response",
+				io.jpostman.annotations.JPostman.Test.class);
+
+		runner.setup(fixture);
+		runner.run(fixture, method);
+
+		method.setAccessible(true);
+		method.invoke(fixture, fixture.jctx.ctx());
+
+		assertNotNull(fixture.jctx);
+		assertNotNull(fixture.api);
+		assertNotNull(fixture.report);
+		assertEquals(1, CoverageApplyExecutor.applyCount);
+		assertEquals(1, fixture.responseCount);
+		assertTrue(fixture.sawRequest);
+		assertTrue(fixture.sawResponse);
+		assertEquals(1, fixture.report.passed.size());
+		assertDoesNotThrow(fixture.report::summary);
+	}
+
+	/**
+	 * Verifies context-level session default executor creation and reuse.
+	 *
+	 * <p>
+	 * The first response covers create() and setRequest(request). The second
+	 * response covers the cached session executor path that sets a new request
+	 * before reuse.
+	 * </p>
+	 */
+	@Test
+	public void contextSessionDefaultExecutorReusesSessionAndReportAreCovered() throws Exception {
+		CoverageSessionExecutor.reset();
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		CompactSessionExecutorReportFixture fixture = new CompactSessionExecutorReportFixture();
+		Method login = CompactSessionExecutorReportFixture.class.getDeclaredMethod("login",
+				io.jpostman.annotations.JPostman.Test.class);
+		Method user = CompactSessionExecutorReportFixture.class.getDeclaredMethod("user",
+				io.jpostman.annotations.JPostman.Test.class);
+
+		runner.setup(fixture);
+		runner.run(fixture, login);
+		runner.run(fixture, user);
+
+		assertNotNull(fixture.report);
+		assertEquals(1, CoverageSessionExecutor.createCount);
+		assertEquals(2, CoverageSessionExecutor.setRequestCount);
+		assertEquals(2, CoverageSessionExecutor.responseCount);
+		assertEquals(2, fixture.report.passed.size());
+		assertDoesNotThrow(fixture.report::summary);
+	}
+
+	/**
+	 * Verifies compact executor string values reject Java .class syntax with the
+	 * standard JPostman context error format.
+	 */
+	@Test
+	public void compactExecutorStringRejectsDotClassSyntaxWithFormattedMessage() {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> runner.setup(new InvalidCompactExecutorSyntaxFixture()));
+
+		assertEquals("Invalid JPostman executor class: io.jpostman.restassured.RestAssuredExecutor.class\n"
+				+ "The executor value is a class name string, not Java code.\n"
+				+ "Use executor = \"io.jpostman.restassured.RestAssuredExecutor\",\n"
+				+ "or use executorClass = RestAssuredExecutor.class.\n"
+				+ "(@JPostmanContext: config=<default>, namespace=<default>, collection=" + COLLECTION
+				+ ", environment=<default>)\n", error.getMessage());
+	}
+
+	/**
+	 * Verifies compact executor string values report missing classes with the
+	 * standard JPostman context error format.
+	 */
+	@Test
+	public void compactExecutorStringRejectsMissingClassWithFormattedMessage() {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> runner.setup(new InvalidCompactExecutorMissingClassFixture()));
+
+		assertEquals(
+				"Invalid JPostman executor class: bad.missing.Executor\n" + "The executor class could not be loaded.\n"
+						+ "Use a fully qualified class name available on the test classpath.\n"
+						+ "Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\".\n"
+						+ "(@JPostmanContext: config=<default>, namespace=<default>, collection=" + COLLECTION
+						+ ", environment=<default>)\n",
+				error.getMessage());
 	}
 
 	/**
@@ -1316,6 +1414,108 @@ public class JPostmanAnnotationCoverageTest {
 	 * response annotation, named executor, executor dependency, and cache reuse.
 	 * </p>
 	 */
+
+	private static final class InvalidCompactExecutorSyntaxFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executor = "io.jpostman.restassured.RestAssuredExecutor.class")
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
+	}
+
+	private static final class InvalidCompactExecutorMissingClassFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executor = "bad.missing.Executor")
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
+	}
+
+	private static final class CompactApplyExecutorReportFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executorClass = CoverageApplyExecutor.class)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
+
+		@io.jpostman.annotations.JPostman.TestContext
+		private JUnitContext api;
+
+		@io.jpostman.annotations.JPostman.ReportContext
+		private JPostmanReport report;
+
+		private int responseCount;
+		private boolean sawRequest;
+		private boolean sawResponse;
+
+		@io.jpostman.annotations.JPostman.Response(request = "Get current auth user", verify = 200)
+		void response(io.jpostman.annotations.JPostman.Test ctx) {
+			responseCount++;
+			sawRequest = ctx.request() != null;
+			sawResponse = ctx.response() != null;
+			ctx.asserts(true);
+			ctx.log(false);
+			ctx.print(false);
+		}
+	}
+
+	private static final class CompactSessionExecutorReportFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executorClass = CoverageSessionExecutor.class, session = true)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
+
+		@io.jpostman.annotations.JPostman.ReportContext
+		private JPostmanReport report;
+
+		@io.jpostman.annotations.JPostman.Response(request = "Login user and get tokens", verify = 200)
+		void login(io.jpostman.annotations.JPostman.Test ctx) {
+			assertNotNull(ctx.request());
+			assertNotNull(ctx.response());
+		}
+
+		@io.jpostman.annotations.JPostman.Response(request = "Get current auth user", verify = 200)
+		void user(io.jpostman.annotations.JPostman.Test ctx) {
+			assertNotNull(ctx.request());
+			assertNotNull(ctx.response());
+		}
+	}
+
+	public static final class CoverageApplyExecutor {
+		private static int applyCount;
+
+		public static ApiExecutor apply(Object request) {
+			applyCount++;
+			assertNotNull(request);
+			return okExecutor("{\"id\":1,\"firstName\":\"John\"}");
+		}
+
+		private static void reset() {
+			applyCount = 0;
+		}
+	}
+
+	public static final class CoverageSessionExecutor implements ApiExecutor {
+		private static int createCount;
+		private static int setRequestCount;
+		private static int responseCount;
+
+		private Object request;
+
+		public static CoverageSessionExecutor create() {
+			createCount++;
+			return new CoverageSessionExecutor();
+		}
+
+		public CoverageSessionExecutor setRequest(Object request) {
+			setRequestCount++;
+			this.request = request;
+			return this;
+		}
+
+		@Override
+		public ApiResponse response() {
+			responseCount++;
+			assertNotNull(request);
+			return okResponse("{\"id\":1,\"firstName\":\"John\"}");
+		}
+
+		private static void reset() {
+			createCount = 0;
+			setRequestCount = 0;
+			responseCount = 0;
+		}
+	}
+
 	private static final class RequestFixture {
 
 		@JPostmanContext
@@ -1545,26 +1745,34 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
-	private static final class TagChainFixture extends BaseContextFixture {
+	private static final class TagChainFixture {
+		@JPostmanContext(config = "", collection = COLLECTION)
+		private io.jpostman.JPostman.Context jctx;
+
 		private String[] mouseTags;
 		private String[] shoesTags;
 		private String[] computerTags;
 
-		@JPostmanResponse(tags = "keyboard", dependsOn = "TagChainFixture.getMouse")
+		@JPostmanExecutor
+		private static ApiExecutor okExecutor() {
+			return () -> okResponse("{}");
+		}
+
+		@JPostmanResponse(tags = "keyboard", request = "Login user and get tokens", dependsOn = "getMouse")
 		void response() {
 		}
 
-		@JPostmanResponse(tags = "mouse", dependsOn = "getShoes")
+		@JPostmanRequest(tags = "mouse", dependsOn = "getShoes")
 		void getMouse(JPostmanInfo info) {
 			mouseTags = info.tags;
 		}
 
-		@JPostmanResponse(tags = "shoes", dependsOn = "getComputer")
+		@JPostmanRequest(tags = "shoes", dependsOn = "getComputer")
 		void getShoes(JPostmanInfo info) {
 			shoesTags = info.tags;
 		}
 
-		@JPostmanResponse(tags = "computer")
+		@JPostmanRequest(tags = "computer")
 		void getComputer(JPostmanInfo info) {
 			computerTags = info.tags;
 		}

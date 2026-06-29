@@ -144,16 +144,23 @@ public @interface JPostmanRunner {
 	String[] asserts() default {};
 
 	/**
-	 * Local annotation debug level for this runner execution.
+	 * Local annotation log level for this runner execution.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
-	 * values override the context debug level for this runner invocation. Supported
+	 * Empty means inherit the {@link JPostmanContext#logLevel()} value. Non-empty
+	 * values override the context log level for this runner invocation. Supported
 	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
 	 * </p>
 	 *
-	 * @return local debug level, or empty string to inherit from the context
+	 * @return local log level, or empty string to inherit from the context
 	 */
 	String logLevel() default "";
+
+	/**
+	 * Runs this runner even when {@link JPostmanContext#skipAll()} is enabled.
+	 *
+	 * @return {@code true} to opt in while skipAll is active
+	 */
+	boolean enabled() default false;
 
 }

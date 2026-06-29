@@ -311,7 +311,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 *
 	 * <p>
 	 * Blank values are ignored and keep the current inherited debug value.
-	 * Non-blank values override the class-level {@link JPostmanContext#debug()}
+	 * Non-blank values override the class-level {@link JPostmanContext#logLevel()}
 	 * setting for this invocation and its children.
 	 * </p>
 	 *

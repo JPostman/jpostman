@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
+import org.opentest4j.TestAbortedException;
+
 import io.jpostman.junit.JPostmanJUnit;
 
 /**
@@ -78,7 +80,20 @@ public final class JPostmanStackTraceCleaner {
 		return cleaned;
 	}
 
+	/**
+	 * Returns true when the throwable represents a JUnit skipped/aborted test.
+	 *
+	 * @param throwable throwable to inspect
+	 * @return {@code true} for JUnit abort/skip exceptions
+	 */
+	public static boolean isJUnitSkip(Throwable throwable) {
+		return throwable instanceof TestAbortedException;
+	}
+
 	private static Throwable copyThrowable(Throwable root, String message) {
+		if (root instanceof TestAbortedException) {
+			return new TestAbortedException(message);
+		}
 		if (root instanceof AssertionError) {
 			return new AssertionError(message);
 		}
@@ -118,7 +133,15 @@ public final class JPostmanStackTraceCleaner {
 		return current;
 	}
 
-	private static StackTraceElement[] cleanStack(Class<?> testClass, Method testMethod, Throwable root) {
+	/**
+	 * Builds a cleaned stack trace for a framework throwable.
+	 *
+	 * @param testClass  test class
+	 * @param testMethod test or configuration method
+	 * @param root       throwable to clean
+	 * @return cleaned stack trace
+	 */
+	public static StackTraceElement[] cleanStack(Class<?> testClass, Method testMethod, Throwable root) {
 		List<StackTraceElement> result = new ArrayList<>();
 		StackTraceElement testFrame = testFrame(testClass, testMethod);
 		String testClassName = testFrame.getClassName();

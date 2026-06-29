@@ -12,6 +12,7 @@ import java.util.Set;
 
 import io.jpostman.Collection;
 import io.jpostman.Request;
+import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
 /**
@@ -51,6 +52,29 @@ final class JPostmanRequestDiscovery {
 			current = current.getSuperclass();
 		}
 		return false;
+	}
+
+	boolean hasSkippedRequest(Class<?> type, String namespace, String folder, String requestName) {
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				JPostmanRequest request = JPostmanAnnotations.request(method);
+				if (request == null || !skipRequest(request)) {
+					continue;
+				}
+				if (same(request.namespace(), namespace) && same(request.folder(), folder)
+						&& same(request.request(), requestName)) {
+					return true;
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return false;
+	}
+
+	private boolean skipRequest(JPostmanRequest request) {
+		return request != null
+				&& (request.skip() || request.skipReason() != null && !request.skipReason().trim().isBlank());
 	}
 
 	Set<String> normalizeNames(String[] values) {

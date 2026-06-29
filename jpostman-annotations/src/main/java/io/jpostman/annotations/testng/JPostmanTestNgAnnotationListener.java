@@ -128,6 +128,7 @@ public final class JPostmanTestNgAnnotationListener
 			JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
 			callBack.runTestMethod(testResult);
 		} catch (SkipException e) {
+			e.setStackTrace(JPostmanStackTraceCleaner.cleanStack(testMethod.getDeclaringClass(), testMethod, e));
 			testResult.setThrowable(e);
 			testResult.setStatus(ITestResult.SKIP);
 		} catch (Throwable e) {

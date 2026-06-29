@@ -53,7 +53,7 @@ final class JPostmanErrors {
 		String namespace = annotationValue(annotation, "namespace");
 		String folder = annotationValue(annotation, "folder");
 		String request = annotationValue(annotation, "request");
-		String executor = annotationValue(annotation, "executor");
+		String executor = annotation instanceof JPostmanContext ? "" : annotationValue(annotation, "executor");
 		String[] tags = annotationArrayValue(annotation, "tags");
 
 		JPostmanInfo info = new JPostmanInfo(tags, executor, "", namespace, folder, request)

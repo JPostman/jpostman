@@ -164,16 +164,38 @@ public @interface JPostmanResponse {
 	String[] asserts() default {};
 
 	/**
-	 * Local annotation debug level for this response execution.
+	 * Local annotation log level for this response execution.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
-	 * values override the context debug level for this response invocation.
-	 * Supported values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * Empty means inherit the {@link JPostmanContext#logLevel()} value. Non-empty
+	 * values override the context log level for this response invocation. Supported
+	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
 	 * </p>
 	 *
-	 * @return local debug level, or empty string to inherit from the context
+	 * @return local log level, or empty string to inherit from the context
 	 */
 	String logLevel() default "";
+
+	/**
+	 * Runs this response even when {@link JPostmanContext#skipAll()} is enabled.
+	 *
+	 * @return {@code true} to opt in while skipAll is active
+	 */
+	boolean enabled() default false;
+
+	/**
+	 * Skips this response/test execution before dependencies or request execution
+	 * run.
+	 *
+	 * @return {@code true} to skip this response/test execution
+	 */
+	boolean skip() default false;
+
+	/**
+	 * Optional reason used when this response/test execution is skipped.
+	 *
+	 * @return skip reason, or empty string when not provided
+	 */
+	String skipReason() default "";
 
 }

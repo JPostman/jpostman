@@ -21,6 +21,8 @@ import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
+import io.jpostman.secure.SecureRequest;
+import io.jpostman.secure.SecureResponse;
 
 /**
  * Compact JPostman annotation facade.
@@ -132,23 +134,39 @@ public final class JPostman {
 		int verifyStatusCode() default 200;
 
 		/**
-		 * Default executor class.
+		 * Default executor class name. Use this when avoiding an executor import.
+		 *
+		 * @return fully qualified executor class name, or empty string when not
+		 *         configured
+		 */
+		String executor() default "";
+
+		/**
+		 * Default executor class. Use this when the executor class is already imported.
 		 *
 		 * @return executor class, or {@link Void} when not configured
 		 */
-		Class<?> executor() default Void.class;
+		Class<?> executorClass() default Void.class;
 
 		/**
-		 * Reuses the context executor as a session executor.
+		 * Reuses executor state when supported by the configured executor.
 		 *
-		 * @return {@code true} to reuse one executor instance
+		 * @return {@code true} to reuse executor state
 		 */
 		boolean session() default false;
 
 		/**
-		 * Enables request and response logging.
+		 * Skips all JPostman response and runner test executions by default. Individual
+		 * response or runner methods can opt in with {@code enabled = true}.
 		 *
-		 * @return {@code true} to enable logs
+		 * @return {@code true} to skip all JPostman test executions by default
+		 */
+		boolean skipAll() default false;
+
+		/**
+		 * Enables annotation logging for this context.
+		 *
+		 * @return {@code true} to enable context logging
 		 */
 		boolean logs() default false;
 
@@ -351,6 +369,12 @@ public final class JPostman {
 		 * @return log level, or empty string to use defaults
 		 */
 		String logLevel() default "";
+
+		/** @return {@code true} to skip this request helper or runner request */
+		boolean skip() default false;
+
+		/** @return optional skip reason shown in framework skip output */
+		String skipReason() default "";
 	}
 
 	/**
@@ -464,6 +488,18 @@ public final class JPostman {
 		 * @return log level, or empty string to use defaults
 		 */
 		String logLevel() default "";
+
+		/**
+		 * @return {@code true} to run this response even when context skipAll is
+		 *         enabled
+		 */
+		boolean enabled() default false;
+
+		/** @return {@code true} to skip this response/test execution */
+		boolean skip() default false;
+
+		/** @return optional skip reason shown in framework skip output */
+		String skipReason() default "";
 	}
 
 	/**
@@ -577,6 +613,11 @@ public final class JPostman {
 		 * @return log level, or empty string to use defaults
 		 */
 		String logLevel() default "";
+
+		/**
+		 * @return {@code true} to run this runner even when context skipAll is enabled
+		 */
+		boolean enabled() default false;
 	}
 
 	/**
@@ -665,13 +706,89 @@ public final class JPostman {
 		Environment getEnvironment();
 	}
 
-	/**
-	 * Compact facade for execution info.
-	 */
+	/** Compact framework-neutral test context facade. */
+	public interface Test {
+
+		/**
+		 * Enables response assertions.
+		 *
+		 * @return this test context
+		 */
+		Test asserts();
+
+		/**
+		 * Enables or disables response assertions.
+		 *
+		 * @param enabled {@code true} to enable assertions
+		 * @return this test context
+		 */
+		Test asserts(boolean enabled);
+
+		/**
+		 * Enables soft assertion mode.
+		 *
+		 * @return this test context
+		 */
+		Test soft();
+
+		/**
+		 * Enables or disables soft assertion mode.
+		 *
+		 * @param enabled {@code true} to enable soft assertions
+		 * @return this test context
+		 */
+		Test soft(boolean enabled);
+
+		/**
+		 * Enables response printing.
+		 *
+		 * @return this test context
+		 */
+		Test print();
+
+		/**
+		 * Enables or disables response printing.
+		 *
+		 * @param enabled {@code true} to print the response
+		 * @return this test context
+		 */
+		Test print(boolean enabled);
+
+		/**
+		 * Enables request and response logging.
+		 *
+		 * @return this test context
+		 */
+		Test log();
+
+		/**
+		 * Enables or disables request and response logging.
+		 *
+		 * @param enabled {@code true} to enable logging
+		 * @return this test context
+		 */
+		Test log(boolean enabled);
+
+		/**
+		 * Returns the current request object.
+		 *
+		 * @return current request
+		 */
+		SecureRequest request();
+
+		/**
+		 * Returns the current response object.
+		 *
+		 * @return current response
+		 */
+		SecureResponse response();
+	}
+
+	/** Compact facade for execution info. */
 	public interface Info {
 
 		/**
-		 * Returns tag rules.
+		 * Returns tag-based rules for the current execution.
 		 *
 		 * @return tag rules
 		 */

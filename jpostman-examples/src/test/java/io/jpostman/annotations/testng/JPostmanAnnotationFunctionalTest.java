@@ -30,6 +30,7 @@ import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanReportContext;
 import io.jpostman.annotations.JPostmanRequest;
+import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
 import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.runtime.JPostmanAnnotationRunner;
@@ -868,7 +869,7 @@ public class JPostmanAnnotationFunctionalTest {
 				() -> runner.setup(new DuplicateAssertionSectionFixture()));
 		assertEquals(debug(error.getMessage()), "Duplicate JPostman assertion section: default\n"
 				+ "The same assertion section was found in more than one loaded assertion file.\nFound in:\n"
-				+ "- classpath:assertions.ini\n" + "- classpath:jpostman-rules.ini\n"
+				+ "- classpath:assertions.ini\n- classpath:jpostman-rules.ini\n"
 				+ "Keep each assertion section name unique across loaded files.\n"
 				+ "(@JPostmanAssertionRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
@@ -901,6 +902,298 @@ public class JPostmanAnnotationFunctionalTest {
 		assertEquals(debug(error.getMessage()), "Invalid JPostman verification configuration.\n"
 				+ "@JPostmanRunner cannot use verify and asserts together.\n"
 				+ "Use verify for status-code verification, or use asserts for assertion sections.\n"
+				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				"Actual message: " + error.getMessage());
+	}
+
+	// @JPostmanResponse(skip = true) should skip the response test.
+	private static final class JPostmanResponseSkipFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens", skip = true)
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanResponseSkipFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanResponseSkipFixture fixture = new JPostmanResponseSkipFixture();
+		Method method = JPostmanResponseSkipFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+
+		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
+				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				"Actual message: " + error.getMessage());
+	}
+
+	// @JPostmanResponse(skipReason = ...) should skip without requiring skip =
+	// true.
+	private static final class JPostmanResponseSkipReasonFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens", skipReason = "Temporarily disabled while testing session executor")
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanResponseSkipReasonFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanResponseSkipReasonFixture fixture = new JPostmanResponseSkipReasonFixture();
+		Method method = JPostmanResponseSkipReasonFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+
+		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
+				+ "Temporarily disabled while testing session executor\n"
+				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+	}
+
+	// @JPostmanContext(skipAll = true) should skip response tests by default.
+	private static final class JPostmanContextSkipAllFixture {
+		@JPostmanContext(collection = COLLECTION, skipAll = true)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens")
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanContextSkipAllFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanContextSkipAllFixture fixture = new JPostmanContextSkipAllFixture();
+		Method method = JPostmanContextSkipAllFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+
+		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
+				+ "@JPostmanContext(skipAll = true) is enabled.\n"
+				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+	}
+
+	// @JPostmanResponse(enabled = true) should override @JPostmanContext(skipAll =
+	// true).
+	private static final class JPostmanContextSkipAllEnabledFixture {
+		@JPostmanContext(collection = COLLECTION, skipAll = true)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens", enabled = true)
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanContextSkipAllEnabledFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanContextSkipAllEnabledFixture fixture = new JPostmanContextSkipAllEnabledFixture();
+		Method method = JPostmanContextSkipAllEnabledFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+		runner.run(fixture, method);
+	}
+
+	// enabled and skip cannot be used together on @JPostmanResponse.
+	private static final class JPostmanResponseEnabledAndSkipFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens", enabled = true, skip = true)
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanResponseEnabledAndSkipFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanResponseEnabledAndSkipFixture fixture = new JPostmanResponseEnabledAndSkipFixture();
+		Method method = JPostmanResponseEnabledAndSkipFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "Invalid JPostman skip configuration.\n"
+				+ "enabled and skip cannot be defined on the same @JPostmanResponse annotation.\n"
+				+ "Use enabled = true to override @JPostmanContext(skipAll = true),\n"
+				+ "or use skip = true / skipReason to disable this response.\n"
+				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+	}
+
+	// enabled and skipReason cannot be used together on @JPostmanResponse.
+	private static final class JPostmanResponseEnabledAndSkipReasonFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@Test
+		@JPostmanResponse(request = "Login user and get tokens", enabled = true, skipReason = "Temporarily disabled")
+		public void login() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanResponseEnabledAndSkipReasonFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanResponseEnabledAndSkipReasonFixture fixture = new JPostmanResponseEnabledAndSkipReasonFixture();
+		Method method = JPostmanResponseEnabledAndSkipReasonFixture.class.getDeclaredMethod("login");
+		runner.setup(fixture);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "Invalid JPostman skip configuration.\n"
+				+ "enabled and skip cannot be defined on the same @JPostmanResponse annotation.\n"
+				+ "Use enabled = true to override @JPostmanContext(skipAll = true),\n"
+				+ "or use skip = true / skipReason to disable this response.\n"
+				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				"Actual message: " + error.getMessage());
+	}
+
+	// @JPostmanRequest(skip = true) should be allowed when used as a dependency.
+	private static final class JPostmanRequestDependencySkipFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@JPostmanRequest(skip = true)
+		public void skippedSetup() {
+		}
+
+		@Test
+		@JPostmanRunner(include = "Login user and get tokens", dependsOn = "skippedSetup")
+		public void productRunner() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanRequestDependencySkipFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanRequestDependencySkipFixture fixture = new JPostmanRequestDependencySkipFixture();
+		Method method = JPostmanRequestDependencySkipFixture.class.getDeclaredMethod("productRunner");
+		runner.setup(fixture);
+		runner.run(fixture, method);
+	}
+
+	// @JPostmanRequest(skipReason = ...) should also imply skip when used as a
+	// dependency.
+	private static final class JPostmanRequestDependencySkipReasonFixture {
+		@JPostmanContext(collection = COLLECTION)
+		private JPostman.Context jctx;
+
+		@JPostmanExecutor
+		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{}", 200);
+		}
+
+		@JPostmanRequest(skipReason = "Skip setup dependency")
+		public void skippedSetup() {
+		}
+
+		@Test
+		@JPostmanRunner(include = "Login user and get tokens", dependsOn = "skippedSetup")
+		public void productRunner() {
+		}
+	}
+
+	@Test(enabled = ENABLED)
+	public void testJPostmanRequestDependencySkipReasonFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		JPostmanRequestDependencySkipReasonFixture fixture = new JPostmanRequestDependencySkipReasonFixture();
+		Method method = JPostmanRequestDependencySkipReasonFixture.class.getDeclaredMethod("productRunner");
+		runner.setup(fixture);
+		runner.run(fixture, method);
+	}
+
+	// Invalid context executor class should fail with a clear message.
+	private static final class InvalidDefaultExecutorClassFixture {
+		@JPostmanContext(collection = COLLECTION, executor = InvalidDefaultExecutor.class)
+		private JPostman.Context jctx;
+
+		@Test
+		@JPostmanRunner(include = "Login user and get tokens")
+		public void productRunner() {
+		}
+	}
+
+	private static final class InvalidDefaultExecutor {
+	}
+
+	@Test(enabled = ENABLED)
+	public void testInvalidDefaultExecutorClassFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		InvalidDefaultExecutorClassFixture fixture = new InvalidDefaultExecutorClassFixture();
+		Method method = InvalidDefaultExecutorClassFixture.class.getDeclaredMethod("productRunner");
+		runner.setup(fixture);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
+				+ "Executor class does not provide static apply(request): io.jpostman.annotations.testng.JPostmanAnnotationFunctionalTest$InvalidDefaultExecutor\n"
+				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				"Actual message: " + error.getMessage());
+	}
+
+	// Invalid session executor class should fail when create() is missing.
+	private static final class InvalidSessionExecutorClassFixture {
+		@JPostmanContext(collection = COLLECTION, executor = InvalidSessionExecutor.class, session = true)
+		private JPostman.Context jctx;
+
+		@Test
+		@JPostmanRunner(include = "Login user and get tokens")
+		public void productRunner() {
+		}
+	}
+
+	private static final class InvalidSessionExecutor {
+	}
+
+	@Test(enabled = ENABLED)
+	public void testInvalidSessionExecutorClassFixture() throws Exception {
+		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
+		InvalidSessionExecutorClassFixture fixture = new InvalidSessionExecutorClassFixture();
+		Method method = InvalidSessionExecutorClassFixture.class.getDeclaredMethod("productRunner");
+		runner.setup(fixture);
+
+		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
+		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
+				+ "Unable to create JPostman default executor from: io.jpostman.annotations.testng.JPostmanAnnotationFunctionalTest$InvalidSessionExecutor\n"
 				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}

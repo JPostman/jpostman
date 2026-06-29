@@ -133,6 +133,10 @@ public final class JPostmanAnnotations {
 			if ("equals".equals(name) && method.getParameterCount() == 1) {
 				return proxy == args[0];
 			}
+			Object special = specialValue(source, method);
+			if (special != null) {
+				return special;
+			}
 			try {
 				Method sourceMethod = source.annotationType().getMethod(name);
 				return sourceMethod.invoke(source);
@@ -141,5 +145,74 @@ public final class JPostmanAnnotations {
 			}
 		};
 		return (A) Proxy.newProxyInstance(targetType.getClassLoader(), new Class<?>[] { targetType }, handler);
+	}
+
+	private static Object specialValue(Annotation source, Method targetMethod) {
+		if (!(source instanceof JPostman.Context) || !"executor".equals(targetMethod.getName())
+				|| targetMethod.getParameterCount() != 0 || targetMethod.getReturnType() != Class.class) {
+			return null;
+		}
+
+		JPostman.Context context = (JPostman.Context) source;
+		Class<?> executorClass = context.executorClass();
+		if (executorClass != Void.class) {
+			return executorClass;
+		}
+
+		return executorClass(context);
+	}
+
+	private static Class<?> executorClass(JPostman.Context context) {
+		String executorName = context.executor();
+		String name = executorName == null ? "" : executorName.trim();
+		if (name.isBlank()) {
+			return Void.class;
+		}
+
+		if (name.endsWith(".class")) {
+			String suggested = name.substring(0, name.length() - ".class".length());
+			throw new IllegalArgumentException(compactContextMessage(context,
+					"Invalid JPostman executor class: " + name,
+					"The executor value is a class name string, not Java code.",
+					"Use executor = \"" + suggested + "\",", "or use executorClass = RestAssuredExecutor.class."));
+		}
+
+		try {
+			return Class.forName(name);
+		} catch (ClassNotFoundException e) {
+			throw new IllegalArgumentException(compactContextMessage(context,
+					"Invalid JPostman executor class: " + name, "The executor class could not be loaded.",
+					"Use a fully qualified class name available on the test classpath.",
+					"Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\"."));
+		}
+	}
+
+	private static String compactContextMessage(JPostman.Context context, String... lines) {
+		StringBuilder message = new StringBuilder();
+		if (lines != null) {
+			for (String line : lines) {
+				String value = JPostmanErrors.stripSuffix(line).trim();
+				if (value.isBlank()) {
+					continue;
+				}
+				if (message.length() > 0) {
+					message.append(JPostmanErrors.ENDL);
+				}
+				message.append(value);
+			}
+		}
+		if (message.length() > 0) {
+			message.append(JPostmanErrors.ENDL);
+		}
+		message.append("(@JPostmanContext: config=").append(defaultValue(context.config()));
+		message.append(", namespace=").append(defaultValue(context.namespace()));
+		message.append(", collection=").append(defaultValue(context.collection()));
+		message.append(", environment=").append(defaultValue(context.environment()));
+		message.append(")").append(JPostmanErrors.ENDL);
+		return message.toString();
+	}
+
+	private static String defaultValue(String value) {
+		return value == null || value.isBlank() ? "<default>" : value;
 	}
 }

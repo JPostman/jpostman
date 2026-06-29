@@ -10,6 +10,8 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
@@ -310,7 +312,8 @@ final class JPostmanContextRunner<C> {
 				Context loggerContext = loggerContext(loaded, testClass);
 				if (JPostmanRuntime.class.isAssignableFrom(field.getType())
 						|| io.jpostman.annotations.JPostman.Runtime.class.isAssignableFrom(field.getType())) {
-					field.set(testInstance, runtime(loggerContext, annotation.namespace(), contexts));
+					field.set(testInstance,
+							runtime(loggerContext, annotation.namespace(), contexts, compactTestRuntime(field)));
 				} else {
 					field.set(testInstance, loggerContext);
 				}
@@ -319,9 +322,25 @@ final class JPostmanContextRunner<C> {
 		}
 	}
 
-	private JPostmanRuntime<C> runtime(Context context, String namespace, PreparedContexts<C> contexts) {
+	private JPostmanRuntime<?> runtime(Context context, String namespace, PreparedContexts<C> contexts,
+			boolean compactTestRuntime) {
+		if (compactTestRuntime) {
+			return new JPostmanRuntime<>(context, namespace,
+					name -> JPostmanTestProxy.wrap(activeContexts(contexts).context(name)),
+					() -> activeContexts(contexts).info());
+		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(contexts).context(name),
 				() -> activeContexts(contexts).info());
+	}
+
+	private boolean compactTestRuntime(Field field) {
+		Type type = field.getGenericType();
+		if (!(type instanceof ParameterizedType)) {
+			return false;
+		}
+		ParameterizedType parameterized = (ParameterizedType) type;
+		Type[] arguments = parameterized.getActualTypeArguments();
+		return arguments.length == 1 && arguments[0] == io.jpostman.annotations.JPostman.Test.class;
 	}
 
 	private PreparedContexts<C> activeContexts(PreparedContexts<C> fallback) {
@@ -366,6 +385,8 @@ final class JPostmanContextRunner<C> {
 					"Configure @JPostmanContext(collection = ...), or provide a valid config file with property collection."));
 		}
 
+		validateDefaultExecutor(annotation);
+
 		Context loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
 
 		C ctx = framework.create();
@@ -379,6 +400,15 @@ final class JPostmanContextRunner<C> {
 
 		return new PreparedContext<>(ctx, loaded, annotation, dataloadLocations,
 				JPostmanAssertionRunner.loadAssertionRules(testClass, assertionLocations));
+	}
+
+	private void validateDefaultExecutor(JPostmanContext annotation) {
+		/*
+		 * Compact @JPostman.Context supports executor as a class-name string. Force
+		 * resolution during setup so invalid values fail with the standard formatted
+		 * context error before a test method starts running.
+		 */
+		annotation.executor();
 	}
 
 	private PreparedContext<C> createNamespaceContext(JPostmanContext annotation, Class<?> testClass, String namespace,

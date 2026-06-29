@@ -91,9 +91,7 @@ public final class JPostmanAnnotationValidator {
 			return;
 		}
 
-		boolean jpostmanHelper = request != null || JPostmanAnnotations.hasExecutor(method);
-
-		if (jpostmanHelper) {
+		if (request != null) {
 			invalidHelpers.add(method);
 		}
 
@@ -140,9 +138,8 @@ public final class JPostmanAnnotationValidator {
 		message.append("Invalid JPostman annotation usage.").append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL);
 
 		if (!invalidHelpers.isEmpty()) {
-			message.append("@JPostmanRequest and @JPostmanExecutor methods must not be annotated with @Test.")
-					.append(JPostmanErrors.ENDL)
-					.append("They are helper methods invoked by JPostman, not test methods invoked by the test framework.")
+			message.append("@JPostmanRequest methods must not be annotated with @Test.").append(JPostmanErrors.ENDL)
+					.append("They are request helper methods invoked by JPostman, not test methods invoked by the test framework.")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid helper methods:")
 					.append(JPostmanErrors.ENDL);
 
@@ -161,7 +158,7 @@ public final class JPostmanAnnotationValidator {
 					.append(JPostmanErrors.ENDL)
 					.append("The test framework invokes @Test methods directly and only supports its own parameter injection rules.")
 					.append(JPostmanErrors.ENDL)
-					.append("Use a no-argument @Test method, or move parameters to a JPostman helper method such as @JPostmanRequest or @JPostmanExecutor.")
+					.append("Use a no-argument @Test method, or move parameters to a JPostman helper method such as @JPostmanRequest.")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid response methods:")
 					.append(JPostmanErrors.ENDL);
 

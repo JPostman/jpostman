@@ -41,16 +41,16 @@ final class JPostmanRuntimeOptions {
 	}
 
 	private final boolean logs;
-	private final Level logLevel;
+	private final Level debug;
 	private final String debugFormat;
 	private final int defaultStatusCode;
 	private final Class<?> executorClass;
 	private final boolean session;
 
-	private JPostmanRuntimeOptions(boolean logs, Level logLevel, String debugFormat, int defaultStatusCode,
+	private JPostmanRuntimeOptions(boolean logs, Level debug, String debugFormat, int defaultStatusCode,
 			Class<?> executorClass, boolean session) {
 		this.logs = logs;
-		this.logLevel = logLevel;
+		this.debug = debug;
 		this.debugFormat = debugFormat == null || debugFormat.isBlank() ? "=== {} ===" : debugFormat;
 		this.defaultStatusCode = defaultStatusCode;
 		this.executorClass = executorClass == Void.class ? null : executorClass;
@@ -64,7 +64,7 @@ final class JPostmanRuntimeOptions {
 		}
 
 		boolean logs = annotation.logs();
-		String logLevel = annotation.logLevel();
+		String debug = annotation.logLevel();
 		String debugFormat = annotation.debugFormat();
 		int defaultStatusCode = annotation.verifyStatusCode();
 		Class<?> executorClass = annotation.executor();
@@ -73,13 +73,12 @@ final class JPostmanRuntimeOptions {
 		try {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
 			logs = booleanValue(property(properties, "logs", annotation.namespace()), logs);
-			logLevel = stringValue(property(properties, "debug", annotation.namespace()), logLevel);
-			logLevel = stringValue(property(properties, "logLevel", annotation.namespace()), logLevel);
+			debug = stringValue(property(properties, "logLevel", annotation.namespace()), debug);
 			debugFormat = stringValue(property(properties, "debugFormat", annotation.namespace()), debugFormat);
 			defaultStatusCode = intValue(property(properties, "defaultStatusCode", annotation.namespace()),
 					defaultStatusCode);
 			executorClass = classValue(property(properties, "executor", annotation.namespace()), executorClass,
-					testInstance.getClass().getClassLoader());
+					testInstance.getClass().getClassLoader(), annotation);
 			session = booleanValue(property(properties, "session", annotation.namespace()), session);
 			session = booleanValue(property(properties, "cookie", annotation.namespace()), session);
 		} catch (RuntimeException e) {
@@ -88,7 +87,7 @@ final class JPostmanRuntimeOptions {
 			throw new IllegalStateException("Unable to load JPostman runtime options from " + annotation.config(), e);
 		}
 
-		return new JPostmanRuntimeOptions(logs, Level.from(logLevel), debugFormat, defaultStatusCode, executorClass,
+		return new JPostmanRuntimeOptions(logs, Level.from(debug), debugFormat, defaultStatusCode, executorClass,
 				session);
 	}
 
@@ -117,7 +116,7 @@ final class JPostmanRuntimeOptions {
 			return;
 		}
 
-		Level level = info.debug == null || info.debug.isBlank() ? logLevel : Level.from(info.debug);
+		Level level = info.debug == null || info.debug.isBlank() ? debug : Level.from(info.debug);
 		Logger logger = LoggerFactory.getLogger(testInstance.getClass());
 		if (level.isDebugOrTrace()) {
 			logger.debug(MessageFormat.format(debugFormat, info.callee, info.annotation));
@@ -156,14 +155,28 @@ final class JPostmanRuntimeOptions {
 		return Boolean.parseBoolean(value.trim());
 	}
 
-	private static Class<?> classValue(String value, Class<?> fallback, ClassLoader loader) {
+	private static Class<?> classValue(String value, Class<?> fallback, ClassLoader loader,
+			JPostmanContext annotation) {
 		if (value == null || value.isBlank()) {
 			return fallback == Void.class ? null : fallback;
 		}
+
+		String name = value.trim();
+		if (name.endsWith(".class")) {
+			String suggested = name.substring(0, name.length() - ".class".length());
+			throw new IllegalArgumentException(JPostmanErrors.message(annotation,
+					"Invalid JPostman executor class: " + name,
+					"The executor value is a class name string, not Java code.",
+					"Use executor = \"" + suggested + "\",", "or use executorClass = RestAssuredExecutor.class."));
+		}
+
 		try {
-			return Class.forName(value.trim(), true, loader);
+			return Class.forName(name, true, loader);
 		} catch (ClassNotFoundException e) {
-			throw new IllegalArgumentException("Invalid JPostman executor class: " + value, e);
+			throw new IllegalArgumentException(JPostmanErrors.message(annotation,
+					"Invalid JPostman executor class: " + name, "The executor class could not be loaded.",
+					"Use a fully qualified class name available on the test classpath.",
+					"Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\"."));
 		}
 	}
 
