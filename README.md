@@ -81,8 +81,8 @@ or define a custom method:
 
 ```java
 @JPostman.Executor
-public ApiExecutor executor(JPostman.Test ctx, JPostman.Info info) {
-    return MyExecutor.apply(ctx.request());
+public ApiExecutor executor(JPostman.Test test, JPostman.Info info) {
+    return MyExecutor.apply(test.request());
 }
 ```
 
@@ -94,7 +94,7 @@ The compact facade keeps JPostman annotation usage simple:
 import io.jpostman.annotations.JPostman;
 ```
 
-The examples below use only this JPostman import. Test framework annotations are written with fully qualified names so the examples stay focused on the JPostman API.
+The examples below show only this JPostman import so the code stays focused on the JPostman API. Add the test framework annotations required by your runner, such as TestNG `@Test`, `@BeforeClass`, and `@AfterClass`, or JUnit 5 `@Test`, `@BeforeAll`, and `@AfterAll`. Advanced custom executor methods may also require executor imports.
 
 ## Minimal Runner
 
@@ -257,7 +257,7 @@ Use `skipAll = true` to disable all response and runner tests by default.
 private JPostman.Runtime<JPostman.Test> jpostman;
 ```
 
-When `skipAll = true` is set on the context, all `@JPostman.Response` and `@JPostman.Runner` methods are skipped by default. Use `enabled = true` on a specific response when you want that method to run anyway.
+When `skipAll = true` is set on the context, all `@JPostman.Response` and `@JPostman.Runner` methods are skipped by default. Use `enabled = true` on a specific response or runner when you want that method to run anyway.
 
 ```java
 @Test
@@ -507,27 +507,30 @@ public void getCurrentUser() {
 }
 ```
 
-For login flows, create a login response dependency, cache the returned value, and then apply it from a request helper. If you need direct cache access in the helper, use the framework-specific context type such as `TestNgContext` or `JUnitContext`. The compact `JPostman.Test` facade is best for simple request/response access with one JPostman import.
+For login flows, create a login response dependency, cache the returned value, and then apply it from a request helper.
+
+The compact `JPostman.Test` facade keeps the example simple because it provides request, response, assertion, cache, log, and print access through one JPostman import.
 
 ### Cache a Login Token
 
-For authentication flows, a login request can run first and cache the returned token. The next request helper can read that cached value and apply it to the request.
+For authentication flows, a login request can run first and cache the returned token. The next request helper reads that cached value and applies it to the next request.
+
 
 ```java
 @JPostman.Response(
         request = "Login user and get tokens",
         cache = "token"
 )
-public String login(TestNgContext ctx) {
-    return ctx.asserts(true)
+public String login(JPostman.Test test) {
+    return test.asserts(true)
             .exists("accessToken", "Access token not found")
             .verify()
             .path("accessToken");
 }
 
 @JPostman.Request(dependsOn = "login")
-public void applyAuth(TestNgContext ctx, JPostman.Info info) {
-    info.sauth("oauth2", ctx.cache("token"));
+public void applyAuth(JPostman.Test test, JPostman.Info info) {
+    info.sauth("oauth2", test.cache("token"));
 }
 
 @Test
@@ -541,7 +544,7 @@ public void getCurrentUser() {
 ```
 
 Both `@JPostman.Request` and `@JPostman.Response` can use the `cache` attribute for one-time setup steps such as login, token creation, or preparing shared data.
-If the method returns a value, JPostman stores the returned value in the cache. When `cache` is empty, the method name is used as the cache key.
+If the method returns a value, JPostman stores the returned value in the cache. When a returning method uses a blank cache value, the method name is used as the cache key.
 For `void` methods, use `cache = ""` when you want the method to participate in the one-time cache/dependency flow, then store values manually in the context.
 
 ## Use Tags to Reuse One Request Helper for Multiple Test Cases

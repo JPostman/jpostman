@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.3
+
+### Added
+
+- Added framework-neutral compact assertion facades: `JPostman.Assertions` and `JPostman.SoftAssertions`.
+- Added compact `JPostman.Test` helpers for response path reads, cache reads, plain value reads, and plain value storage: `path(...)`, `cache(...)`, `get(...)`, and `plain(...)`.
+
+### Fixed
+
+- Fixed compact `JPostman.Test` assertion chaining so public examples can use one framework-neutral API with `JPostman.Test` and `JPostman.Info`.
+- Fixed tag-chain coverage setup to use request dependencies and a local executor so dependency tag accumulation is tested without relying on skipped execution.
+
 ## 2.0.2
 
 ### Added

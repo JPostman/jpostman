@@ -712,32 +712,32 @@ public final class JPostman {
 		/**
 		 * Enables response assertions.
 		 *
-		 * @return this test context
+		 * @return assertion facade backed by the active framework context
 		 */
-		Test asserts();
+		Assertions asserts();
 
 		/**
 		 * Enables or disables response assertions.
 		 *
 		 * @param enabled {@code true} to enable assertions
-		 * @return this test context
+		 * @return assertion facade backed by the active framework context
 		 */
-		Test asserts(boolean enabled);
+		Assertions asserts(boolean enabled);
 
 		/**
 		 * Enables soft assertion mode.
 		 *
-		 * @return this test context
+		 * @return soft assertion facade backed by the active framework context
 		 */
-		Test soft();
+		SoftAssertions soft();
 
 		/**
 		 * Enables or disables soft assertion mode.
 		 *
 		 * @param enabled {@code true} to enable soft assertions
-		 * @return this test context
+		 * @return soft assertion facade backed by the active framework context
 		 */
-		Test soft(boolean enabled);
+		SoftAssertions soft(boolean enabled);
 
 		/**
 		 * Enables response printing.
@@ -782,6 +782,102 @@ public final class JPostman {
 		 * @return current response
 		 */
 		SecureResponse response();
+
+		/**
+		 * Reads a value from the current response path.
+		 *
+		 * @param path response path
+		 * @return resolved value
+		 */
+		<T> T path(String path);
+
+		/**
+		 * Reads a cached value.
+		 *
+		 * @param key cache key
+		 * @return cached value
+		 */
+		<T> T cache(String key);
+
+		/**
+		 * Reads a stored plain value.
+		 *
+		 * @param key value key
+		 * @return stored value
+		 */
+		<T> T get(String key);
+
+		/**
+		 * Stores a plain value.
+		 *
+		 * @param key   value key
+		 * @param value value to store
+		 * @return this test context
+		 */
+		Test plain(String key, Object value);
+	}
+
+	/** Framework-neutral facade for hard assertions. */
+	public interface Assertions {
+
+		/**
+		 * Asserts that one or more response paths exist.
+		 *
+		 * @param paths response paths
+		 * @return current assertion facade
+		 */
+		Assertions exists(String... paths);
+
+		/**
+		 * Asserts that a response path exists.
+		 *
+		 * @param path    response path
+		 * @param message failure message
+		 * @return current assertion facade
+		 */
+		Assertions exists(String path, String message);
+
+		/**
+		 * Asserts the response status code.
+		 *
+		 * @param statusCode expected status code
+		 * @return current assertion facade
+		 */
+		Assertions statusCode(int statusCode);
+
+		/**
+		 * Verifies assertions using the context default status code.
+		 *
+		 * @return active test context
+		 */
+		Test verify();
+
+		/**
+		 * Verifies assertions using the provided status code.
+		 *
+		 * @param statusCode expected status code
+		 * @return active test context
+		 */
+		Test verify(int statusCode);
+
+		/**
+		 * Reads a value from the current response path.
+		 *
+		 * @param path response path
+		 * @return resolved value
+		 */
+		<T> T path(String path);
+	}
+
+	/** Framework-neutral facade for soft assertions. */
+	public interface SoftAssertions extends Assertions {
+
+		/**
+		 * Verifies all collected soft assertions.
+		 *
+		 * @return active test context
+		 */
+		Test assertAll();
 	}
 
 	/** Compact facade for execution info. */

@@ -1738,26 +1738,34 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
-	private static final class TagChainFixture extends BaseContextFixture {
+	private static final class TagChainFixture {
+		@JPostmanContext(config = "", collection = COLLECTION)
+		private io.jpostman.JPostman.Context jctx;
+
 		private String[] mouseTags;
 		private String[] shoesTags;
 		private String[] computerTags;
 
-		@JPostmanResponse(tags = "keyboard", dependsOn = "TagChainFixture.getMouse")
+		@JPostmanExecutor
+		private static ApiExecutor okExecutor() {
+			return () -> okResponse("{}");
+		}
+
+		@JPostmanResponse(tags = "keyboard", request = "Login user and get tokens", dependsOn = "getMouse")
 		void response() {
 		}
 
-		@JPostmanResponse(tags = "mouse", dependsOn = "getShoes")
+		@JPostmanRequest(tags = "mouse", dependsOn = "getShoes")
 		void getMouse(JPostmanInfo info) {
 			mouseTags = info.tags;
 		}
 
-		@JPostmanResponse(tags = "shoes", dependsOn = "getComputer")
+		@JPostmanRequest(tags = "shoes", dependsOn = "getComputer")
 		void getShoes(JPostmanInfo info) {
 			shoesTags = info.tags;
 		}
 
-		@JPostmanResponse(tags = "computer")
+		@JPostmanRequest(tags = "computer")
 		void getComputer(JPostmanInfo info) {
 			computerTags = info.tags;
 		}

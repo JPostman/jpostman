@@ -1,6 +1,7 @@
 package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
@@ -26,6 +27,28 @@ final class JPostmanTestProxy implements InvocationHandler {
 				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target));
 	}
 
+	private static JPostman.Assertions wrapAssertions(Object target) {
+		if (target == null) {
+			return null;
+		}
+		if (target instanceof JPostman.Assertions) {
+			return (JPostman.Assertions) target;
+		}
+		return (JPostman.Assertions) Proxy.newProxyInstance(JPostman.Assertions.class.getClassLoader(),
+				new Class<?>[] { JPostman.Assertions.class }, new JPostmanAssertionProxy(target));
+	}
+
+	private static JPostman.SoftAssertions wrapSoftAssertions(Object target) {
+		if (target == null) {
+			return null;
+		}
+		if (target instanceof JPostman.SoftAssertions) {
+			return (JPostman.SoftAssertions) target;
+		}
+		return (JPostman.SoftAssertions) Proxy.newProxyInstance(JPostman.SoftAssertions.class.getClassLoader(),
+				new Class<?>[] { JPostman.SoftAssertions.class }, new JPostmanAssertionProxy(target));
+	}
+
 	@Override
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		String name = method.getName();
@@ -39,15 +62,66 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return proxy == args[0];
 		}
 
-		Method targetMethod = findTargetMethod(name, args);
-		Object result = targetMethod.invoke(target, args == null ? new Object[0] : args);
-		if (method.getReturnType() == JPostman.Test.class) {
+		Method targetMethod = findTargetMethod(target, name, args);
+		Object result = invokeTarget(targetMethod, target, args);
+		return adaptReturn(proxy, method.getReturnType(), result);
+	}
+
+	private static final class JPostmanAssertionProxy implements InvocationHandler {
+
+		private final Object target;
+
+		private JPostmanAssertionProxy(Object target) {
+			this.target = target;
+		}
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+			String name = method.getName();
+			if ("toString".equals(name) && method.getParameterCount() == 0) {
+				return String.valueOf(target);
+			}
+			if ("hashCode".equals(name) && method.getParameterCount() == 0) {
+				return target.hashCode();
+			}
+			if ("equals".equals(name) && method.getParameterCount() == 1) {
+				return proxy == args[0];
+			}
+
+			Method targetMethod = findTargetMethod(target, name, args);
+			Object result = invokeTarget(targetMethod, target, args);
+			return adaptReturn(proxy, method.getReturnType(), result);
+		}
+	}
+
+	private static Object adaptReturn(Object proxy, Class<?> returnType, Object result) {
+		if (returnType == Void.TYPE) {
+			return null;
+		}
+		if (returnType == JPostman.Test.class) {
 			return result == null ? proxy : wrap(result);
+		}
+		if (returnType == JPostman.SoftAssertions.class) {
+			return result == null ? proxy : wrapSoftAssertions(result);
+		}
+		if (returnType == JPostman.Assertions.class) {
+			return result == null ? proxy : wrapAssertions(result);
+		}
+		if (returnType.isInstance(result)) {
+			return result;
 		}
 		return result;
 	}
 
-	private Method findTargetMethod(String name, Object[] args) throws NoSuchMethodException {
+	private static Object invokeTarget(Method method, Object target, Object[] args) throws Throwable {
+		try {
+			return method.invoke(target, args == null ? new Object[0] : args);
+		} catch (InvocationTargetException e) {
+			throw e.getTargetException();
+		}
+	}
+
+	private static Method findTargetMethod(Object target, String name, Object[] args) throws NoSuchMethodException {
 		int count = args == null ? 0 : args.length;
 		for (Method method : target.getClass().getMethods()) {
 			if (!name.equals(method.getName()) || method.getParameterCount() != count) {
@@ -69,7 +143,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 		throw new NoSuchMethodException(target.getClass().getName() + "." + name);
 	}
 
-	private Class<?> box(Class<?> type) {
+	private static Class<?> box(Class<?> type) {
 		if (!type.isPrimitive()) {
 			return type;
 		}
