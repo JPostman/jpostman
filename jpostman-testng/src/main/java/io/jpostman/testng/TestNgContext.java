@@ -14,6 +14,7 @@ import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Environment;
 import io.jpostman.Request;
+import io.jpostman.secure.JPostmanTestContext;
 import io.jpostman.secure.RedactionPolicy;
 import io.jpostman.secure.SecureContext;
 import io.jpostman.secure.SecureRequest;
@@ -28,7 +29,7 @@ import io.jpostman.secure.SecureValues;
  * include the secure context log on failure.
  * </p>
  */
-public final class TestNgContext {
+public final class TestNgContext implements JPostmanTestContext<TestNgContext, TestNgAssertions<?>, TestNgSoftAssertions> {
 
 	private final SecureContext secure;
 	private TestNgAssertions<?> assertions;

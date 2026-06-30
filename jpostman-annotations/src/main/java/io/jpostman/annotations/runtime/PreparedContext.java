@@ -9,6 +9,7 @@ import java.util.Map;
 
 import io.jpostman.Collection;
 import io.jpostman.JPostman.Context;
+import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanContext;
 
 final class PreparedContext<C> {
@@ -98,10 +99,17 @@ final class PreparedContext<C> {
 		}
 		try {
 			field.setAccessible(true);
-			field.set(owner, context);
+			field.set(owner, fieldValue(field, context));
 		} catch (IllegalAccessException e) {
 			throw new IllegalStateException("Unable to update @JPostmanTestContext field: " + field.getName(), e);
 		}
+	}
+
+	private Object fieldValue(Field field, C context) {
+		if (JPostman.Test.class.isAssignableFrom(field.getType())) {
+			return JPostmanTestProxy.wrap(context);
+		}
+		return context;
 	}
 
 	private static final class Mirror {

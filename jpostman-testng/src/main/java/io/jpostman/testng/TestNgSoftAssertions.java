@@ -2,6 +2,8 @@ package io.jpostman.testng;
 
 import org.testng.asserts.SoftAssert;
 
+import io.jpostman.secure.JPostmanSoftAssertions;
+
 /**
  * Fluent soft assertions.
  *
@@ -11,7 +13,8 @@ import org.testng.asserts.SoftAssert;
  * {@link #assertAll()} fails.
  * </p>
  */
-public final class TestNgSoftAssertions extends TestNgAssertions<TestNgSoftAssertions> {
+public final class TestNgSoftAssertions extends TestNgAssertions<TestNgSoftAssertions>
+		implements JPostmanSoftAssertions<TestNgContext, TestNgSoftAssertions> {
 
 	private final SoftAssert softAssert = new SoftAssert();
 

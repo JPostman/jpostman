@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.7
+
+### Changed
+
+- Updated `TestNgContext` to implement the shared `JPostmanTestContext` contract.
+- Updated `TestNgAssertions` to implement the shared `JPostmanAssertions` contract.
+- Updated `TestNgSoftAssertions` to implement the shared `JPostmanSoftAssertions` contract.
+
 ## 1.2.6
 
 ### Added

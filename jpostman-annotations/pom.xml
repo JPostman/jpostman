@@ -7,22 +7,18 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.2.6</version>
+		<version>1.2.7</version>
 	</parent>
 
 	<artifactId>jpostman-annotations</artifactId>
 	<packaging>jar</packaging>
-	<!-- Update jpostman.annotations.version in parent and remove local properties when next 1.2.7 release  -->
-	<version>2.0.4</version>
+	<!-- Update jpostman.annotations.version in parent  -->
+	<version>2.0.5</version>
 
 	<name>JPostman Annotations</name>
 	<description>Annotation-based execution support for JPostman JUnit and
 		TestNG modules.</description>
 	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-annotations</url>
-
-	<properties>
-		<jpostman.version>1.2.6</jpostman.version>
-	</properties>
 
 	<dependencies>
 		<dependency>

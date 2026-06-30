@@ -100,13 +100,12 @@ final class JPostmanContextRunner<C> {
 							context.context = existing;
 						}
 					}
-					field.setAccessible(true);
-					field.set(testInstance, context.context);
+					setTestContextField(testInstance, field, context.context);
 					context.addMirror(testInstance, field);
 				} else {
 					context = createContext(annotation, testInstance.getClass(), field, testInstance,
 							existingContext(testInstance, field));
-					field.set(testInstance, context.context);
+					setTestContextField(testInstance, field, context.context);
 					prepared.put(annotation.namespace(), context);
 				}
 			}
@@ -169,8 +168,7 @@ final class JPostmanContextRunner<C> {
 					prepared.put(namespace, source);
 				}
 
-				field.setAccessible(true);
-				field.set(testInstance, source.context);
+				setTestContextField(testInstance, field, source.context);
 				prepared.addActive(new PreparedContext<>(source.context, source.loaded, source.contextAnnotation,
 						source.dataloadLocations, source.assertionRules, testInstance, field));
 			}
@@ -251,7 +249,8 @@ final class JPostmanContextRunner<C> {
 	}
 
 	private boolean isTestContextField(Field field) {
-		return JPostmanAnnotations.hasTestContext(field) && framework.contextType().isAssignableFrom(field.getType());
+		return JPostmanAnnotations.hasTestContext(field) && (framework.contextType().isAssignableFrom(field.getType())
+				|| io.jpostman.annotations.JPostman.Test.class.isAssignableFrom(field.getType()));
 	}
 
 	private boolean isContextField(Field field) {
@@ -266,7 +265,23 @@ final class JPostmanContextRunner<C> {
 
 	private C existingContext(Object testInstance, Field field) throws IllegalAccessException {
 		field.setAccessible(true);
-		return framework.contextType().cast(field.get(testInstance));
+		Object value = field.get(testInstance);
+		if (value == null || !framework.contextType().isInstance(value)) {
+			return null;
+		}
+		return framework.contextType().cast(value);
+	}
+
+	private void setTestContextField(Object testInstance, Field field, C context) throws IllegalAccessException {
+		field.setAccessible(true);
+		field.set(testInstance, testContextFieldValue(field, context));
+	}
+
+	private Object testContextFieldValue(Field field, C context) {
+		if (io.jpostman.annotations.JPostman.Test.class.isAssignableFrom(field.getType())) {
+			return JPostmanTestProxy.wrap(context);
+		}
+		return context;
 	}
 
 	void injectLoadedContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {

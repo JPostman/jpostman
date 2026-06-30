@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.7
+
+### Added
+
+- Added `JPostmanTestContext<C, A, S>` as a shared fluent test context contract for the TestNG, JUnit, and annotations modules.
+- Added `JPostmanAssertions<C, A>` as a shared fluent assertion contract for framework-specific assertion implementations.
+- Added `JPostmanSoftAssertions<C, A>` as a shared soft assertion contract extending the common assertion API.
+
 ## 1.2.6
 
 - Added test coverage for modifying a secure request builder with a new header containing {{accessToken}}.

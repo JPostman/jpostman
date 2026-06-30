@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import org.junit.jupiter.api.Assertions;
 
 import io.jpostman.secure.JPostmanAssertionError;
+import io.jpostman.secure.JPostmanAssertions;
 import io.jpostman.secure.SecureResponse;
 
 /**
@@ -18,7 +19,7 @@ import io.jpostman.secure.SecureResponse;
  * execution hook and verify collected failures later.
  * </p>
  */
-public class JUnitAssertions<T extends JUnitAssertions<T>> {
+public class JUnitAssertions<T extends JUnitAssertions<T>> implements JPostmanAssertions<JUnitContext, T> {
 
 	protected final JUnitContext context;
 	protected final boolean includeLog;

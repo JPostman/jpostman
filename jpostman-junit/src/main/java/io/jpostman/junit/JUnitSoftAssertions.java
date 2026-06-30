@@ -6,6 +6,8 @@ import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.function.Executable;
 
+import io.jpostman.secure.JPostmanSoftAssertions;
+
 /**
  * Fluent soft assertions.
  *
@@ -15,7 +17,8 @@ import org.junit.jupiter.api.function.Executable;
  * {@link #assertAll()} fails.
  * </p>
  */
-public final class JUnitSoftAssertions extends JUnitAssertions<JUnitSoftAssertions> {
+public final class JUnitSoftAssertions extends JUnitAssertions<JUnitSoftAssertions>
+		implements JPostmanSoftAssertions<JUnitContext, JUnitSoftAssertions> {
 
 	private final List<AssertionError> failures = new ArrayList<>();
 

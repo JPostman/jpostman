@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.7
+
+### Changed
+
+- Updated `JUnitContext` to implement the shared `JPostmanTestContext` contract.
+- Updated `JUnitAssertions` to implement the shared `JPostmanAssertions` contract.
+- Updated `JUnitSoftAssertions` to implement the shared `JPostmanSoftAssertions` contract.
+
 ## 1.2.6
 
 ### Added

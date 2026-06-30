@@ -1241,9 +1241,9 @@ public final class JPostmanAnnotationRunner<C> {
 		if (types.length == 0) {
 			valid = true;
 		} else if (types.length == 1) {
-			valid = framework.contextType().isAssignableFrom(types[0]) || isInfoParameter(types[0]);
+			valid = isContextParameter(types[0]) || isInfoParameter(types[0]);
 		} else if (types.length == 2) {
-			valid = framework.contextType().isAssignableFrom(types[0]) && isInfoParameter(types[1]);
+			valid = isContextParameter(types[0]) && isInfoParameter(types[1]);
 		}
 
 		if (!valid) {
@@ -1400,11 +1400,8 @@ public final class JPostmanAnnotationRunner<C> {
 		if (types.length == 0) {
 			return invoke(testInstance, method);
 		}
-		if (types.length == 1 && framework.contextType().isAssignableFrom(types[0])) {
-			return invoke(testInstance, method, ctx);
-		}
-		if (types.length == 1 && JPostman.Test.class.isAssignableFrom(types[0])) {
-			return invoke(testInstance, method, JPostmanTestProxy.wrap(ctx));
+		if (types.length == 1 && isContextParameter(types[0])) {
+			return invoke(testInstance, method, contextArg(types[0], ctx));
 		}
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
@@ -1645,22 +1642,27 @@ public final class JPostmanAnnotationRunner<C> {
 			return true;
 		}
 		if (types.length == 1) {
-			return framework.contextType().isAssignableFrom(types[0]) || JPostman.Test.class.isAssignableFrom(types[0])
-					|| isInfoParameter(types[0]);
+			return isContextParameter(types[0]) || isInfoParameter(types[0]);
 		}
 		if (types.length == 2) {
-			return (framework.contextType().isAssignableFrom(types[0])
-					|| JPostman.Test.class.isAssignableFrom(types[0]))
+			return isContextParameter(types[0])
 					&& (isInfoParameter(types[1]) || String.class.isAssignableFrom(types[1]));
 		}
-		return types.length == 3
-				&& (framework.contextType().isAssignableFrom(types[0])
-						|| JPostman.Test.class.isAssignableFrom(types[0]))
-				&& String.class.isAssignableFrom(types[1]) && String.class.isAssignableFrom(types[2]);
+		return types.length == 3 && isContextParameter(types[0]) && String.class.isAssignableFrom(types[1])
+				&& String.class.isAssignableFrom(types[2]);
+	}
+
+	private boolean isContextParameter(Class<?> type) {
+		return type != null
+				&& (framework.contextType().isAssignableFrom(type) || JPostman.Test.class.isAssignableFrom(type));
+	}
+
+	private Object contextArg(Class<?> type, C ctx) {
+		return JPostman.Test.class.isAssignableFrom(type) ? JPostmanTestProxy.wrap(ctx) : ctx;
 	}
 
 	private boolean isInfoParameter(Class<?> type) {
-		return type != null && type.isAssignableFrom(JPostmanInfo.class);
+		return type == JPostmanInfo.class || type == JPostman.Info.class;
 	}
 
 	private Object invokeAnnotated(Object testInstance, Method method, C ctx, JPostmanInfo info) throws Exception {
@@ -1677,24 +1679,19 @@ public final class JPostmanAnnotationRunner<C> {
 		if (types.length == 0) {
 			return invoke(testInstance, method);
 		}
-		if (types.length == 1 && framework.contextType().isAssignableFrom(types[0])) {
-			return invoke(testInstance, method, ctx);
-		}
-		if (types.length == 1 && JPostman.Test.class.isAssignableFrom(types[0])) {
-			return invoke(testInstance, method, JPostmanTestProxy.wrap(ctx));
+		if (types.length == 1 && isContextParameter(types[0])) {
+			return invoke(testInstance, method, contextArg(types[0], ctx));
 		}
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
 		}
 		if (types.length == 2 && isInfoParameter(types[1])) {
-			Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
-			return invoke(testInstance, method, contextArg, info);
+			return invoke(testInstance, method, contextArg(types[0], ctx), info);
 		}
 		if (types.length == 2) {
-			Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
-			return invoke(testInstance, method, contextArg, info.callee);
+			return invoke(testInstance, method, contextArg(types[0], ctx), info.callee);
 		}
-		Object contextArg = JPostman.Test.class.isAssignableFrom(types[0]) ? JPostmanTestProxy.wrap(ctx) : ctx;
+		Object contextArg = contextArg(types[0], ctx);
 		return invoke(testInstance, method, contextArg, info.callee, info.request);
 	}
 

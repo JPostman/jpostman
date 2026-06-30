@@ -21,8 +21,8 @@ import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
-import io.jpostman.secure.SecureRequest;
-import io.jpostman.secure.SecureResponse;
+import io.jpostman.secure.JPostmanAssertions;
+import io.jpostman.secure.JPostmanSoftAssertions;
 
 /**
  * Compact JPostman annotation facade.
@@ -707,177 +707,18 @@ public final class JPostman {
 	}
 
 	/** Compact framework-neutral test context facade. */
-	public interface Test {
+	public interface Test extends io.jpostman.secure.JPostmanTestContext<Test, Assertions, SoftAssertions> {
 
-		/**
-		 * Enables response assertions.
-		 *
-		 * @return assertion facade backed by the active framework context
-		 */
-		Assertions asserts();
-
-		/**
-		 * Enables or disables response assertions.
-		 *
-		 * @param enabled {@code true} to enable assertions
-		 * @return assertion facade backed by the active framework context
-		 */
-		Assertions asserts(boolean enabled);
-
-		/**
-		 * Enables soft assertion mode.
-		 *
-		 * @return soft assertion facade backed by the active framework context
-		 */
-		SoftAssertions soft();
-
-		/**
-		 * Enables or disables soft assertion mode.
-		 *
-		 * @param enabled {@code true} to enable soft assertions
-		 * @return soft assertion facade backed by the active framework context
-		 */
-		SoftAssertions soft(boolean enabled);
-
-		/**
-		 * Enables response printing.
-		 *
-		 * @return this test context
-		 */
-		Test print();
-
-		/**
-		 * Enables or disables response printing.
-		 *
-		 * @param enabled {@code true} to print the response
-		 * @return this test context
-		 */
-		Test print(boolean enabled);
-
-		/**
-		 * Enables request and response logging.
-		 *
-		 * @return this test context
-		 */
-		Test log();
-
-		/**
-		 * Enables or disables request and response logging.
-		 *
-		 * @param enabled {@code true} to enable logging
-		 * @return this test context
-		 */
-		Test log(boolean enabled);
-
-		/**
-		 * Returns the current request object.
-		 *
-		 * @return current request
-		 */
-		SecureRequest request();
-
-		/**
-		 * Returns the current response object.
-		 *
-		 * @return current response
-		 */
-		SecureResponse response();
-
-		/**
-		 * Reads a value from the current response path.
-		 *
-		 * @param path response path
-		 * @return resolved value
-		 */
-		<T> T path(String path);
-
-		/**
-		 * Reads a cached value.
-		 *
-		 * @param key cache key
-		 * @return cached value
-		 */
-		<T> T cache(String key);
-
-		/**
-		 * Reads a stored plain value.
-		 *
-		 * @param key value key
-		 * @return stored value
-		 */
-		<T> T get(String key);
-
-		/**
-		 * Stores a plain value.
-		 *
-		 * @param key   value key
-		 * @param value value to store
-		 * @return this test context
-		 */
-		Test plain(String key, Object value);
 	}
 
 	/** Framework-neutral facade for hard assertions. */
-	public interface Assertions {
+	public interface Assertions extends JPostmanAssertions<Test, Assertions> {
 
-		/**
-		 * Asserts that one or more response paths exist.
-		 *
-		 * @param paths response paths
-		 * @return current assertion facade
-		 */
-		Assertions exists(String... paths);
-
-		/**
-		 * Asserts that a response path exists.
-		 *
-		 * @param path    response path
-		 * @param message failure message
-		 * @return current assertion facade
-		 */
-		Assertions exists(String path, String message);
-
-		/**
-		 * Asserts the response status code.
-		 *
-		 * @param statusCode expected status code
-		 * @return current assertion facade
-		 */
-		Assertions statusCode(int statusCode);
-
-		/**
-		 * Verifies assertions using the context default status code.
-		 *
-		 * @return active test context
-		 */
-		Test verify();
-
-		/**
-		 * Verifies assertions using the provided status code.
-		 *
-		 * @param statusCode expected status code
-		 * @return active test context
-		 */
-		Test verify(int statusCode);
-
-		/**
-		 * Reads a value from the current response path.
-		 *
-		 * @param path response path
-		 * @return resolved value
-		 */
-		<T> T path(String path);
 	}
 
 	/** Framework-neutral facade for soft assertions. */
-	public interface SoftAssertions extends Assertions {
+	public interface SoftAssertions extends JPostmanSoftAssertions<Test, SoftAssertions> {
 
-		/**
-		 * Verifies all collected soft assertions.
-		 *
-		 * @return active test context
-		 */
-		Test assertAll();
 	}
 
 	/** Compact facade for execution info. */

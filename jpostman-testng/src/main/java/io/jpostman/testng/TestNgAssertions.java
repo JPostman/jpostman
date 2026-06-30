@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import org.testng.Assert;
 
 import io.jpostman.secure.JPostmanAssertionError;
+import io.jpostman.secure.JPostmanAssertions;
 import io.jpostman.secure.SecureResponse;
 
 /**
@@ -18,7 +19,7 @@ import io.jpostman.secure.SecureResponse;
  * execution hook and verify collected failures later.
  * </p>
  */
-public class TestNgAssertions<T extends TestNgAssertions<?>> {
+public class TestNgAssertions<T extends TestNgAssertions<?>> implements JPostmanAssertions<TestNgContext, T> {
 
 	protected final TestNgContext context;
 	protected final boolean includeLog;
