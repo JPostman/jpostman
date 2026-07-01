@@ -28,6 +28,7 @@
 		<module>jpostman-github</module>
 		<module>jpostman-kubernetes</module>
 		<module>jpostman-vault</module>
+		<module>jpostman-api-schema</module>
 		<module>jpostman-examples</module>
 	</modules>
 
@@ -157,6 +158,11 @@
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-vault</artifactId>
+				<version>${jpostman.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>${project.groupId}</groupId>
+				<artifactId>jpostman-api-schema</artifactId>
 				<version>${jpostman.version}</version>
 			</dependency>
 		</dependencies>
