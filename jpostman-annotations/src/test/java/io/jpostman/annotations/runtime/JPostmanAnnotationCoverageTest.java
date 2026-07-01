@@ -39,6 +39,7 @@ import io.jpostman.ApiResponse;
 import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.Request;
+import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
@@ -860,8 +861,7 @@ public class JPostmanAnnotationCoverageTest {
 		CoverageApplyExecutor.reset();
 		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
 		CompactApplyExecutorReportFixture fixture = new CompactApplyExecutorReportFixture();
-		Method method = CompactApplyExecutorReportFixture.class.getDeclaredMethod("response",
-				io.jpostman.annotations.JPostman.Test.class);
+		Method method = CompactApplyExecutorReportFixture.class.getDeclaredMethod("response", JPostman.Test.class);
 
 		runner.setup(fixture);
 		runner.run(fixture, method);

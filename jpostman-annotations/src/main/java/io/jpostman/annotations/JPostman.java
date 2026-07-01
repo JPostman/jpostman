@@ -21,8 +21,7 @@ import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
-import io.jpostman.secure.JPostmanAssertions;
-import io.jpostman.secure.JPostmanSoftAssertions;
+import io.jpostman.secure.JPostmanTestContext;
 
 /**
  * Compact JPostman annotation facade.
@@ -706,21 +705,6 @@ public final class JPostman {
 		Environment getEnvironment();
 	}
 
-	/** Compact framework-neutral test context facade. */
-	public interface Test extends io.jpostman.secure.JPostmanTestContext<Test, Assertions, SoftAssertions> {
-
-	}
-
-	/** Framework-neutral facade for hard assertions. */
-	public interface Assertions extends JPostmanAssertions<Test, Assertions> {
-
-	}
-
-	/** Framework-neutral facade for soft assertions. */
-	public interface SoftAssertions extends JPostmanSoftAssertions<Test, SoftAssertions> {
-
-	}
-
 	/** Compact facade for execution info. */
 	public interface Info {
 
@@ -906,5 +890,9 @@ public final class JPostman {
 		 * Prints the report summary.
 		 */
 		void summary();
+	}
+
+	/** Compact framework-neutral test context facade. */
+	public interface Test extends JPostmanTestContext<Test, JPostmanTestAssertions, JPostmanTestSoftAssertions> {
 	}
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.6
+
+### Changed
+
+- Moved the compact assertion facade types out of the nested `JPostman` facade so `JPostman.Assertions` and `JPostman.SoftAssertions` are no longer exposed in `JPostman.` autocomplete.
+- Updated `JPostmanTestProxy` to wrap hard and soft assertion results with the new top-level assertion facade types.
+
+### Fixed
+
+- Fixed compact facade autocomplete noise by hiding internal assertion aliases from the main `JPostman` namespace.
+- Updated coverage test imports and compact test reflection references to use `JPostman.Test` directly.
+
 ## 2.0.3
 
 ### Added

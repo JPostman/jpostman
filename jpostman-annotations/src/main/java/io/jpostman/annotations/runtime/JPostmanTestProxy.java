@@ -6,6 +6,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanTestAssertions;
+import io.jpostman.annotations.JPostmanTestSoftAssertions;
 
 /** Framework-neutral proxy for TestNG/JUnit contexts used by JPostman.Test. */
 final class JPostmanTestProxy implements InvocationHandler {
@@ -27,26 +29,26 @@ final class JPostmanTestProxy implements InvocationHandler {
 				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target));
 	}
 
-	private static JPostman.Assertions wrapAssertions(Object target) {
+	private static JPostmanTestAssertions wrapAssertions(Object target) {
 		if (target == null) {
 			return null;
 		}
-		if (target instanceof JPostman.Assertions) {
-			return (JPostman.Assertions) target;
+		if (target instanceof JPostmanTestAssertions) {
+			return (JPostmanTestAssertions) target;
 		}
-		return (JPostman.Assertions) Proxy.newProxyInstance(JPostman.Assertions.class.getClassLoader(),
-				new Class<?>[] { JPostman.Assertions.class }, new JPostmanAssertionProxy(target));
+		return (JPostmanTestAssertions) Proxy.newProxyInstance(JPostmanTestAssertions.class.getClassLoader(),
+				new Class<?>[] { JPostmanTestAssertions.class }, new JPostmanAssertionProxy(target));
 	}
 
-	private static JPostman.SoftAssertions wrapSoftAssertions(Object target) {
+	private static JPostmanTestSoftAssertions wrapSoftAssertions(Object target) {
 		if (target == null) {
 			return null;
 		}
-		if (target instanceof JPostman.SoftAssertions) {
-			return (JPostman.SoftAssertions) target;
+		if (target instanceof JPostmanTestSoftAssertions) {
+			return (JPostmanTestSoftAssertions) target;
 		}
-		return (JPostman.SoftAssertions) Proxy.newProxyInstance(JPostman.SoftAssertions.class.getClassLoader(),
-				new Class<?>[] { JPostman.SoftAssertions.class }, new JPostmanAssertionProxy(target));
+		return (JPostmanTestSoftAssertions) Proxy.newProxyInstance(JPostmanTestSoftAssertions.class.getClassLoader(),
+				new Class<?>[] { JPostmanTestSoftAssertions.class }, new JPostmanAssertionProxy(target));
 	}
 
 	@Override
@@ -101,10 +103,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 		if (returnType == JPostman.Test.class) {
 			return result == null ? proxy : wrap(result);
 		}
-		if (returnType == JPostman.SoftAssertions.class) {
+		if (returnType == JPostmanTestSoftAssertions.class) {
 			return result == null ? proxy : wrapSoftAssertions(result);
 		}
-		if (returnType == JPostman.Assertions.class) {
+		if (returnType == JPostmanTestAssertions.class) {
 			return result == null ? proxy : wrapAssertions(result);
 		}
 		if (returnType.isInstance(result)) {
