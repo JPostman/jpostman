@@ -101,16 +101,12 @@ final class JPostmanContextRunner<C> {
 
 		C previousContext = previous.context(namespace);
 		PreparedContext<C> preparedContext = prepared.resolve(namespace);
-		framework.copyCache(previousContext, preparedContext.context);
-
 		/*
-		 * Keep teardown-visible namespace responses across fresh TestNG method
-		 * preparations. A later execution in the same namespace will replace this
-		 * context through PreparedContexts.update(...).
+		 * Keep each prepared context fresh between test method executions. Only cache
+		 * is carried forward; request, response, filter, soft/log, and other per-run
+		 * state must not be reused from the previous context.
 		 */
-		if (hasResponse(previousContext) && !hasResponse(preparedContext.context)) {
-			preparedContext.context = previousContext;
-		}
+		framework.copyCache(previousContext, preparedContext.context);
 	}
 
 	private C copyPreviousCache(PreparedContexts<C> previous, String namespace, C target) {
@@ -120,7 +116,7 @@ final class JPostmanContextRunner<C> {
 
 		C previousContext = previous.context(namespace);
 		framework.copyCache(previousContext, target);
-		return hasResponse(previousContext) && !hasResponse(target) ? previousContext : target;
+		return target;
 	}
 
 	private void validateContextDefinitions(Object testInstance) {

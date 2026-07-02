@@ -718,6 +718,14 @@ public final class JPostman {
 	public interface Info {
 
 		/**
+		 * Returns the full runtime info object for direct access to execution
+		 * attributes such as caller, callee, request, namespace, cache, and id.
+		 *
+		 * @return runtime execution info
+		 */
+		JPostmanInfo attr();
+
+		/**
 		 * Returns tag-based rules for the current execution.
 		 *
 		 * @return tag rules

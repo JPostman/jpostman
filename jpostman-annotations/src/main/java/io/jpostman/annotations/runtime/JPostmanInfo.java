@@ -226,6 +226,17 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
+	 * Returns this full runtime info object when callers use the compact
+	 * {@code JPostman.Info} facade.
+	 *
+	 * @return this runtime info object
+	 */
+	@Override
+	public JPostmanInfo attr() {
+		return this;
+	}
+
+	/**
 	 * Starts fluent tag-conditional actions for this invocation.
 	 *
 	 * <p>
@@ -241,6 +252,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 *
 	 * @return fluent tag rule builder for this info object
 	 */
+	@Override
 	public TagRules tags() {
 		return new TagRules(this);
 	}

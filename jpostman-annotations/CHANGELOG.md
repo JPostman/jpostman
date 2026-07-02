@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.2
+
+### Added
+
+- Added `JPostman.Info.attr()` to the compact info facade so tests can access the full `JPostmanInfo` runtime object for attributes such as `caller`, `callee`, `request`, `namespace`, `cache`, and `id`.
+- Added regression coverage for compact `info.attr()` attribute access.
+
+### Fixed
+
+- Fixed response filter state leaking between repeated annotation-driven test executions when the previous context had a response.
+- Fixed response filter behavior for secure log output when the active request is prepared by a dependency method and different response tests use different `filter` values.
+
 ## 2.1.1
 
 ### Added

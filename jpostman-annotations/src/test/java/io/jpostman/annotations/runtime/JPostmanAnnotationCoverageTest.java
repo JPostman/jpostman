@@ -951,6 +951,27 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies the compact JPostman.Info facade can expose the full runtime info
+	 * attributes when a test needs direct access to caller, callee, request, id,
+	 * namespace, or other runtime fields.
+	 */
+	@Test
+	public void compactInfoAttrReturnsRuntimeInfoAttributes() {
+		JPostmanInfo parent = new JPostmanInfo("filter1", "", "", "").annotation("@JPostmanResponse")
+				.id("#response");
+		JPostman.Info info = parent.child("authRequest", "", "", "Get current auth user")
+				.annotation("@JPostmanRequest").id("#token");
+
+		JPostmanInfo attr = info.attr();
+
+		assertSame(info, attr);
+		assertEquals("filter1", attr.caller);
+		assertEquals("authRequest", attr.callee);
+		assertEquals("Get current auth user", attr.request);
+		assertEquals("token", attr.id);
+	}
+
+	/**
 	 * Verifies JPostmanInfo keeps a single tag chain and searches only
 	 * {@link JPostmanInfo#tags}.
 	 */
