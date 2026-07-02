@@ -58,7 +58,7 @@ public final class JPostmanAnnotationRunner<C> {
 		validateExecutors(testInstance);
 		injectReportContext(testInstance);
 		PreparedContexts<C> prepared = contextRunner.prepare(testInstance);
-		contextRunner.activate(prepared);
+		contextRunner.activate(testInstance, prepared);
 		contextRunner.injectLoadedContexts(testInstance, prepared);
 
 		if (!prepared.isEmpty()) {
@@ -78,7 +78,7 @@ public final class JPostmanAnnotationRunner<C> {
 		validateExecutors(testInstance);
 		JPostmanReport report = injectReportContext(testInstance);
 		PreparedContexts<C> prepared = contextRunner.prepare(testInstance);
-		contextRunner.activate(prepared);
+		contextRunner.activate(testInstance, prepared);
 		contextRunner.injectLoadedContexts(testInstance, prepared);
 
 		JPostmanRequest requestAnnotation = JPostmanAnnotations.request(testMethod);
@@ -105,20 +105,20 @@ public final class JPostmanAnnotationRunner<C> {
 		info.methods.add(testMethod.getName());
 		debug(testInstance, info);
 
-		if (responseAnnotation != null) {
-			validateResponseSkipEnabled(responseAnnotation, info);
-			if (skipTopLevelResponse(responseAnnotation, info)) {
-				skipped(report, info);
-				throw JPostmanErrors.skip(framework, info, responseSkipLines(responseAnnotation, info));
-			}
-		}
-
-		if (runnerAnnotation != null && skipTopLevelRunner(runnerAnnotation, info)) {
-			skipped(report, info);
-			throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
-		}
-
 		try {
+			if (responseAnnotation != null) {
+				validateResponseSkipEnabled(responseAnnotation, info);
+				if (skipTopLevelResponse(responseAnnotation, info)) {
+					skipped(report, info);
+					throw JPostmanErrors.skip(framework, info, responseSkipLines(responseAnnotation, info));
+				}
+			}
+
+			if (runnerAnnotation != null && skipTopLevelRunner(runnerAnnotation, info)) {
+				skipped(report, info);
+				throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
+			}
+
 			if (requestAnnotation != null) {
 				runAnnotatedRequest(testInstance, prepared, current.collection, requestAnnotation, info,
 						requestAnnotation.data(), stack);
@@ -146,6 +146,9 @@ public final class JPostmanAnnotationRunner<C> {
 				failedIfMissing(report, info);
 			}
 			throw e;
+		} finally {
+			contextRunner.injectTestContexts(testInstance, prepared);
+			contextRunner.injectLoadedContexts(testInstance, prepared);
 		}
 	}
 
@@ -385,6 +388,7 @@ public final class JPostmanAnnotationRunner<C> {
 				resolver.update(info.namespace, cachedContext);
 				framework.setCurrent(cachedContext);
 			}
+			resolver.info(parentInfo);
 			return;
 		}
 
@@ -1067,9 +1071,8 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		for (C context : resolver.contexts()) {
-			Object value = framework.cache(context, cache);
-			if (value != null) {
-				return value;
+			if (framework.hasCache(context, cache)) {
+				return framework.cache(context, cache);
 			}
 		}
 

@@ -1,8 +1,10 @@
 package io.jpostman.annotations.runtime;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import io.jpostman.Collection;
@@ -16,6 +18,7 @@ final class PreparedContexts<C> {
 
 	private final Map<String, PreparedContext<C>> values = new ConcurrentHashMap<>();
 	private final List<PreparedContext<C>> active = new ArrayList<>();
+	private C activeContext;
 	private MissingContextFactory<C> missingContextFactory;
 	private JPostmanInfo info;
 
@@ -33,6 +36,10 @@ final class PreparedContexts<C> {
 
 	boolean contains(String namespace) {
 		return values.containsKey(normalize(namespace));
+	}
+
+	Set<String> namespaces() {
+		return new LinkedHashSet<>(values.keySet());
 	}
 
 	PreparedContext<C> resolve(String namespace) {
@@ -109,9 +116,14 @@ final class PreparedContexts<C> {
 	}
 
 	void updateActive(C context) {
+		activeContext = context;
 		for (PreparedContext<C> value : active) {
 			value.update(context);
 		}
+	}
+
+	C activeContext() {
+		return activeContext;
 	}
 
 	private String normalize(String namespace) {

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.8
+
+### Added
+
+- Added regression coverage for cached `@JPostman.Response` dependencies across multiple TestNG method runs.
+- Added regression coverage for compact `@JPostman.TestContext` mirrors and `JPostman.Runtime.ctx(...)` access after TestNG method execution and skipped responses.
+
+### Changed
+
+- Updated annotation context storage to keep prepared contexts per test instance and framework context type, preventing TestNG and JUnit context leakage.
+- Updated `JPostmanAnnotationRunner` to refresh injected test-context and runtime-context fields after each annotation run, including skipped responses.
+- Updated `JPostmanReport` to count real `@JPostmanRunner` request executions while still ignoring dependency helper records.
+- Updated `JPostmanTestProxy` with compact context unwrapping so `JPostmanContextRunner` can preserve existing `JPostman.Test` mirrors.
+
+### Fixed
+
+- Fixed `@JPostman.TestContext(active = false)` losing the default namespace/login response after product namespace execution or skipped responses.
+- Fixed `@JPostman.TestContext(active = true)` losing the latest active/product response during teardown-style access.
+- Fixed `JPostman.Runtime.ctx()` and `JPostman.Runtime.ctx("product")` returning stale or empty contexts after method execution.
+- Fixed response dependency cache lookup to use cache-key existence through `hasCache(...)` instead of treating a `null` cache value as missing.
+- Fixed cached response dependency execution so parent `JPostmanInfo` is restored after a cached dependency returns early.
+- Fixed `JPostmanReport.summary()` showing zero totals for executed `@JPostmanRunner` requests after dependency-helper filtering.
+
 ## 2.0.7
 
 ### Changed

@@ -108,7 +108,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	private void record(List<JPostmanInfo> target, JPostmanInfo info) {
 		update(info);
-		if (!isTopLevel(info)) {
+		if (!isReportableExecution(info)) {
 			return;
 		}
 
@@ -116,18 +116,41 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		target.add(info);
 	}
 
+	private boolean isReportableExecution(JPostmanInfo info) {
+		if (info == null) {
+			return false;
+		}
+
+		if (isTopLevel(info)) {
+			return true;
+		}
+
+		return "@JPostmanRunner".equals(value(info.annotation)) && !value(info.request).isBlank();
+	}
+
 	private boolean isTopLevel(JPostmanInfo info) {
-		return info != null && (info.caller == null || info.caller.isBlank());
+		return info != null && value(info.caller).isBlank();
 	}
 
 	private void removeRecorded(JPostmanInfo info) {
-		passed.removeIf(existing -> sameTopLevelMethod(existing, info));
-		failed.removeIf(existing -> sameTopLevelMethod(existing, info));
-		skipped.removeIf(existing -> sameTopLevelMethod(existing, info));
+		passed.removeIf(existing -> sameExecution(existing, info));
+		failed.removeIf(existing -> sameExecution(existing, info));
+		skipped.removeIf(existing -> sameExecution(existing, info));
 	}
 
-	private boolean sameTopLevelMethod(JPostmanInfo left, JPostmanInfo right) {
-		return isTopLevel(left) && isTopLevel(right) && value(left.callee).equals(value(right.callee));
+	private boolean sameExecution(JPostmanInfo left, JPostmanInfo right) {
+		if (left == null || right == null) {
+			return false;
+		}
+
+		if (isTopLevel(left) && isTopLevel(right)) {
+			return value(left.callee).equals(value(right.callee));
+		}
+
+		return value(left.annotation).equals(value(right.annotation)) && value(left.caller).equals(value(right.caller))
+				&& value(left.callee).equals(value(right.callee))
+				&& value(left.namespace).equals(value(right.namespace))
+				&& value(left.folder).equals(value(right.folder)) && value(left.request).equals(value(right.request));
 	}
 
 	private String value(String value) {

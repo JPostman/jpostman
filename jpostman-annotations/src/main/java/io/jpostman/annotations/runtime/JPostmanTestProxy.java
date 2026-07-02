@@ -31,6 +31,20 @@ final class JPostmanTestProxy implements InvocationHandler {
 				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target));
 	}
 
+	static Object unwrap(Object value) {
+		if (value == null) {
+			return null;
+		}
+		if (!Proxy.isProxyClass(value.getClass())) {
+			return value;
+		}
+		InvocationHandler handler = Proxy.getInvocationHandler(value);
+		if (handler instanceof JPostmanTestProxy) {
+			return ((JPostmanTestProxy) handler).target;
+		}
+		return value;
+	}
+
 	private static JPostmanTestAssertions wrapAssertions(Object target) {
 		if (target == null) {
 			return null;

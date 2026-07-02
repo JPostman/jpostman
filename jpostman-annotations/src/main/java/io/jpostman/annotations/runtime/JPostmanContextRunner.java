@@ -12,8 +12,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -34,13 +36,15 @@ final class JPostmanContextRunner<C> {
 	private final JPostmanFramework<C> framework;
 	private static final Set<String> REDUNDANT_CONTEXT_WARNINGS = new LinkedHashSet<>();
 
-	private final ThreadLocal<PreparedContexts<C>> currentContexts = new ThreadLocal<>();
+	private static final ThreadLocal<Map<ContextKey, PreparedContexts<?>>> CURRENT_CONTEXTS = ThreadLocal
+			.withInitial(LinkedHashMap::new);
 
 	JPostmanContextRunner(JPostmanFramework<C> framework) {
 		this.framework = framework;
 	}
 
 	PreparedContexts<C> prepare(Object testInstance) throws Exception {
+		PreparedContexts<C> previous = currentContexts(testInstance);
 		PreparedContexts<C> prepared = new PreparedContexts<>();
 
 		/*
@@ -52,12 +56,67 @@ final class JPostmanContextRunner<C> {
 		prepared.missingContextFactory(namespace -> createMissingNamespaceContext(testInstance, prepared, namespace));
 		prepareNamedContexts(testInstance, prepared);
 		prepareActiveContexts(testInstance, prepared);
+		preservePreviousCaches(prepared, previous);
 
 		return prepared;
 	}
 
-	void activate(PreparedContexts<C> contexts) {
-		currentContexts.set(contexts);
+	void activate(Object testInstance, PreparedContexts<C> contexts) {
+		if (testInstance != null && contexts != null) {
+			CURRENT_CONTEXTS.get().put(contextKey(testInstance), contexts);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private PreparedContexts<C> currentContexts(Object testInstance) {
+		if (testInstance == null) {
+			return null;
+		}
+		PreparedContexts<?> current = CURRENT_CONTEXTS.get().get(contextKey(testInstance));
+		return current == null ? null : (PreparedContexts<C>) current;
+	}
+
+	private ContextKey contextKey(Object testInstance) {
+		return new ContextKey(testInstance, framework.contextType());
+	}
+
+	private void preservePreviousCaches(PreparedContexts<C> prepared, PreparedContexts<C> previous) {
+		if (prepared == null || previous == null) {
+			return;
+		}
+
+		for (String namespace : prepared.namespaces()) {
+			copyPreviousCache(previous, prepared, namespace);
+		}
+	}
+
+	private void copyPreviousCache(PreparedContexts<C> previous, PreparedContexts<C> prepared, String namespace) {
+		if (previous == null || prepared == null || !previous.contains(namespace) || !prepared.contains(namespace)) {
+			return;
+		}
+
+		C previousContext = previous.context(namespace);
+		PreparedContext<C> preparedContext = prepared.resolve(namespace);
+		framework.copyCache(previousContext, preparedContext.context);
+
+		/*
+		 * Keep teardown-visible namespace responses across fresh TestNG method
+		 * preparations. A later execution in the same namespace will replace this
+		 * context through PreparedContexts.update(...).
+		 */
+		if (hasResponse(previousContext) && !hasResponse(preparedContext.context)) {
+			preparedContext.context = previousContext;
+		}
+	}
+
+	private C copyPreviousCache(PreparedContexts<C> previous, String namespace, C target) {
+		if (previous == null || target == null || !previous.contains(namespace)) {
+			return target;
+		}
+
+		C previousContext = previous.context(namespace);
+		framework.copyCache(previousContext, target);
+		return hasResponse(previousContext) && !hasResponse(target) ? previousContext : target;
 	}
 
 	private void prepareNamedContexts(Object testInstance, PreparedContexts<C> prepared) throws Exception {
@@ -96,7 +155,7 @@ final class JPostmanContextRunner<C> {
 						 * context. The next execution for the same namespace will still update this
 						 * prepared context normally.
 						 */
-						if (framework.hasResponse(existing) && !framework.hasResponse(context.context)) {
+						if (hasResponse(existing)) {
 							context.context = existing;
 						}
 					}
@@ -154,22 +213,40 @@ final class JPostmanContextRunner<C> {
 
 				String namespace = annotation.namespace();
 				PreparedContext<C> source;
+				C fieldContext;
+
 				if (!hasOwnContextConfig(annotation)) {
 					source = prepared.resolve(namespace);
+					fieldContext = source.context;
+
 					C existing = existingContext(testInstance, field);
 					if (existing != null) {
 						framework.copyCache(existing, source.context);
+
+						/*
+						 * active = true is a latest-active mirror, not a namespace mirror. Do not
+						 * replace the previous active field with the annotation namespace context just
+						 * because that namespace already has a response, such as the cached login
+						 * response in the default context. The active mirror must keep the previous
+						 * latest active response until the next annotation execution calls
+						 * PreparedContexts.update(...).
+						 */
+						if (hasResponse(existing)) {
+							fieldContext = existing;
+						}
 					}
 				} else if (prepared.contains(namespace)) {
 					source = prepared.resolve(namespace);
+					fieldContext = source.context;
 				} else {
 					source = createContext(annotation, testInstance.getClass(), field, testInstance,
 							existingContext(testInstance, field));
 					prepared.put(namespace, source);
+					fieldContext = source.context;
 				}
 
-				setTestContextField(testInstance, field, source.context);
-				prepared.addActive(new PreparedContext<>(source.context, source.loaded, source.contextAnnotation,
+				setTestContextField(testInstance, field, fieldContext);
+				prepared.addActive(new PreparedContext<>(fieldContext, source.loaded, source.contextAnnotation,
 						source.dataloadLocations, source.assertionRules, testInstance, field));
 			}
 			current = current.getSuperclass();
@@ -183,6 +260,7 @@ final class JPostmanContextRunner<C> {
 			return null;
 		}
 
+		PreparedContexts<C> previous = currentContexts(testInstance);
 		PreparedContext<C> source = prepared.contains("") ? prepared.resolve("") : prepared.firstPreparedContext();
 
 		/*
@@ -196,13 +274,17 @@ final class JPostmanContextRunner<C> {
 		 * fall back to the already-loaded source collection/context.
 		 */
 		if (source.contextAnnotation != null) {
-			return createNamespaceContext(source.contextAnnotation, testInstance.getClass(), namespace, source);
+			PreparedContext<C> created = createNamespaceContext(source.contextAnnotation, testInstance.getClass(),
+					namespace, source);
+			created.context = copyPreviousCache(previous, namespace, created.context);
+			return created;
 		}
 
 		C ctx = framework.create();
 		if (source.loaded != null) {
 			loadEnvironment(ctx, source.loaded.getEnvironment());
 		}
+		ctx = copyPreviousCache(previous, namespace, ctx);
 		return new PreparedContext<>(ctx, source.loaded, source.contextAnnotation, source.dataloadLocations,
 				source.assertionRules);
 	}
@@ -265,7 +347,7 @@ final class JPostmanContextRunner<C> {
 
 	private C existingContext(Object testInstance, Field field) throws IllegalAccessException {
 		field.setAccessible(true);
-		Object value = field.get(testInstance);
+		Object value = JPostmanTestProxy.unwrap(field.get(testInstance));
 		if (value == null || !framework.contextType().isInstance(value)) {
 			return null;
 		}
@@ -282,6 +364,65 @@ final class JPostmanContextRunner<C> {
 			return JPostmanTestProxy.wrap(context);
 		}
 		return context;
+	}
+
+	void injectTestContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
+		if (contexts == null) {
+			return;
+		}
+
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (!isTestContextField(field)) {
+					continue;
+				}
+
+				JPostmanTestContext annotation = JPostmanAnnotations.testContext(field);
+				C context;
+
+				if (isActive(annotation)) {
+					/*
+					 * active = true is a latest-active mirror. Prefer the field value because
+					 * PreparedContexts.update(...) changes the active mirror directly during
+					 * execution. Fall back to the tracked active context, then to the annotated
+					 * namespace only when nothing has run yet.
+					 */
+					context = existingContext(testInstance, field);
+					if (!hasResponse(context)) {
+						C activeContext = contexts.activeContext();
+						if (hasResponse(activeContext) || context == null) {
+							context = activeContext;
+						}
+					}
+					if (context == null) {
+						context = contexts.resolve(annotation.namespace()).context;
+					}
+				} else {
+					PreparedContext<C> prepared = contexts.resolve(annotation.namespace());
+					context = prepared.context;
+
+					/*
+					 * active = false is a namespace mirror. If the injected field already contains
+					 * a response for that namespace, keep it and write it back into
+					 * PreparedContexts so jpostman.ctx(namespace) sees the same response.
+					 */
+					C existing = existingContext(testInstance, field);
+					if (hasResponse(existing)) {
+						framework.copyCache(context, existing);
+						prepared.context = existing;
+						context = existing;
+					}
+				}
+
+				setTestContextField(testInstance, field, context);
+			}
+			current = current.getSuperclass();
+		}
+	}
+
+	private boolean hasResponse(C context) {
+		return context != null && framework.hasResponse(context);
 	}
 
 	void injectLoadedContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
@@ -327,8 +468,8 @@ final class JPostmanContextRunner<C> {
 				Context loggerContext = loggerContext(loaded, testClass);
 				if (JPostmanRuntime.class.isAssignableFrom(field.getType())
 						|| io.jpostman.annotations.JPostman.Runtime.class.isAssignableFrom(field.getType())) {
-					field.set(testInstance,
-							runtime(loggerContext, annotation.namespace(), contexts, compactTestRuntime(field)));
+					field.set(testInstance, runtime(testInstance, loggerContext, annotation.namespace(), contexts,
+							compactTestRuntime(field)));
 				} else {
 					field.set(testInstance, loggerContext);
 				}
@@ -337,15 +478,15 @@ final class JPostmanContextRunner<C> {
 		}
 	}
 
-	private JPostmanRuntime<?> runtime(Context context, String namespace, PreparedContexts<C> contexts,
-			boolean compactTestRuntime) {
+	private JPostmanRuntime<?> runtime(Object testInstance, Context context, String namespace,
+			PreparedContexts<C> contexts, boolean compactTestRuntime) {
 		if (compactTestRuntime) {
 			return new JPostmanRuntime<>(context, namespace,
-					name -> JPostmanTestProxy.wrap(activeContexts(contexts).context(name)),
-					() -> activeContexts(contexts).info());
+					name -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).context(name)),
+					() -> activeContexts(testInstance, contexts).info());
 		}
-		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(contexts).context(name),
-				() -> activeContexts(contexts).info());
+		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
+				() -> activeContexts(testInstance, contexts).info());
 	}
 
 	private boolean compactTestRuntime(Field field) {
@@ -358,9 +499,36 @@ final class JPostmanContextRunner<C> {
 		return arguments.length == 1 && arguments[0] == io.jpostman.annotations.JPostman.Test.class;
 	}
 
-	private PreparedContexts<C> activeContexts(PreparedContexts<C> fallback) {
-		PreparedContexts<C> active = currentContexts.get();
+	private PreparedContexts<C> activeContexts(Object testInstance, PreparedContexts<C> fallback) {
+		PreparedContexts<C> active = currentContexts(testInstance);
 		return active == null ? fallback : active;
+	}
+
+	private static final class ContextKey {
+		private final Object owner;
+		private final Class<?> contextType;
+
+		private ContextKey(Object owner, Class<?> contextType) {
+			this.owner = owner;
+			this.contextType = contextType;
+		}
+
+		@Override
+		public int hashCode() {
+			return 31 * System.identityHashCode(owner) + (contextType == null ? 0 : contextType.hashCode());
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj) {
+				return true;
+			}
+			if (!(obj instanceof ContextKey)) {
+				return false;
+			}
+			ContextKey other = (ContextKey) obj;
+			return owner == other.owner && contextType == other.contextType;
+		}
 	}
 
 	private Context loggerContext(Context context, Class<?> testClass) throws Exception {
