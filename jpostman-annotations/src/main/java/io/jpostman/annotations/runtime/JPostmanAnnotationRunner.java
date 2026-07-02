@@ -118,26 +118,60 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
 		}
 
-		if (requestAnnotation != null) {
-			runAnnotatedRequest(testInstance, prepared, current.collection, requestAnnotation, info,
-					requestAnnotation.data(), stack);
-		}
-
-		if (responseAnnotation != null) {
-			C currentContext = runAnnotatedResponse(testInstance, prepared, current.collection, responseAnnotation,
-					info, responseAnnotation.data(), stack);
-			if (hasResponseExecution(responseAnnotation, info)) {
-				executeResponse(testInstance, prepared, currentContext, responseAnnotation, info, stack);
+		try {
+			if (requestAnnotation != null) {
+				runAnnotatedRequest(testInstance, prepared, current.collection, requestAnnotation, info,
+						requestAnnotation.data(), stack);
 			}
-			prepared.info(info);
-			add(report, info);
-		}
 
-		if (runnerAnnotation != null) {
-			runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
-					info.withTags(runnerAnnotation.tags()), stack);
-			executeRunner(testInstance, prepared, runnerAnnotation, info, stack);
+			if (responseAnnotation != null) {
+				C currentContext = runAnnotatedResponse(testInstance, prepared, current.collection, responseAnnotation,
+						info, responseAnnotation.data(), stack);
+				if (hasResponseExecution(responseAnnotation, info)) {
+					executeResponse(testInstance, prepared, currentContext, responseAnnotation, info, stack);
+				}
+				prepared.info(info);
+				add(report, info);
+			}
+
+			if (runnerAnnotation != null) {
+				runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
+						info.withTags(runnerAnnotation.tags()), stack);
+				executeRunner(testInstance, prepared, runnerAnnotation, info, stack);
+			}
+		} catch (Exception | Error e) {
+			if (isFrameworkSkip(e)) {
+				skippedIfMissing(report, info);
+			} else {
+				failedIfMissing(report, info);
+			}
+			throw e;
 		}
+	}
+
+	private boolean isFrameworkSkip(Throwable throwable) {
+		Throwable current = throwable;
+		for (int depth = 0; current != null && depth < 20; depth++) {
+			if (isFrameworkSkipClass(current)) {
+				return true;
+			}
+
+			Throwable next = current instanceof InvocationTargetException
+					? ((InvocationTargetException) current).getCause()
+					: current.getCause();
+
+			if (next == current) {
+				break;
+			}
+
+			current = next;
+		}
+		return false;
+	}
+
+	private boolean isFrameworkSkipClass(Throwable throwable) {
+		String name = throwable.getClass().getName();
+		return "org.testng.SkipException".equals(name) || "org.opentest4j.TestAbortedException".equals(name);
 	}
 
 	private interface DependencyAction {
@@ -324,9 +358,14 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanResponse annotation, JPostmanInfo parentInfo, List<String> stack) throws Exception {
 
 		String cache = cacheKey(dependencyMethod, annotation.cache());
+		/*
+		 * Response dependencies must use their own annotation location exactly. A blank
+		 * namespace/folder on @JPostmanResponse means the default context/root folder,
+		 * not the caller's current product namespace/folder.
+		 */
 		JPostmanInfo info = parentInfo
-				.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache, annotation.namespace(),
-						annotation.folder(), annotation.request())
+				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
+						annotation.namespace(), annotation.folder(), annotation.request())
 				.annotation("@JPostmanResponse").debug(annotation.logLevel());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
@@ -1127,10 +1166,26 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
+	private void failedIfMissing(JPostmanReport report, JPostmanInfo info) {
+		if (report != null && !isRecorded(report, info)) {
+			report.failed(info);
+		}
+	}
+
 	private void skipped(JPostmanReport report, JPostmanInfo info) {
 		if (report != null) {
 			report.skipped(info);
 		}
+	}
+
+	private void skippedIfMissing(JPostmanReport report, JPostmanInfo info) {
+		if (report != null && !isRecorded(report, info)) {
+			report.skipped(info);
+		}
+	}
+
+	private boolean isRecorded(JPostmanReport report, JPostmanInfo info) {
+		return report.passed.contains(info) || report.failed.contains(info) || report.skipped.contains(info);
 	}
 
 	private void validateResponseSkipEnabled(JPostmanResponse annotation, JPostmanInfo info) {

@@ -85,7 +85,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * @param info passed execution info
 	 */
 	public void passed(JPostmanInfo info) {
-		passed.add(update(info));
+		record(passed, info);
 	}
 
 	/**
@@ -94,7 +94,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * @param info failed execution info
 	 */
 	public void failed(JPostmanInfo info) {
-		failed.add(update(info));
+		record(failed, info);
 	}
 
 	/**
@@ -103,7 +103,35 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * @param info skipped execution info
 	 */
 	public void skipped(JPostmanInfo info) {
-		skipped.add(update(info));
+		record(skipped, info);
+	}
+
+	private void record(List<JPostmanInfo> target, JPostmanInfo info) {
+		update(info);
+		if (!isTopLevel(info)) {
+			return;
+		}
+
+		removeRecorded(info);
+		target.add(info);
+	}
+
+	private boolean isTopLevel(JPostmanInfo info) {
+		return info != null && (info.caller == null || info.caller.isBlank());
+	}
+
+	private void removeRecorded(JPostmanInfo info) {
+		passed.removeIf(existing -> sameTopLevelMethod(existing, info));
+		failed.removeIf(existing -> sameTopLevelMethod(existing, info));
+		skipped.removeIf(existing -> sameTopLevelMethod(existing, info));
+	}
+
+	private boolean sameTopLevelMethod(JPostmanInfo left, JPostmanInfo right) {
+		return isTopLevel(left) && isTopLevel(right) && value(left.callee).equals(value(right.callee));
+	}
+
+	private String value(String value) {
+		return value == null ? "" : value;
 	}
 
 	/** Clears collected execution values but keeps the same report instance. */

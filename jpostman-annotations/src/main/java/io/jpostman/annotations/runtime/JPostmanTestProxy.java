@@ -4,6 +4,8 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanTestAssertions;
@@ -37,7 +39,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return (JPostmanTestAssertions) target;
 		}
 		return (JPostmanTestAssertions) Proxy.newProxyInstance(JPostmanTestAssertions.class.getClassLoader(),
-				new Class<?>[] { JPostmanTestAssertions.class }, new JPostmanAssertionProxy(target));
+				new Class<?>[] { JPostmanTestAssertions.class }, new JPostmanAssertionProxy(target, false));
 	}
 
 	private static JPostmanTestSoftAssertions wrapSoftAssertions(Object target) {
@@ -48,7 +50,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return (JPostmanTestSoftAssertions) target;
 		}
 		return (JPostmanTestSoftAssertions) Proxy.newProxyInstance(JPostmanTestSoftAssertions.class.getClassLoader(),
-				new Class<?>[] { JPostmanTestSoftAssertions.class }, new JPostmanAssertionProxy(target));
+				new Class<?>[] { JPostmanTestSoftAssertions.class }, new JPostmanAssertionProxy(target, true));
 	}
 
 	@Override
@@ -66,15 +68,17 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		Method targetMethod = findTargetMethod(target, name, args);
 		Object result = invokeTarget(targetMethod, target, args);
-		return adaptReturn(proxy, method.getReturnType(), result);
+		return adaptContextReturn(proxy, method, result);
 	}
 
 	private static final class JPostmanAssertionProxy implements InvocationHandler {
 
 		private final Object target;
+		private final boolean soft;
 
-		private JPostmanAssertionProxy(Object target) {
+		private JPostmanAssertionProxy(Object target, boolean soft) {
 			this.target = target;
+			this.soft = soft;
 		}
 
 		@Override
@@ -92,27 +96,56 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 			Method targetMethod = findTargetMethod(target, name, args);
 			Object result = invokeTarget(targetMethod, target, args);
-			return adaptReturn(proxy, method.getReturnType(), result);
+			return adaptAssertionReturn(proxy, method, result, soft);
 		}
 	}
 
-	private static Object adaptReturn(Object proxy, Class<?> returnType, Object result) {
+	private static Object adaptContextReturn(Object proxy, Method method, Object result) {
+		Class<?> returnType = method.getReturnType();
+		String name = method.getName();
+
 		if (returnType == Void.TYPE) {
 			return null;
 		}
-		if (returnType == JPostman.Test.class) {
+		if ("asserts".equals(name) || returnType == JPostmanTestAssertions.class || returnsTypeVariable(method, "A")) {
+			return wrapAssertions(result);
+		}
+		if ("soft".equals(name) || returnType == JPostmanTestSoftAssertions.class || returnsTypeVariable(method, "S")) {
+			return wrapSoftAssertions(result);
+		}
+		if (returnType == JPostman.Test.class || returnsTypeVariable(method, "C")) {
 			return result == null ? proxy : wrap(result);
 		}
-		if (returnType == JPostmanTestSoftAssertions.class) {
-			return result == null ? proxy : wrapSoftAssertions(result);
-		}
-		if (returnType == JPostmanTestAssertions.class) {
-			return result == null ? proxy : wrapAssertions(result);
-		}
-		if (returnType.isInstance(result)) {
+		if (result != null && returnType.isInstance(result)) {
 			return result;
 		}
 		return result;
+	}
+
+	private static Object adaptAssertionReturn(Object proxy, Method method, Object result, boolean soft) {
+		Class<?> returnType = method.getReturnType();
+		String name = method.getName();
+
+		if (returnType == Void.TYPE) {
+			return null;
+		}
+		if ("context".equals(name) || "verify".equals(name) || "assertAll".equals(name)
+				|| returnType == JPostman.Test.class || returnsTypeVariable(method, "C")) {
+			return result == null ? null : wrap(result);
+		}
+		if (returnType == JPostmanTestAssertions.class || returnType == JPostmanTestSoftAssertions.class
+				|| returnsTypeVariable(method, "A")) {
+			return soft ? wrapSoftAssertions(result) : wrapAssertions(result);
+		}
+		if (result != null && returnType.isInstance(result)) {
+			return result;
+		}
+		return result;
+	}
+
+	private static boolean returnsTypeVariable(Method method, String name) {
+		Type type = method.getGenericReturnType();
+		return type instanceof TypeVariable<?> && name.equals(((TypeVariable<?>) type).getName());
 	}
 
 	private static Object invokeTarget(Method method, Object target, Object[] args) throws Throwable {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.7
+
+### Changed
+
+- Updated `JPostmanReport` result recording so dependency helpers update execution info without increasing top-level pass, fail, or skip totals.
+- Updated `JPostmanAnnotationRunner` to record top-level failures and framework skips even when they happen before response execution starts.
+- Updated compact `JPostman.Test` proxy return handling to wrap TestNG and JUnit hard/soft assertion implementations with framework-neutral assertion facades.
+
+### Fixed
+
+- Fixed compact `JPostman.Test.asserts(...)` and `JPostman.Test.soft(...)` chaining when Java generic return types are erased at runtime.
+
 ## 2.0.6
 
 ### Changed
