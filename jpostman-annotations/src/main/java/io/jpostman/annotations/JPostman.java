@@ -77,13 +77,6 @@ public final class JPostman {
 	public @interface Context {
 
 		/**
-		 * Context namespace.
-		 *
-		 * @return namespace, or empty string for the default namespace
-		 */
-		String namespace() default "";
-
-		/**
 		 * JPostman properties file location.
 		 *
 		 * @return config file location

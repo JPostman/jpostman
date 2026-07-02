@@ -123,7 +123,6 @@ final class JPostmanErrors {
 		message.append(blank(info.annotation) ? "JPostman" : info.annotation);
 		if (info.context != null && "@JPostmanContext".equals(info.annotation)) {
 			message.append(": config=").append(defaultValue(info.context.config()));
-			message.append(", namespace=").append(defaultValue(info.context.namespace()));
 			message.append(", collection=").append(defaultValue(info.context.collection()));
 			message.append(", environment=").append(defaultValue(info.context.environment()));
 		} else {

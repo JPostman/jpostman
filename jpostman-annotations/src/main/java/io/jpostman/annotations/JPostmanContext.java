@@ -39,13 +39,6 @@ import io.jpostman.annotations.runtime.JPostmanRuntime;
 public @interface JPostmanContext {
 
 	/**
-	 * Context namespace to use. Empty means default context.
-	 *
-	 * @return context namespace
-	 */
-	String namespace() default "";
-
-	/**
 	 * Properties file to load context locations from.
 	 *
 	 * @return context configuration location

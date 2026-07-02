@@ -69,7 +69,7 @@ public class JPostmanAnnotationUnitTest {
 				() -> runner.setup(new CollectionRequiredFixture()));
 		assertEquals(debug(error.getMessage()), "JPostman collection is required for @JPostmanContext.\n"
 				+ "Configure @JPostmanContext(collection = ...), or provide a valid config file with property collection.\n"
-				+ "(@JPostmanContext: config=<default>, namespace=<default>, collection=<default>, environment=<default>)\n");
+				+ "(@JPostmanContext: config=<default>, collection=<default>, environment=<default>)\n");
 	}
 
 	// JPostman collection is required for @JPostmanContext
@@ -85,7 +85,7 @@ public class JPostmanAnnotationUnitTest {
 				() -> runner.setup(new CollectionRequiredJPostmanContextFixture()));
 		assertEquals(debug(error.getMessage()), "JPostman collection is required for @JPostmanContext.\n"
 				+ "Configure @JPostmanContext(collection = ...), or provide a valid config file with property collection.\n"
-				+ "(@JPostmanContext: config=classpath:jpostman.properties, namespace=<default>, collection=<default>, environment=<default>)\n");
+				+ "(@JPostmanContext: config=classpath:jpostman.properties, collection=<default>, environment=<default>)\n");
 	}
 
 	// Classpath resource not found: classpath:invalid.json
@@ -104,7 +104,7 @@ public class JPostmanAnnotationUnitTest {
 
 	// File or classpath resource not found: CONFIG
 	private static final class PathNotFoundFixture {
-		@JPostmanContext(config = "CONFIG", namespace = "NAMESPACE", environment = "ENVIRONMENT", collection = "classpath:COLLECTION")
+		@JPostmanContext(config = "CONFIG", environment = "ENVIRONMENT", collection = "classpath:COLLECTION")
 		private JPostman.Context jctx;
 	}
 
@@ -113,7 +113,7 @@ public class JPostmanAnnotationUnitTest {
 		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
 		IOException error = expectThrows(IOException.class, () -> runner.setup(new PathNotFoundFixture()));
 		assertEquals(debug(error.getMessage()), "File or classpath resource not found: CONFIG\n"
-				+ "(@JPostmanContext: config=CONFIG, namespace=NAMESPACE, collection=classpath:COLLECTION, environment=ENVIRONMENT)\n");
+				+ "(@JPostmanContext: config=CONFIG, collection=classpath:COLLECTION, environment=ENVIRONMENT)\n");
 	}
 
 	// @JPostmanRequest and @JPostmanExecutor methods must not be annotated with
@@ -135,7 +135,7 @@ public class JPostmanAnnotationUnitTest {
 				() -> runner.setup(new JPostmanRequestTestFixture()));
 		assertEquals(debug(error.getMessage()), "JPostman collection is required for @JPostmanContext.\n"
 				+ "Configure @JPostmanContext(collection = ...), or provide a valid config file with property collection.\n"
-				+ "(@JPostmanContext: config=classpath:jpostman.properties, namespace=<default>, collection=<default>, environment=<default>)\n");
+				+ "(@JPostmanContext: config=classpath:jpostman.properties, collection=<default>, environment=<default>)\n");
 	}
 
 	// @JPostmanRequest and @JPostmanExecutor methods must not be annotated with
@@ -158,7 +158,7 @@ public class JPostmanAnnotationUnitTest {
 				() -> runner.setup(new JPostmanExecutorTestFixture()));
 		assertEquals(debug(error.getMessage()), "JPostman collection is required for @JPostmanContext.\n"
 				+ "Configure @JPostmanContext(collection = ...), or provide a valid config file with property collection.\n"
-				+ "(@JPostmanContext: config=classpath:jpostman.properties, namespace=<default>, collection=<default>, environment=<default>)\n");
+				+ "(@JPostmanContext: config=classpath:jpostman.properties, collection=<default>, environment=<default>)\n");
 	}
 
 	// No default @JPostmanExecutor was configured.
@@ -181,7 +181,7 @@ public class JPostmanAnnotationUnitTest {
 		runner.setup(fixture);
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "No default @JPostmanExecutor was configured.\n"
-				+ "Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"id\".\n"
+				+ "Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"#id\".\n"
 				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n");
 	}
 
@@ -653,17 +653,17 @@ public class JPostmanAnnotationUnitTest {
 				+ "The same field is configured in @JPostmanContext and config properties file.\n"
 				+ "Using @JPostmanContext value: collection=classpath:DummyJSON.all_product_collection.json\n"
 				+ "Ignored config mapping: classpath:my_jpostman.properties -> collection=classpath:DummyJSON.all_product_collection.json\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, namespace=<default>, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
+				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
 				+ System.lineSeparator() + "Redundant JPostman environment mapping ignored.\n"
 				+ "The same field is configured in @JPostmanContext and config properties file.\n"
 				+ "Using @JPostmanContext value: environment=classpath:DummyJSON.postman_environment.json\n"
 				+ "Ignored config mapping: classpath:my_jpostman.properties -> environment=classpath:DummyJSON.postman_environment.json\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, namespace=<default>, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
+				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
 				+ System.lineSeparator() + "Redundant JPostman rules mapping ignored.\n"
 				+ "The same field is configured in @JPostmanContext and config properties file.\n"
 				+ "Using @JPostmanContext value: rules=classpath:jpostman-rules.ini\n"
 				+ "Ignored config mapping: classpath:my_jpostman.properties -> rules=classpath:jpostman-rules.ini\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, namespace=<default>, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
+				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
 				+ System.lineSeparator(), "Actual output: " + output);
 	}
 
@@ -704,7 +704,7 @@ public class JPostmanAnnotationUnitTest {
 				+ "The same data file is configured more than once.\n"
 				+ "Using @JPostmanContext value: dataload=classpath:product-data.ini\n"
 				+ "Ignored config mapping: classpath:my_jpostman.properties -> dataload=classpath:product-data.ini\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, namespace=<default>, collection=classpath:DummyJSON.all_product_collection.json, environment=<default>)\n"
+				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=<default>)\n"
 				+ System.lineSeparator(), output);
 
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));

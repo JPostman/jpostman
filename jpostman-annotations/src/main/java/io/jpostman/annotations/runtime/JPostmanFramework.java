@@ -162,6 +162,7 @@ public interface JPostmanFramework<C> {
 		applySetOrMap(builder.url(), info.query);
 		applySetOrMap(builder.headers(), info.headers);
 		applyBodySetOrMap(builder.body(), request, info.body);
+		applyOAuth2Header(builder.headers(), info.auth);
 
 		applyAdd(builder.url(), info.queryAdd);
 		applyAdd(builder.headers(), info.headersAdd);
@@ -226,11 +227,52 @@ public interface JPostmanFramework<C> {
 	}
 
 	private static JsonObject bodyObject(Request request) {
-		if (request == null || request.getBody() == null) {
+		try {
+			if (request == null || request.getBody() == null) {
+				return null;
+			}
+			JsonElement parsed = request.getBody().getParsed();
+			return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+		} catch (RuntimeException ex) {
 			return null;
 		}
-		JsonElement parsed = request.getBody().getParsed();
-		return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+	}
+
+	private static void applyOAuth2Header(Request.RequestBuilder.ParamStep headers, Map<String, Object> auth) {
+		if (headers == null || auth == null || auth.isEmpty()) {
+			return;
+		}
+
+		Object token = firstAuthValue(auth, "oauth2", "bearer");
+		if (token == null) {
+			return;
+		}
+
+		Object value = JPostmanInfo.reveal(token);
+		if (value == null || String.valueOf(value).isBlank()) {
+			return;
+		}
+
+		setOrAdd(headers, "Authorization", "Bearer " + value);
+	}
+
+	private static Object firstAuthValue(Map<String, Object> auth, String... keys) {
+		for (String key : keys) {
+			Object value = auth.get(key);
+			Object raw = JPostmanInfo.reveal(value);
+			if (raw != null && !String.valueOf(raw).isBlank()) {
+				return value;
+			}
+		}
+		return null;
+	}
+
+	private static void setOrAdd(Request.RequestBuilder.ParamStep step, String key, Object value) {
+		try {
+			step.set(key, value);
+		} catch (IllegalArgumentException ex) {
+			step.add(key, value);
+		}
 	}
 
 	private static void applyAdd(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {

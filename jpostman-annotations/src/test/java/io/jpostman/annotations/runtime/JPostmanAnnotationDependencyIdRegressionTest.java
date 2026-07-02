@@ -38,6 +38,19 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@Test
+	public void annotationIdsMayReuseHashPrefixedConstants() throws Exception {
+		HashPrefixedIdConstantFixture fixture = new HashPrefixedIdConstantFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.tokenCalls);
+		assertEquals(1, fixture.profileCalls);
+		assertEquals("token", fixture.tokenInfoId);
+		assertEquals("profile", fixture.profileInfoId);
+	}
+
+	@Test
 	public void dependencyIdRequiresHashPrefix() throws Exception {
 		IdRequiresHashFixture fixture = new IdRequiresHashFixture();
 		JPostmanAnnotationEngine.setupTestNg(fixture);
@@ -157,6 +170,47 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@JPostman.TestNG
+	private static final class HashPrefixedIdConstantFixture {
+		private static final String TOKEN = "#token";
+		private static final String PROFILE = "#profile";
+
+		@JPostman.Context(verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int tokenCalls;
+		private int profileCalls;
+		private String tokenInfoId;
+		private String profileInfoId;
+
+		@JPostman.Response(id = TOKEN, request = "Login user and get tokens", cache = "token")
+		public String token(TestNgContext ctx, JPostmanInfo info) {
+			tokenCalls++;
+			tokenInfoId = info.id;
+			return ctx.path("accessToken");
+		}
+
+		@JPostman.Request(id = PROFILE, dependsOn = TOKEN)
+		public void profileRequest(TestNgContext ctx, JPostmanInfo info) {
+			profileCalls++;
+			profileInfoId = info.id;
+			assertEquals("token-123", ctx.cache("token"));
+		}
+
+		@JPostman.Response(request = "Get current auth user", dependsOn = PROFILE, verify = 200)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			if (ctx.request().log().contains("Login user and get tokens")) {
+				return okExecutor("{\"accessToken\":\"token-123\"}");
+			}
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	@JPostman.TestNG
 	private static final class IdRequiresHashFixture {
 
 		@JPostman.Context(verifyStatusCode = 200)
@@ -175,6 +229,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 
 	@JPostman.TestNG
 	private static final class ExecutorByIdFixture {
+		private static final String HTTP = "#http";
 
 		@JPostman.Context(verifyStatusCode = 200)
 		private JPostman.Runtime<JPostman.Test> jpostman;
@@ -182,12 +237,12 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		private int idExecutorCalls;
 		private int methodNameExecutorCalls;
 
-		@JPostman.Response(request = "Login user and get tokens", executor = "#http", verify = 200)
+		@JPostman.Response(request = "Login user and get tokens", executor = HTTP, verify = 200)
 		@org.testng.annotations.Test
 		public void loginResponse() {
 		}
 
-		@JPostman.Executor(id = "http")
+		@JPostman.Executor(id = HTTP)
 		public ApiExecutor httpExecutor(TestNgContext ctx, JPostmanInfo info) {
 			idExecutorCalls++;
 			assertEquals("http", info.id);
@@ -224,7 +279,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		@JPostman.Context(verifyStatusCode = 200)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Request(id = "shared")
+		@JPostman.Request(id = "#shared")
 		public void requestById(TestNgContext ctx, JPostmanInfo info) {
 		}
 
@@ -233,7 +288,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		public void responseById() {
 		}
 
-		@JPostman.Executor(id = "shared")
+		@JPostman.Executor(id = "#shared")
 		public ApiExecutor executorById(TestNgContext ctx, JPostmanInfo info) {
 			return okExecutor("{}");
 		}

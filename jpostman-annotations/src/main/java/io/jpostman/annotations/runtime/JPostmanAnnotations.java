@@ -201,7 +201,6 @@ public final class JPostmanAnnotations {
 			message.append(JPostmanErrors.ENDL);
 		}
 		message.append("(@JPostmanContext: config=").append(defaultValue(context.config()));
-		message.append(", namespace=").append(defaultValue(context.namespace()));
 		message.append(", collection=").append(defaultValue(context.collection()));
 		message.append(", environment=").append(defaultValue(context.environment()));
 		message.append(")").append(JPostmanErrors.ENDL);

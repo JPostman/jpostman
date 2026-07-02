@@ -433,6 +433,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		runner.run(fixture, method);
 
+		assertNotNull(fixture.loaded);
 		assertNotNull(fixture.product);
 		assertNotNull(fixture.product.request());
 	}
@@ -941,12 +942,11 @@ public class JPostmanAnnotationCoverageTest {
 		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
 				() -> runner.setup(new InvalidCompactExecutorMissingClassFixture()));
 
-		assertEquals(
-				"Invalid JPostman executor class: bad.missing.Executor\n" + "The executor class could not be loaded.\n"
-						+ "Use a fully qualified class name available on the test classpath.\n"
-						+ "Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\".\n"
-						+ "(@JPostmanContext: config=<default>, namespace=<default>, collection=" + COLLECTION
-						+ ", environment=<default>)\n",
+		assertEquals("Invalid JPostman executor class: bad.missing.Executor\n"
+				+ "The executor class could not be loaded.\n"
+				+ "Use a fully qualified class name available on the test classpath.\n"
+				+ "Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\".\n"
+				+ "(@JPostmanContext: config=<default>, collection=" + COLLECTION + ", environment=<default>)\n",
 				error.getMessage());
 	}
 
@@ -1578,8 +1578,8 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	private static final class ProductFixture {
 
-		@JPostmanContext(namespace = "product")
-		private io.jpostman.JPostman.Context loadedProduct;
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
 
 		@JPostmanTestContext(namespace = "product")
 		private JUnitContext product;

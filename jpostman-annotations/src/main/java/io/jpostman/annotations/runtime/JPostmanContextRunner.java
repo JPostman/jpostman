@@ -13,6 +13,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +46,8 @@ final class JPostmanContextRunner<C> {
 	}
 
 	PreparedContexts<C> prepare(Object testInstance) throws Exception {
+		validateContextDefinitions(testInstance);
+
 		PreparedContexts<C> previous = currentContexts(testInstance);
 		PreparedContexts<C> prepared = new PreparedContexts<>();
 
@@ -120,6 +123,48 @@ final class JPostmanContextRunner<C> {
 		return hasResponse(previousContext) && !hasResponse(target) ? previousContext : target;
 	}
 
+	private void validateContextDefinitions(Object testInstance) {
+		List<Field> fields = contextFields(testInstance);
+		if (fields.isEmpty()) {
+			return;
+		}
+
+		if (fields.size() > 1) {
+			JPostmanContext annotation = JPostmanAnnotations.context(fields.get(0));
+			throw new IllegalStateException(JPostmanErrors.message(annotation,
+					"Only one @JPostman.Context/@JPostmanContext field is allowed per test class.",
+					"Use one @JPostman.Context field to load and control the JPostman app configuration.",
+					"Use @JPostman.TestContext(namespace = \"...\") when a test needs direct access to a namespace context.",
+					"Found context fields: " + contextFieldNames(fields) + "."));
+		}
+
+	}
+
+	private List<Field> contextFields(Object testInstance) {
+		List<Field> fields = new ArrayList<>();
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (JPostmanAnnotations.context(field) != null) {
+					fields.add(field);
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return fields;
+	}
+
+	private String contextFieldNames(List<Field> fields) {
+		StringBuilder result = new StringBuilder();
+		for (Field field : fields) {
+			if (result.length() > 0) {
+				result.append(", ");
+			}
+			result.append(field.getDeclaringClass().getSimpleName()).append(".").append(field.getName());
+		}
+		return result.toString();
+	}
+
 	private void prepareNamedContexts(Object testInstance, PreparedContexts<C> prepared) throws Exception {
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
@@ -188,12 +233,12 @@ final class JPostmanContextRunner<C> {
 									+ field.getName());
 				}
 
-				if (prepared.contains(annotation.namespace())) {
+				if (prepared.contains("")) {
 					continue;
 				}
 
 				PreparedContext<C> context = createContext(annotation, testInstance.getClass());
-				prepared.put(annotation.namespace(), context);
+				prepared.put("", context);
 			}
 			current = current.getSuperclass();
 		}
@@ -450,11 +495,11 @@ final class JPostmanContextRunner<C> {
 
 				JPostman.Context loaded;
 
-				if (contexts.contains(annotation.namespace())) {
-					loaded = contexts.resolve(annotation.namespace()).loaded;
+				if (contexts.contains("")) {
+					loaded = contexts.resolve("").loaded;
 				} else {
 					Properties properties = loadProperties(annotation.config(), testClass, annotation);
-					String namespace = annotation.namespace();
+					String namespace = "";
 					String collectionLocation = firstNonBlank(annotation.collection(),
 							propertyOrDefault(properties, "collection", namespace));
 					String environmentLocation = firstNonBlank(annotation.environment(),
@@ -474,8 +519,8 @@ final class JPostmanContextRunner<C> {
 				Context loggerContext = loggerContext(loaded, testClass);
 				if (JPostmanRuntime.class.isAssignableFrom(field.getType())
 						|| io.jpostman.annotations.JPostman.Runtime.class.isAssignableFrom(field.getType())) {
-					field.set(testInstance, runtime(testInstance, loggerContext, annotation.namespace(), contexts,
-							compactTestRuntime(field)));
+					field.set(testInstance,
+							runtime(testInstance, loggerContext, "", contexts, compactTestRuntime(field)));
 				} else {
 					field.set(testInstance, loggerContext);
 				}
@@ -556,7 +601,7 @@ final class JPostmanContextRunner<C> {
 
 		Properties properties = loadProperties(annotation.config(), testClass, annotation);
 
-		String namespace = annotation.namespace();
+		String namespace = "";
 		String collectionLocation = resolveContextLocation(annotation, "collection", namespace, annotation.collection(),
 				propertyOrDefault(properties, "collection", namespace));
 		String environmentLocation = resolveContextLocation(annotation, "environment", namespace,
@@ -615,11 +660,11 @@ final class JPostmanContextRunner<C> {
 				key, annotation.config(), annotation);
 
 		/*
-		 * For the annotation's own namespace, explicit annotation attributes still win.
-		 * For other runtime namespaces, namespace-specific properties win and blank
-		 * values fall back to the already-loaded source context.
+		 * The app-level @JPostmanContext owns only the default namespace. For runtime
+		 * namespaces, namespace-specific properties win and blank values fall back to
+		 * the already-loaded source context.
 		 */
-		if (key.equals(annotation.namespace())) {
+		if (key.isBlank()) {
 			collectionLocation = firstNonBlank(annotation.collection(), collectionLocation);
 			environmentLocation = firstNonBlank(annotation.environment(), environmentLocation);
 			rulesLocation = firstNonBlank(annotation.rules(), rulesLocation);

@@ -60,6 +60,19 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		assertTrue(Arrays.asList(info.secretHeaders()).contains("X-Secret"));
 	}
 
+	@Test
+	public void sauthOAuth2AddsBearerAuthorizationHeaderForExecutorCompatibility() throws Exception {
+		Request request = requestWithExistingBodyQueryAndHeader();
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");
+
+		info.sauth("oauth2", "secret-token");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		assertEquals("Bearer secret-token", updated.getHeader().get("Authorization"));
+		assertEquals("secret-token", info.secretValues().get("oauth2"));
+	}
+
 	private static Request requestWithExistingBodyQueryAndHeader() throws Exception {
 		String json = "{\"item\":[{\"name\":\"Update product\",\"request\":{\"method\":\"POST\","
 				+ "\"url\":{\"raw\":\"https://example.com/products?limit={{limit}}\","

@@ -72,15 +72,15 @@ final class JPostmanRuntimeOptions {
 
 		try {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
-			logs = booleanValue(property(properties, "logs", annotation.namespace()), logs);
-			debug = stringValue(property(properties, "logLevel", annotation.namespace()), debug);
-			debugFormat = stringValue(property(properties, "debugFormat", annotation.namespace()), debugFormat);
-			defaultStatusCode = intValue(property(properties, "defaultStatusCode", annotation.namespace()),
-					defaultStatusCode);
-			executorClass = classValue(property(properties, "executor", annotation.namespace()), executorClass,
+			String namespace = "";
+			logs = booleanValue(property(properties, "logs", namespace), logs);
+			debug = stringValue(property(properties, "logLevel", namespace), debug);
+			debugFormat = stringValue(property(properties, "debugFormat", namespace), debugFormat);
+			defaultStatusCode = intValue(property(properties, "defaultStatusCode", namespace), defaultStatusCode);
+			executorClass = classValue(property(properties, "executor", namespace), executorClass,
 					testInstance.getClass().getClassLoader(), annotation);
-			session = booleanValue(property(properties, "session", annotation.namespace()), session);
-			session = booleanValue(property(properties, "cookie", annotation.namespace()), session);
+			session = booleanValue(property(properties, "session", namespace), session);
+			session = booleanValue(property(properties, "cookie", namespace), session);
 		} catch (RuntimeException e) {
 			throw e;
 		} catch (Exception e) {

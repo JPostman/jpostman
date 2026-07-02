@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.1.1
+
+### Added
+
+- Added annotation id normalization so `id = "#token"` is stored and reported as `token`, while `dependsOn = "#token"` and `executor = "#token"` continue to resolve by annotation id.
+- Added validation that only one app-level `@JPostman.Context` / `@JPostmanContext` field is allowed per test class.
+- Added regression coverage for single app context setup with namespace `@JPostman.TestContext` mirrors, hash-prefixed id constants, duplicate id normalization, and OAuth2 bearer header compatibility.
+
+### Fixed
+
+- Restored compatibility for `info.auth("oauth2", token)` and `info.sauth("oauth2", token)` by applying `Authorization: Bearer <token>` to request headers while keeping generic auth values as runtime metadata.
+
+### Removed
+
+- Removed `namespace()` from compact `@JPostman.Context`.
+- Removed `namespace()` from legacy `@JPostmanContext`.
+
 ## 2.1.0
 
 ### Added

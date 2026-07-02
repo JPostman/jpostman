@@ -29,6 +29,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private static final Object VOID_DEPENDENCY_MARKER = new Object();
 	private static final String NO_CACHE = JPostmanRequest.NO_CACHE;
+	private static final String ID_PREFIX = "#";
 
 	private final JPostmanFramework<C> framework;
 	private final JPostmanContextRunner<C> contextRunner;
@@ -369,7 +370,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
 						annotation.namespace(), annotation.folder(), annotation.request())
-				.annotation("@JPostmanResponse").id(annotation.id()).debug(annotation.logLevel());
+				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.logLevel());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
 		JPostmanReport report = report(testInstance);
@@ -435,7 +436,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo dependencyInfo = parentInfo
 				.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache, annotation.namespace(),
 						annotation.folder(), annotation.request())
-				.annotation("@JPostmanRequest").id(annotation.id()).debug(annotation.logLevel());
+				.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.logLevel());
 		resolver.info(dependencyInfo);
 		JPostmanReport report = report(testInstance);
 		add(report, dependencyInfo);
@@ -1246,6 +1247,24 @@ public final class JPostmanAnnotationRunner<C> {
 		return value == null ? "" : value;
 	}
 
+	private String annotationId(String id) {
+		String value = value(id).trim();
+		return value.startsWith(ID_PREFIX) ? value.substring(ID_PREFIX.length()).trim() : value;
+	}
+
+	private boolean isIdReference(String value) {
+		return value != null && value.trim().startsWith(ID_PREFIX);
+	}
+
+	private String idReferenceValue(String value) {
+		String reference = value(value).trim();
+		return reference.startsWith(ID_PREFIX) ? reference.substring(ID_PREFIX.length()).trim() : reference;
+	}
+
+	private String idReference(String id) {
+		return ID_PREFIX + annotationId(id);
+	}
+
 	private boolean isBlank(String value) {
 		return value == null || value.isBlank();
 	}
@@ -1286,7 +1305,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void collectAnnotationId(Map<String, List<Method>> ids, Method method, String id) {
-		String value = value(id).trim();
+		String value = annotationId(id);
 		if (!value.isBlank()) {
 			ids.computeIfAbsent(value, key -> new ArrayList<>()).add(method);
 		}
@@ -1330,17 +1349,17 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private String requestId(Method method) {
 		JPostmanRequest annotation = JPostmanAnnotations.request(method);
-		return annotation == null ? "" : annotation.id();
+		return annotation == null ? "" : annotationId(annotation.id());
 	}
 
 	private String responseId(Method method) {
 		JPostmanResponse annotation = JPostmanAnnotations.response(method);
-		return annotation == null ? "" : annotation.id();
+		return annotation == null ? "" : annotationId(annotation.id());
 	}
 
 	private String executorId(Method method) {
 		JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
-		return annotation == null ? "" : annotation.id();
+		return annotation == null ? "" : annotationId(annotation.id());
 	}
 
 	private void validateExecutors(Object testInstance) {
@@ -1362,7 +1381,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 				validateExecutorMethod(method, invalidSignatures, invalidReturns);
 
-				String id = value(annotation.id()).trim();
+				String id = annotationId(annotation.id());
 				if (!id.isBlank()) {
 					ids.computeIfAbsent(id, key -> new ArrayList<>()).add(method);
 				}
@@ -1441,7 +1460,7 @@ public final class JPostmanAnnotationRunner<C> {
 					.append(JPostmanErrors.ENDL);
 			for (Method method : defaults) {
 				JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
-				String id = annotation == null ? "" : value(annotation.id()).trim();
+				String id = annotation == null ? "" : annotationId(annotation.id());
 				message.append("- ").append(signature(method));
 				if (!id.isBlank()) {
 					message.append(" id=\"").append(id).append("\"");
@@ -1535,7 +1554,8 @@ public final class JPostmanAnnotationRunner<C> {
 			return invokeExecutor(testInstance, method, ctx, info);
 		}
 
-		String key = method.getDeclaringClass().getName() + "#" + method.getName() + ":" + value(annotation.id());
+		String key = method.getDeclaringClass().getName() + ID_PREFIX + method.getName() + ":"
+				+ annotationId(annotation.id());
 		ApiExecutor cached = sessionExecutors.get(key);
 		if (cached != null) {
 			return cached;
@@ -1589,7 +1609,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
 		JPostmanInfo executorInfo = info
 				.child(method.getName(), info.executor, info.namespace, info.folder, info.request)
-				.annotation("@JPostmanExecutor").id(annotation.id()).debug(annotation.logLevel());
+				.annotation("@JPostmanExecutor").id(annotationId(annotation.id())).debug(annotation.logLevel());
 		return new ExecutorCall<>(method, annotation, executorInfo);
 	}
 
@@ -1602,7 +1622,7 @@ public final class JPostmanAnnotationRunner<C> {
 					continue;
 				}
 
-				String id = value(annotation.id()).trim();
+				String id = annotationId(annotation.id());
 				if (id.isBlank() || "default".equals(id)) {
 					return true;
 				}
@@ -1619,8 +1639,8 @@ public final class JPostmanAnnotationRunner<C> {
 		List<Method> namedDefault = new ArrayList<>();
 		List<Method> unnamed = new ArrayList<>();
 
-		if (!requested.isBlank() && requested.startsWith("#")) {
-			String id = requested.substring(1).trim();
+		if (!requested.isBlank() && isIdReference(requested)) {
+			String id = idReferenceValue(requested);
 			if (id.isBlank()) {
 				throw JPostmanErrors.usage(info, "JPostman executor id is empty: " + requestedName,
 						"Use executor = \"methodName\" for Java method names, or executor = \"#id\" for annotation ids.");
@@ -1653,7 +1673,7 @@ public final class JPostmanAnnotationRunner<C> {
 				validateExecutorMethod(method, info);
 				method.setAccessible(true);
 
-				String id = value(annotation.id()).trim();
+				String id = annotationId(annotation.id());
 
 				if (!requested.isBlank()) {
 					if (method.getName().equals(requested)) {
@@ -1688,7 +1708,7 @@ public final class JPostmanAnnotationRunner<C> {
 			if (idMethod != null) {
 				throw JPostmanErrors.usage(info, "Executor method not found: " + requested,
 						"Found @JPostmanExecutor id \"" + requested + "\" on " + signature(idMethod) + ".",
-						"Use executor = \"#" + requested + "\" to select by id.");
+						"Use executor = \"" + idReference(requested) + "\" to select by id.");
 			}
 
 			throw JPostmanErrors.usage(info, "JPostman executor not found: " + requested,
@@ -1776,8 +1796,8 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private Method findDependencyMethod(Class<?> type, String dependencyName, JPostmanInfo info) {
 		String value = value(dependencyName).trim();
-		if (value.startsWith("#")) {
-			String id = value.substring(1).trim();
+		if (isIdReference(value)) {
+			String id = idReferenceValue(value);
 			if (id.isBlank()) {
 				throw JPostmanErrors.usage(info, "JPostman dependency id is empty: " + dependencyName,
 						"Use dependsOn = \"methodName\" for Java method names, or dependsOn = \"#id\" for annotation ids.");
@@ -1790,7 +1810,7 @@ public final class JPostmanAnnotationRunner<C> {
 			if (executor != null) {
 				throw JPostmanErrors.usage(info, "JPostman dependency id refers to an executor: " + dependencyName,
 						"dependsOn can call @JPostmanRequest, @JPostmanResponse, or @JPostmanRunner dependencies.",
-						"Use executor = \"#" + id + "\" to select an @JPostmanExecutor by id.");
+						"Use executor = \"" + idReference(id) + "\" to select an @JPostmanExecutor by id.");
 			}
 			throw JPostmanErrors.usage(info, "JPostman dependency id not found: " + dependencyName);
 		}
@@ -1802,14 +1822,14 @@ public final class JPostmanAnnotationRunner<C> {
 			if (idMethod != null) {
 				throw JPostmanErrors.usage(info, "Dependency method not found: " + dependencyName,
 						"Found JPostman annotation id \"" + value + "\" on " + signature(idMethod) + ".",
-						"Use dependsOn = \"#" + value + "\" to depend by id.");
+						"Use dependsOn = \"" + idReference(value) + "\" to depend by id.");
 			}
 			throw e;
 		}
 	}
 
 	private Method findDependencyMethodById(Class<?> type, String id) {
-		String requested = value(id).trim();
+		String requested = annotationId(id);
 		if (requested.isBlank()) {
 			return null;
 		}
@@ -1835,10 +1855,10 @@ public final class JPostmanAnnotationRunner<C> {
 	private String annotationDependencyId(Method method) {
 		JPostmanRequest request = JPostmanAnnotations.request(method);
 		if (request != null) {
-			return value(request.id()).trim();
+			return annotationId(request.id());
 		}
 		JPostmanResponse response = JPostmanAnnotations.response(method);
-		return response == null ? "" : value(response.id()).trim();
+		return response == null ? "" : annotationId(response.id());
 	}
 
 	private Method findExecutorMethodByName(Class<?> type, String name) {
@@ -1861,7 +1881,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private Method findExecutorMethodById(Class<?> type, String id) {
-		String requested = value(id).trim();
+		String requested = annotationId(id);
 		if (requested.isBlank()) {
 			return null;
 		}
@@ -1870,7 +1890,7 @@ public final class JPostmanAnnotationRunner<C> {
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
 				JPostmanExecutor executor = JPostmanAnnotations.executor(method);
-				if (executor != null && requested.equals(value(executor.id()).trim())) {
+				if (executor != null && requested.equals(annotationId(executor.id()))) {
 					method.setAccessible(true);
 					return method;
 				}

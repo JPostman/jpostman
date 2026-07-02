@@ -27,6 +27,8 @@ import io.jpostman.annotations.JPostmanContext;
  */
 public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info {
 
+	private static final String ID_PREFIX = "#";
+
 	private static final Logger log = LoggerFactory.getLogger(JPostmanInfo.class);
 
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
@@ -580,8 +582,13 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this info object
 	 */
 	public JPostmanInfo id(String value) {
-		id = value(value);
+		id = annotationId(value);
 		return this;
+	}
+
+	static String annotationId(String value) {
+		String id = value(value).trim();
+		return id.startsWith(ID_PREFIX) ? id.substring(ID_PREFIX.length()).trim() : id;
 	}
 
 	/**
