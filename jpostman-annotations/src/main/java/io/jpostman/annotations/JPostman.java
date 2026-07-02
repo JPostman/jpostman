@@ -257,9 +257,10 @@ public final class JPostman {
 		String id() default "";
 
 		/**
-		 * Dependency method names.
+		 * Dependency method names or annotation ids. Use plain values for Java method
+		 * names, or prefix ids with "#", such as dependsOn = "#login".
 		 *
-		 * @return dependency method names
+		 * @return dependency method names or "#id" references
 		 */
 		String[] dependsOn() default {};
 
@@ -291,6 +292,13 @@ public final class JPostman {
 		 * @return tags
 		 */
 		String[] tags() default {};
+
+		/**
+		 * Optional annotation id used by dependsOn = "#id".
+		 *
+		 * @return unique annotation id, or empty string when not used
+		 */
+		String id() default "";
 
 		/**
 		 * Request namespace.
@@ -328,9 +336,10 @@ public final class JPostman {
 		String[] filter() default {};
 
 		/**
-		 * Dependency method names.
+		 * Dependency method names or annotation ids. Use plain values for Java method
+		 * names, or prefix ids with "#", such as dependsOn = "#login".
 		 *
-		 * @return dependency method names
+		 * @return dependency method names or "#id" references
 		 */
 		String[] dependsOn() default {};
 
@@ -389,6 +398,13 @@ public final class JPostman {
 		 * @return tags
 		 */
 		String[] tags() default {};
+
+		/**
+		 * Optional annotation id used by dependsOn = "#id".
+		 *
+		 * @return unique annotation id, or empty string when not used
+		 */
+		String id() default "";
 
 		/**
 		 * Response namespace.

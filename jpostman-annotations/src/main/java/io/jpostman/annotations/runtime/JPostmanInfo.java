@@ -72,6 +72,12 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public String annotation;
 
 	/**
+	 * Optional annotation id associated with this invocation, or empty string when
+	 * none. Dependency declarations can reference ids with dependsOn = "#id".
+	 */
+	public String id;
+
+	/**
 	 * JPostman data section applied to this invocation, or empty string when none.
 	 */
 	public String data;
@@ -175,6 +181,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		this.caller = value(caller);
 		this.callee = value(callee);
 		this.annotation = "";
+		this.id = "";
 		this.data = "";
 		this.debug = "";
 		this.namespace = value(namespace);
@@ -342,6 +349,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	private JPostmanInfo copyMeta(JPostmanInfo copy) {
 		copy.annotation = this.annotation;
+		copy.id = this.id;
 		copy.data = this.data;
 		copy.debug = this.debug;
 		return copy;
@@ -543,6 +551,17 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo annotation(String value) {
 		annotation = value(value);
+		return this;
+	}
+
+	/**
+	 * Updates the annotation id represented by this invocation.
+	 *
+	 * @param value annotation id
+	 * @return this info object
+	 */
+	public JPostmanInfo id(String value) {
+		id = value(value);
 		return this;
 	}
 
@@ -1031,6 +1050,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 		builder.append("JPostmanInfo {");
 		append(builder, "annotation", annotation);
+		append(builder, "id", id);
 		if (tags.length > 0)
 			builder.append("\n  tags=").append(Arrays.toString(tags));
 		append(builder, "callee", callee);

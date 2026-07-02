@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.9
+
+### Added
+
+- Added `id` to `@JPostmanRequest`, `@JPostmanResponse`, and compact `@JPostman.Request` / `@JPostman.Response` annotations.
+- Added strict annotation-id dependency references with `dependsOn = "#id"` for `@JPostmanRequest`, `@JPostmanResponse`, and `@JPostmanRunner` dependency methods.
+- Added strict executor-id references with `executor = "#id"` while keeping plain `executor = "methodName"` as method-name-only lookup.
+- Added `JPostmanInfo.id` so request, response, and executor invocation logs can show the resolved annotation id.
+
+### Changed
+
+- Changed dependency resolution so plain `dependsOn = "name"` resolves only Java method names, while `dependsOn = "#name"` resolves only annotation ids.
+- Updated dependency and executor error messages to suggest `#id` when an annotation id exists but the user used a plain method-style reference.
+
 ## 2.0.8
 
 ### Added

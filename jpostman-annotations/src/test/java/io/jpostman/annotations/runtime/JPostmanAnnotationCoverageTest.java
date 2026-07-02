@@ -1535,12 +1535,12 @@ public class JPostmanAnnotationCoverageTest {
 		 * Response flow that depends on login and uses the named auth executor.
 		 */
 		@JPostmanResponse(request = "Get current auth user", rule = "user", dependsOn = {
-				"login" }, executor = "auth", verify = 200)
+				"login" }, executor = "#auth", verify = 200)
 		void getCurrentAuthUser() {
 		}
 
 		/**
-		 * Named executor selected by unique id: executor = "auth".
+		 * Named executor selected by unique id: executor = "#auth".
 		 */
 		@JPostmanExecutor(id = "auth", dependsOn = { "login" })
 		ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
@@ -1624,11 +1624,11 @@ public class JPostmanAnnotationCoverageTest {
 		}
 
 		@JPostmanRunner(dependsOn = { "runnerDependency" }, include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "runner", verify = 200)
+				"Get current auth user" }, executor = "#runner", verify = 200)
 		void runProducts() {
 		}
 
-		@JPostmanResponse(request = "Get current auth user", executor = "runner")
+		@JPostmanResponse(request = "Get current auth user", executor = "#runner")
 		void explicitResponseForSkip() {
 		}
 
@@ -1710,20 +1710,20 @@ public class JPostmanAnnotationCoverageTest {
 		private int executorCount;
 		private final List<String> executorMethodNames = new java.util.ArrayList<>();
 
-		@JPostmanResponse(request = "Get current auth user", executor = "dependency", verify = 200)
+		@JPostmanResponse(request = "Get current auth user", executor = "#dependency", verify = 200)
 		String responseDependency() {
 			responseDependencyCount++;
 			return "response-cache-value";
 		}
 
-		@JPostmanRunner(include = { "Login user and get tokens" }, executor = "dependency", verify = 200)
+		@JPostmanRunner(include = { "Login user and get tokens" }, executor = "#dependency", verify = 200)
 		String runnerDependency() {
 			runnerDependencyCount++;
 			return "runner-cache-value";
 		}
 
 		@JPostmanResponse(request = "Get current auth user", dependsOn = { "responseDependency",
-				"runnerDependency" }, executor = "dependency", verify = 200)
+				"runnerDependency" }, executor = "#dependency", verify = 200)
 		void mainResponse() {
 		}
 
@@ -1791,7 +1791,7 @@ public class JPostmanAnnotationCoverageTest {
 		}
 
 		@JPostmanResponse(request = "Get current auth user", dependsOn = {
-				"helloWorld" }, executor = "info", verify = 200)
+				"helloWorld" }, executor = "#info", verify = 200)
 		void response() {
 		}
 
@@ -1951,7 +1951,7 @@ public class JPostmanAnnotationCoverageTest {
 		}
 
 		@org.testng.annotations.Test
-		@JPostmanResponse(request = "Get current auth user", executor = "listener", verify = 200)
+		@JPostmanResponse(request = "Get current auth user", executor = "#listener", verify = 200)
 		void validTest() {
 		}
 

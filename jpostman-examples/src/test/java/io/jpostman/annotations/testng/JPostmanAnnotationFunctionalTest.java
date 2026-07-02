@@ -182,7 +182,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "No default @JPostmanExecutor was configured.\n"
-				+ "Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"id\".\n"
+				+ "Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"#id\".\n"
 				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n");
 	}
 

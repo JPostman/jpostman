@@ -41,6 +41,13 @@ public @interface JPostmanRequest {
 	String[] tags() default {};
 
 	/**
+	 * Optional annotation id used by dependsOn = "#id".
+	 *
+	 * @return unique annotation id, or empty string when not used
+	 */
+	String id() default "";
+
+	/**
 	 * @JPostmanExecutor method name associated with this request helper.
 	 *
 	 *                   <p>
@@ -98,9 +105,11 @@ public @interface JPostmanRequest {
 	String rule() default "";
 
 	/**
-	 * Dependency method names to run before this request helper.
+	 * Dependency method names or annotation ids to run before this request helper.
+	 * Use plain values for Java method names, or prefix ids with "#", such as
+	 * dependsOn = "#login".
 	 *
-	 * @return dependency method names
+	 * @return dependency method names or "#id" references
 	 */
 	String[] dependsOn() default {};
 
