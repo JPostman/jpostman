@@ -80,6 +80,14 @@ final class JPostmanResourceLoader {
 		return properties.getProperty(propertyKey(key, namespace), "");
 	}
 
+	static String propertyOrDefault(Properties properties, String key, String namespace) {
+		String namespaced = property(properties, key, namespace);
+		if (!namespaced.isBlank() || namespace == null || namespace.isBlank()) {
+			return namespaced;
+		}
+		return property(properties, key, "");
+	}
+
 	static String propertyKey(String key, String namespace) {
 		return namespace == null || namespace.isBlank() ? key : key + "." + namespace;
 	}

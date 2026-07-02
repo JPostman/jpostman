@@ -571,6 +571,15 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("rules", JPostmanResourceLoader.propertyKey("rules", ""));
 		assertEquals(COLLECTION, JPostmanResourceLoader.property(properties, "collection", ""));
 		assertEquals(COLLECTION, JPostmanResourceLoader.property(properties, "collection", "product"));
+
+		Properties sharedCollection = new Properties();
+		sharedCollection.setProperty("collection", "classpath:shared-collection.json");
+		assertEquals("classpath:shared-collection.json",
+				JPostmanResourceLoader.propertyOrDefault(sharedCollection, "collection", "product"));
+		sharedCollection.setProperty("collection.product", "classpath:product-collection.json");
+		assertEquals("classpath:product-collection.json",
+				JPostmanResourceLoader.propertyOrDefault(sharedCollection, "collection", "product"));
+
 		assertEquals("annotation", JPostmanResourceLoader.firstNonBlank("annotation", "fallback"));
 		assertEquals("fallback", JPostmanResourceLoader.firstNonBlank(" ", "fallback"));
 		assertEquals("", JPostmanResourceLoader.firstNonBlank(null, null));

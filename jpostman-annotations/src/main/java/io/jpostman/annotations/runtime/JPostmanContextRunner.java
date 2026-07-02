@@ -5,6 +5,7 @@ import static io.jpostman.annotations.runtime.JPostmanResourceLoader.loadPropert
 import static io.jpostman.annotations.runtime.JPostmanResourceLoader.open;
 import static io.jpostman.annotations.runtime.JPostmanResourceLoader.property;
 import static io.jpostman.annotations.runtime.JPostmanResourceLoader.propertyKey;
+import static io.jpostman.annotations.runtime.JPostmanResourceLoader.propertyOrDefault;
 
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -302,6 +303,11 @@ final class JPostmanContextRunner<C> {
 		return value == null || value.trim().isEmpty();
 	}
 
+	private String collectionPropertyHint(String namespace) {
+		String key = propertyKey("collection", namespace);
+		return "collection".equals(key) ? key : key + " or collection";
+	}
+
 	private String resolveContextLocation(JPostmanContext annotation, String key, String namespace,
 			String annotationValue, String propertyValue) {
 		boolean hasAnnotationValue = !blank(annotationValue);
@@ -450,7 +456,7 @@ final class JPostmanContextRunner<C> {
 					Properties properties = loadProperties(annotation.config(), testClass, annotation);
 					String namespace = annotation.namespace();
 					String collectionLocation = firstNonBlank(annotation.collection(),
-							property(properties, "collection", namespace));
+							propertyOrDefault(properties, "collection", namespace));
 					String environmentLocation = firstNonBlank(annotation.environment(),
 							property(properties, "environment", namespace));
 
@@ -458,7 +464,7 @@ final class JPostmanContextRunner<C> {
 						throw new IllegalStateException(JPostmanErrors.message(annotation,
 								"JPostman collection is required for field " + field.getName() + ".",
 								"Configure @JPostmanContext(collection=...) or property "
-										+ propertyKey("collection", namespace) + "."));
+										+ collectionPropertyHint(namespace) + "."));
 					}
 
 					loaded = loadJPostmanContext(collectionLocation, environmentLocation, testClass);
@@ -552,7 +558,7 @@ final class JPostmanContextRunner<C> {
 
 		String namespace = annotation.namespace();
 		String collectionLocation = resolveContextLocation(annotation, "collection", namespace, annotation.collection(),
-				property(properties, "collection", namespace));
+				propertyOrDefault(properties, "collection", namespace));
 		String environmentLocation = resolveContextLocation(annotation, "environment", namespace,
 				annotation.environment(), property(properties, "environment", namespace));
 		String rulesLocation = resolveContextLocation(annotation, "rules", namespace, annotation.rules(),
@@ -646,7 +652,7 @@ final class JPostmanContextRunner<C> {
 
 		String namespace = annotation.namespace();
 		String collectionLocation = firstNonBlank(annotation.collection(),
-				property(properties, "collection", namespace));
+				propertyOrDefault(properties, "collection", namespace));
 		String environmentLocation = firstNonBlank(annotation.environment(),
 				property(properties, "environment", namespace));
 		String rulesLocation = firstNonBlank(annotation.rules(), property(properties, "rules", namespace));
@@ -656,7 +662,7 @@ final class JPostmanContextRunner<C> {
 		if (collectionLocation.isBlank()) {
 			throw new IllegalStateException(JPostmanErrors.message(annotation,
 					"JPostman collection is required for field " + field.getName() + ".",
-					"Configure @JPostmanTestContext(collection=...) or property " + propertyKey("collection", namespace)
+					"Configure @JPostmanTestContext(collection=...) or property " + collectionPropertyHint(namespace)
 							+ "."));
 		}
 

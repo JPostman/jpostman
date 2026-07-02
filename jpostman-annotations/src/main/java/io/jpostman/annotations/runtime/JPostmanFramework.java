@@ -3,9 +3,13 @@ package io.jpostman.annotations.runtime;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.Request;
@@ -153,30 +157,15 @@ public interface JPostmanFramework<C> {
 			return request;
 		}
 
-		/*
-		 * Important: RequestBuilder.ParamStep.end(Map) resolves variables that already
-		 * exist in that request section. It does not add a new header/body/query entry.
-		 * For annotation runtime values we need add/replace behavior, so use add(...)
-		 * for body/query/headers/auth.
-		 */
 		Request.RequestBuilder builder = request.builder();
 
-		applyRequestValues(builder.url(), info.query);
-		applyRequestValues(builder.headers(), info.headers);
+		applySetOrMap(builder.url(), info.query);
+		applySetOrMap(builder.headers(), info.headers);
+		applyBodySetOrMap(builder.body(), request, info.body);
 
-		/*
-		 * Body is different from headers/query values. A Postman body is often a raw
-		 * JSON template containing placeholders such as {{productTitle}} and numeric
-		 * placeholders such as {{productPrice}}. That raw template is not always valid
-		 * JSON until variables are resolved, so Body.add/set can fail before
-		 * resolution. Use end(Map) for body values so the existing request body
-		 * placeholders are resolved first.
-		 */
-		if (info.body != null && !info.body.isEmpty()) {
-			builder.body().end(info.body);
-		}
-
-		applyAuthValues(builder.auth(), builder.headers(), info.auth);
+		applyAdd(builder.url(), info.queryAdd);
+		applyAdd(builder.headers(), info.headersAdd);
+		applyAdd(builder.body(), info.bodyAdd);
 
 		if (info.path != null && !info.path.isEmpty()) {
 			builder.url().end(info.path);
@@ -185,56 +174,75 @@ public interface JPostmanFramework<C> {
 		return builder.build();
 	}
 
-	private static void applyRequestValues(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
+	private static void applySetOrMap(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
+		if (step == null || values == null || values.isEmpty()) {
+			return;
+		}
+
+		Map<String, Object> missing = new LinkedHashMap<>();
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			String key = entry.getKey();
+			if (key == null || key.isBlank()) {
+				continue;
+			}
+			try {
+				step.set(key, entry.getValue());
+			} catch (IllegalArgumentException ex) {
+				missing.put(key, entry.getValue());
+			}
+		}
+
+		if (!missing.isEmpty()) {
+			step.end(missing);
+		}
+	}
+
+	private static void applyBodySetOrMap(Request.RequestBuilder.ParamStep step, Request request,
+			Map<String, Object> values) {
+		if (step == null || values == null || values.isEmpty()) {
+			return;
+		}
+
+		JsonObject object = bodyObject(request);
+		Map<String, Object> existing = new LinkedHashMap<>();
+		Map<String, Object> missing = new LinkedHashMap<>();
+
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			String key = entry.getKey();
+			if (key == null || key.isBlank()) {
+				continue;
+			}
+			if (object != null && object.has(key)) {
+				existing.put(key, entry.getValue());
+			} else {
+				missing.put(key, entry.getValue());
+			}
+		}
+
+		applySetOrMap(step, existing);
+		if (!missing.isEmpty()) {
+			step.end(missing);
+		}
+	}
+
+	private static JsonObject bodyObject(Request request) {
+		if (request == null || request.getBody() == null) {
+			return null;
+		}
+		JsonElement parsed = request.getBody().getParsed();
+		return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+	}
+
+	private static void applyAdd(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
 		if (step == null || values == null || values.isEmpty()) {
 			return;
 		}
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
-			if (entry.getKey() != null) {
-				step.add(entry.getKey(), entry.getValue());
-			}
-		}
-	}
-
-	private static void applyAuthValues(Request.RequestBuilder.ParamStep auth, Request.RequestBuilder.ParamStep headers,
-			Map<String, Object> values) {
-		if (values == null || values.isEmpty()) {
-			return;
-		}
-		for (Map.Entry<String, Object> entry : values.entrySet()) {
-			if (entry.getKey() == null) {
-				continue;
-			}
 			String key = entry.getKey();
-			Object value = entry.getValue();
-			Object rawValue = JPostmanInfo.reveal(value);
-
-			/*
-			 * oauth2 and bearer are friendly aliases for HTTP bearer-token auth. Apply the
-			 * real HTTP Authorization header so every executor can use the token. For
-			 * normal auth(...), also update the request bearer token field so SecureRequest
-			 * logs show Auth: [bearer] {token=...}. For secret sauth(...), do not copy the
-			 * value into auth params because some core logs print auth params directly; the
-			 * Authorization header is already masked by secure logs.
-			 */
-			if ("oauth2".equalsIgnoreCase(key) || "bearer".equalsIgnoreCase(key)) {
-				if (headers != null && rawValue != null) {
-					headers.add("Authorization", "Bearer " + rawValue);
-				}
-				if (auth != null && rawValue != null && !isSecretValue(value)) {
-					auth.add("token", rawValue);
-				}
-				continue;
-			}
-
-			if (auth != null) {
-				auth.add(key, rawValue);
+			if (key != null && !key.isBlank()) {
+				step.add(key, entry.getValue());
 			}
 		}
-	}
-
-	private static boolean isSecretValue(Object value) {
-		return JPostmanInfo.isSecretValue(value);
 	}
 
 	private static void applySecureRequestMetadata(Object context, JPostmanInfo info) {

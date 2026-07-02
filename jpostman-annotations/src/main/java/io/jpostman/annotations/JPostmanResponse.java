@@ -81,9 +81,9 @@ public @interface JPostmanResponse {
 	String[] filter() default {};
 
 	/**
-	 * Dependency method names or annotation ids to run before this response. Use plain
-	 * values for Java method names, or prefix ids with "#", such as
-	 * dependsOn = "#login".
+	 * Dependency method names or annotation ids to run before this response. Use
+	 * plain values for Java method names, or prefix ids with "#", such as dependsOn
+	 * = "#login".
 	 *
 	 * @return dependency method names or "#id" references
 	 */

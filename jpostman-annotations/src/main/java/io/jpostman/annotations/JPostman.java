@@ -732,6 +732,14 @@ public final class JPostman {
 		JPostmanInfo.TagRules tags();
 
 		/**
+		 * Makes the next body/query/header customization add a new value instead of
+		 * using the default set/resolve behavior.
+		 *
+		 * @return updated info
+		 */
+		JPostmanInfo add();
+
+		/**
 		 * Adds body values.
 		 *
 		 * @param values key/value entries

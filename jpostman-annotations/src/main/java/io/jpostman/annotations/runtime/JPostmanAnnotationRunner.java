@@ -362,13 +362,13 @@ public final class JPostmanAnnotationRunner<C> {
 
 		String cache = cacheKey(dependencyMethod, annotation.cache());
 		/*
-		 * Response dependencies must use their own annotation location exactly. A
-		 * blank namespace/folder on @JPostmanResponse means the default context/root
-		 * folder, not the caller's current product namespace/folder.
+		 * Response dependencies must use their own annotation location exactly. A blank
+		 * namespace/folder on @JPostmanResponse means the default context/root folder,
+		 * not the caller's current product namespace/folder.
 		 */
 		JPostmanInfo info = parentInfo
-				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache, annotation.namespace(),
-						annotation.folder(), annotation.request())
+				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
+						annotation.namespace(), annotation.folder(), annotation.request())
 				.annotation("@JPostmanResponse").id(annotation.id()).debug(annotation.logLevel());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);

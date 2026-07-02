@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- Added `JPostmanInfo.add()` and compact `JPostman.Info.add()` to make the next `body`, `sbody`, `query`, `squery`, `headers`, or `sheaders` call use explicit add semantics.
+- Added namespaced collection fallback support so `collection.<namespace>` falls back to shared `collection` when a namespaced collection property is not configured.
+
 ## 2.0.9
 
 ### Added

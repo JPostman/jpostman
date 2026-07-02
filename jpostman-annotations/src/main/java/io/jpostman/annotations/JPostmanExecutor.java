@@ -34,9 +34,9 @@ public @interface JPostmanExecutor {
 	String id() default "";
 
 	/**
-	 * Dependency method names or annotation ids to run before creating this executor.
-	 * Use plain values for Java method names, or prefix ids with "#", such as
-	 * dependsOn = "#login".
+	 * Dependency method names or annotation ids to run before creating this
+	 * executor. Use plain values for Java method names, or prefix ids with "#",
+	 * such as dependsOn = "#login".
 	 *
 	 * @return dependency method names or "#id" references
 	 */
