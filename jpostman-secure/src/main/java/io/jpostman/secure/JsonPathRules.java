@@ -127,6 +127,27 @@ final class JsonPathRules {
 	}
 
 	/**
+	 * Returns {@code true} when the path should be handled as a secure path rule.
+	 *
+	 * <p>
+	 * Secure path rules use slash-based paths or the {@code regex:} prefix. The
+	 * caller can still pass exact slash paths; they are resolved through the same
+	 * rule engine so wildcard and recursive paths can share the same behavior.
+	 * </p>
+	 *
+	 * @param path JSON path or path rule
+	 * @return {@code true} for slash-based or regex secure path rules
+	 */
+	static boolean isRulePath(String path) {
+		if (path == null) {
+			return false;
+		}
+
+		String value = path.trim();
+		return value.startsWith("/") || value.startsWith(RedactionPolicy.REGEX_PREFIX);
+	}
+
+	/**
 	 * Checks whether a field key or JSON path matches a rule.
 	 *
 	 * @param key  field key

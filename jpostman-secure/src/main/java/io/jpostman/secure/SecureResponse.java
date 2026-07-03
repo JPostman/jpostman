@@ -252,10 +252,13 @@ public final class SecureResponse {
 	}
 
 	/**
-	 * Reads a value from the JSON response body using a simple path.
+	 * Reads a single value from the JSON response body.
 	 *
 	 * <p>
-	 * Supports normal dot/bracket syntax and slash-based exact path syntax.
+	 * Supports normal dot/bracket syntax, slash-based exact path syntax, wildcard
+	 * path rules, recursive wildcard path rules, and regex path rules. When a rule
+	 * matches more than one value, this method returns the first match. Use
+	 * {@link #paths(String)} when all matching values are needed.
 	 * </p>
 	 *
 	 * <pre>
@@ -263,13 +266,24 @@ public final class SecureResponse {
 	 * String title = response.path("/products[0].title");
 	 * String title = response.path("/products[0]/title");
 	 * String title = response.path("/products/0/title");
+	 * Double rating = response.path("/&#42;&#42;/rating");
 	 * </pre>
 	 *
-	 * @param path JSON path
+	 * @param path JSON path or path rule
 	 * @param <T>  expected return type
 	 * @return selected value converted to a Java value
 	 */
 	public <T> T path(String path) {
+		if (JsonPathRules.isRulePath(path)) {
+			List<T> values = paths(path);
+
+			if (!values.isEmpty()) {
+				return values.get(0);
+			}
+
+			throw new IllegalArgumentException("JSON path not found: " + JsonPathRules.toSimplePath(path));
+		}
+
 		return Params.path(parse(), JsonPathRules.toSimplePath(path));
 	}
 

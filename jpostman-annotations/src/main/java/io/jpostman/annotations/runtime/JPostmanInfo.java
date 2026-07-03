@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -344,8 +346,31 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 
 		/**
-		 * Runs the action when no previous {@link #has(String...)} or
-		 * {@link #any(String...)} condition matched in this rule chain.
+		 * Creates a condition that matches when any current tag equals, contains, or
+		 * matches the supplied values as regular expressions.
+		 *
+		 * @param values exact tags, text fragments, or regular expressions
+		 * @return pending tag condition
+		 */
+		public TagCondition contains(String... values) {
+			return new TagCondition(this, containsAny(values));
+		}
+
+		/**
+		 * Returns a tag value by key. Plain tags return themselves, while key/value
+		 * tags such as {@code product=myMouse} return only the value part.
+		 *
+		 * @param key plain tag name or key from a {@code key=value} tag
+		 * @return tag value, or null when the tag/key is missing
+		 */
+		public String get(String key) {
+			return info.tagValue(key);
+		}
+
+		/**
+		 * Runs the action when no previous {@link #has(String...)},
+		 * {@link #any(String...)}, or {@link #contains(String...)} condition matched in
+		 * this rule chain.
 		 *
 		 * @param action default action to run with the current {@link JPostmanInfo}
 		 * @return this tag rule builder
@@ -376,6 +401,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 		private boolean hasAny(String... values) {
 			return info.hasTag(values);
+		}
+
+		private boolean containsAny(String... values) {
+			return !isBlank(findMatchingTag(info.tags, values));
 		}
 	}
 
@@ -789,6 +818,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		duration = started > 0L ? ended - started : 0L;
 	}
 
+	private String tagValue(String key) {
+		return tagValue(tags, key);
+	}
+
 	private static String findTag(String[] source, String... requested) {
 		if (source == null || requested == null) {
 			return "";
@@ -805,6 +838,56 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			}
 		}
 		return "";
+	}
+
+	private static String findMatchingTag(String[] source, String... requested) {
+		if (source == null || requested == null) {
+			return "";
+		}
+		for (String value : requested) {
+			String expected = value(value).trim();
+			if (isBlank(expected)) {
+				continue;
+			}
+			for (String actual : source) {
+				if (matchesTag(actual, expected)) {
+					return actual;
+				}
+			}
+		}
+		return "";
+	}
+
+	private static boolean matchesTag(String actual, String expected) {
+		if (actual == null) {
+			return false;
+		}
+		if (expected.equals(actual)) {
+			return true;
+		}
+		try {
+			return Pattern.compile(expected).matcher(actual).find();
+		} catch (PatternSyntaxException ignored) {
+			return false;
+		}
+	}
+
+	private static String tagValue(String[] source, String key) {
+		String expected = value(key).trim();
+		if (source == null || isBlank(expected)) {
+			return null;
+		}
+		for (String actual : source) {
+			String tag = value(actual).trim();
+			if (expected.equals(tag)) {
+				return tag;
+			}
+			int index = tag.indexOf('=');
+			if (index > 0 && expected.equals(tag.substring(0, index).trim())) {
+				return tag.substring(index + 1).trim();
+			}
+		}
+		return null;
 	}
 
 	private static String first(String value, String fallback) {

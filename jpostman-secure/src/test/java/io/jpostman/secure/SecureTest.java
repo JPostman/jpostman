@@ -714,6 +714,15 @@ public class SecureTest {
 	}
 
 	@Test
+	public void secureApiResponsePathReturnsFirstValueForRecursiveWildcardRule() {
+		ApiResponse response = response(200, "{\"products\":[{\"id\":101,\"rating\":3.47},{\"id\":104,\"rating\":4.15},"
+				+ "{\"id\":105,\"rating\":3.62}]}", Map.of());
+		SecureResponse res = SecureResponse.from(response);
+		assertEquals(res.path("/**/rating"), 3.47);
+		assertEquals(res.paths("/**/rating"), Params.asList(3.47, 4.15, 3.62));
+	}
+
+	@Test
 	public void regexpSliceCanDisplayOnlyPhoneCountryCode() {
 		ApiResponse response = response(200,
 				"{\"phone\":\"+81 965-431-3024\",\"backupPhone\":\"+1 999-999-9999\",\"otherPhone\":\"+12 555-1234\"}",

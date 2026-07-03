@@ -1133,6 +1133,28 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies tag rules can match regular expressions and read key/value tags.
+	 */
+	@Test
+	public void tagRulesCanMatchRegexAndReadKeyValueTags() {
+		JPostmanInfo info = new JPostmanInfo(new String[] { "mouse", "product=myMouse" }, "", "authRequest", "", "",
+				"Get current auth user");
+		JPostman.Ref<String> selected = info.ref("");
+		JPostman.Ref<Boolean> productKeyMatched = info.ref(false);
+		JPostman.Ref<Boolean> invalidRegexMatched = info.ref(false);
+
+		info.tags().contains("product=.*").then(i -> selected.set(i.tags().get("product"))).contains("product")
+				.then(i -> productKeyMatched.set(true)).contains("product=[").then(i -> invalidRegexMatched.set(true));
+
+		assertEquals("mouse", info.tags().get("mouse"));
+		assertEquals("myMouse", info.tags().get("product"));
+		assertNull(info.tags().get("keyboard"));
+		assertEquals("myMouse", selected.get());
+		assertTrue(productKeyMatched.get());
+		assertFalse(invalidRegexMatched.get());
+	}
+
+	/**
 	 * Verifies JPostmanInfo keeps a single tag chain and searches only
 	 * {@link JPostmanInfo#tags}.
 	 */
