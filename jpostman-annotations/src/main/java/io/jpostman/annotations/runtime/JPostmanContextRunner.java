@@ -539,8 +539,10 @@ final class JPostmanContextRunner<C> {
 			PreparedContexts<C> contexts, boolean compactTestRuntime) {
 		if (compactTestRuntime) {
 			return new JPostmanRuntime<>(context, namespace,
-					name -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).context(name)),
-					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext()),
+					name -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).context(name),
+							() -> activeContexts(testInstance, contexts).activeContext()),
+					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext(),
+							() -> activeContexts(testInstance, contexts).activeContext()),
 					() -> activeContexts(testInstance, contexts).info());
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),

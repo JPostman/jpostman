@@ -9,7 +9,6 @@ import java.util.Set;
 
 import org.opentest4j.TestAbortedException;
 
-
 /**
  * Builds short, clickable stack traces for annotation-driven failures.
  */
@@ -304,7 +303,8 @@ public final class JPostmanStackTraceCleaner {
 				return Math.max(1, Integer.parseInt(value));
 			}
 		} catch (Exception e) {
-			// Use unlimited user/application frames when the file or property is missing or invalid.
+			// Use unlimited user/application frames when the file or property is missing or
+			// invalid.
 		}
 
 		return Integer.MAX_VALUE;

@@ -257,18 +257,18 @@ public final class JPostmanAnnotationRunner<C> {
 
 		runDependencies(testInstance, prepared, dependencies(annotation.dependsOn()), info.withTags(annotation.tags()),
 				stack);
-		boolean responseDependency = hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()), info);
+		boolean responseDependency = hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()),
+				info);
 		inheritResponseLocationFromDependencies(testInstance, annotation, info);
 		applyData(testInstance, prepared, info, data, stack);
 
 		C source = prepared.context(info.namespace);
 		if (responseDependency && hasResponseRequest(info) && hasFilter(annotation.filter())) {
 			/*
-			 * The dependency response owns its filter. The caller response owns its
-			 * filter. When the caller has its own request, start from a fresh context
-			 * and copy only dependency cache values; otherwise the dependency filter
-			 * remains attached and the output becomes merged, for example
-			 * firstName+lastName.
+			 * The dependency response owns its filter. The caller response owns its filter.
+			 * When the caller has its own request, start from a fresh context and copy only
+			 * dependency cache values; otherwise the dependency filter remains attached and
+			 * the output becomes merged, for example firstName+lastName.
 			 */
 			source = freshContext(prepared, info.namespace, source);
 		}

@@ -6,6 +6,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.util.function.Supplier;
 
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanTestAssertions;
@@ -15,9 +16,15 @@ import io.jpostman.annotations.JPostmanTestSoftAssertions;
 final class JPostmanTestProxy implements InvocationHandler {
 
 	private final Object target;
+	private final Supplier<?> activeContextSupplier;
 
 	private JPostmanTestProxy(Object target) {
+		this(target, null);
+	}
+
+	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier) {
 		this.target = target;
+		this.activeContextSupplier = activeContextSupplier;
 	}
 
 	static JPostman.Test wrap(Object target) {
@@ -27,8 +34,18 @@ final class JPostmanTestProxy implements InvocationHandler {
 		if (target instanceof JPostman.Test) {
 			return (JPostman.Test) target;
 		}
+		return wrap(target, null);
+	}
+
+	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier) {
+		if (target == null) {
+			return null;
+		}
+		if (target instanceof JPostman.Test) {
+			return (JPostman.Test) target;
+		}
 		return (JPostman.Test) Proxy.newProxyInstance(JPostman.Test.class.getClassLoader(),
-				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target));
+				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target, activeContextSupplier));
 	}
 
 	static Object unwrap(Object value) {
@@ -77,7 +94,12 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return target.hashCode();
 		}
 		if ("equals".equals(name) && method.getParameterCount() == 1) {
-			return proxy == args[0];
+			Object other = args == null || args.length == 0 ? null : unwrap(args[0]);
+			return target == other || (target != null && target.equals(other));
+		}
+		if ("ctx".equals(name) && method.getParameterCount() == 0) {
+			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
+			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
 
 		Method targetMethod = findTargetMethod(target, name, args);
@@ -105,7 +127,8 @@ final class JPostmanTestProxy implements InvocationHandler {
 				return target.hashCode();
 			}
 			if ("equals".equals(name) && method.getParameterCount() == 1) {
-				return proxy == args[0];
+				Object other = args == null || args.length == 0 ? null : unwrap(args[0]);
+				return target == other || (target != null && target.equals(other));
 			}
 
 			Method targetMethod = findTargetMethod(target, name, args);

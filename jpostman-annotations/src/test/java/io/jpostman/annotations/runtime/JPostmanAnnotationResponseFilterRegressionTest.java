@@ -112,8 +112,8 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 		runTestNgWithBody(fixture, "getCurrentAuthUser");
 		assertEquals(1, fixture.loginBodyChecks);
 		assertEquals(1, fixture.currentUserExecutions);
-		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"lastName\": \"Johnson\"", "firstName",
-				"\"id\"", "gender");
+		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"lastName\": \"Johnson\"", "firstName", "\"id\"",
+				"gender");
 	}
 
 	@Test
@@ -355,7 +355,8 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			String requestLog = ctx.request().log();
 			if (requestLog.contains("Login user and get tokens")) {
-				return okExecutor("{\"firstName\":\"Emily-login\",\"lastName\":\"Johnson-login\",\"gender\":\"female-login\"}");
+				return okExecutor(
+						"{\"firstName\":\"Emily-login\",\"lastName\":\"Johnson-login\",\"gender\":\"female-login\"}");
 			}
 
 			currentUserExecutions++;
