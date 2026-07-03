@@ -302,10 +302,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * after {@code then(...)} so multiple tag rules can be chained fluently.
 	 * </p>
 	 *
-	 * <pre>
+	 * <pre>{@code
 	 * info.tags().has("mouse").then(i -> i.body("title", "Wireless Mouse")).any("mouse", "shoes")
 	 * 		.then(i -> i.body("discount", 15));
-	 * </pre>
+	 * }</pre>
 	 *
 	 * @return fluent tag rule builder for this info object
 	 */
