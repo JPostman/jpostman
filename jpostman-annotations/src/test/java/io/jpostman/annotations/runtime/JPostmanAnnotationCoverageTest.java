@@ -1013,6 +1013,45 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, executor.methodIndex);
 		assertEquals(2, interceptor.methodIndex);
 		assertTrue(interceptor.log().contains("methodIndex=2"));
+
+		String shortLog = interceptor.log(false);
+		assertFalse(shortLog.contains("methodIndex="));
+		assertFalse(shortLog.contains("methods="));
+		assertFalse(shortLog.contains("created="));
+		assertTrue(shortLog.contains("method=defaultIntercept"));
+		assertTrue(shortLog.contains(", request=Get current auth user"));
+	}
+
+	/**
+	 * Verifies the logOutput API defaults.
+	 */
+	@Test
+	public void logOutputDefaultsUseNoAutomaticOutputButResponseLoggingEnabled() throws Exception {
+		assertArrayEquals(new String[] { "none" },
+				(String[]) JPostman.Context.class.getMethod("logOutput").getDefaultValue());
+		assertArrayEquals(new String[] { "none" },
+				(String[]) JPostmanContext.class.getMethod("logOutput").getDefaultValue());
+		assertEquals(true, JPostman.Response.class.getMethod("log").getDefaultValue());
+		assertEquals(true, JPostmanResponse.class.getMethod("log").getDefaultValue());
+		assertEquals(true, JPostman.Runner.class.getMethod("log").getDefaultValue());
+		assertEquals(true, JPostmanRunner.class.getMethod("log").getDefaultValue());
+	}
+
+	/**
+	 * Verifies logOutput supports combined request/response/info modes and keeps
+	 * none/all exclusive.
+	 */
+	@Test
+	public void logOutputSupportsCombinedModesAndRejectsExclusiveModes() {
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> combined = JPostmanRuntimeOptions.LogOutput.from("info",
+				"response");
+
+		assertTrue(combined.contains(JPostmanRuntimeOptions.LogOutput.INFO));
+		assertTrue(combined.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
+		assertFalse(combined.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("none", "info"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("all", "response"));
 	}
 
 	/**

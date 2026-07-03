@@ -4,11 +4,11 @@ import static io.jpostman.annotations.runtime.JPostmanResourceLoader.loadPropert
 import static io.jpostman.annotations.runtime.JPostmanResourceLoader.property;
 
 import java.lang.reflect.Field;
-import java.text.MessageFormat;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Properties;
 
-import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.jpostman.annotations.JPostmanContext;
@@ -16,42 +16,64 @@ import io.jpostman.annotations.JPostmanContext;
 /** Runtime options resolved from @JPostmanContext and jpostman.properties. */
 final class JPostmanRuntimeOptions {
 
-	private enum Level {
-		TRACE, DEBUG, INFO, WARN, ERROR;
+	enum LogOutput {
+		NONE, REQUEST, RESPONSE, INFO, ALL;
 
-		static Level from(String value) {
+		static EnumSet<LogOutput> from(String... values) {
+			EnumSet<LogOutput> result = EnumSet.noneOf(LogOutput.class);
+			if (values != null) {
+				for (String value : values) {
+					parseValue(result, value);
+				}
+			}
+			if (result.isEmpty()) {
+				result.add(NONE);
+			}
+			validate(result, values);
+			return result;
+		}
+
+		private static void parseValue(EnumSet<LogOutput> result, String value) {
 			if (value == null || value.isBlank()) {
-				return INFO;
+				return;
 			}
-			try {
-				return Level.valueOf(value.trim().toUpperCase(Locale.ROOT));
-			} catch (IllegalArgumentException e) {
-				throw new IllegalArgumentException("Unsupported @JPostmanContext logLevel: " + value
-						+ ". Supported values: TRACE, DEBUG, INFO, WARN, ERROR.", e);
+			for (String part : value.split(",")) {
+				String item = part.trim();
+				if (item.isEmpty()) {
+					continue;
+				}
+				try {
+					result.add(LogOutput.valueOf(item.toUpperCase(Locale.ROOT)));
+				} catch (IllegalArgumentException e) {
+					throw new IllegalArgumentException("Unsupported JPostman logOutput: " + item
+							+ ". Supported values: none, request, response, info, all.", e);
+				}
 			}
 		}
 
-		boolean isTrace() {
-			return this == TRACE;
-		}
-
-		boolean isDebugOrTrace() {
-			return this == TRACE || this == DEBUG;
+		private static void validate(EnumSet<LogOutput> result, String... rawValues) {
+			if (result.size() > 1 && result.contains(NONE)) {
+				throw new IllegalArgumentException(
+						"JPostman logOutput=none must be used alone: " + Arrays.toString(rawValues));
+			}
+			if (result.size() > 1 && result.contains(ALL)) {
+				throw new IllegalArgumentException(
+						"JPostman logOutput=all must be used alone: " + Arrays.toString(rawValues));
+			}
 		}
 	}
 
 	private final boolean logs;
-	private final Level debug;
-	private final String debugFormat;
+	private final EnumSet<LogOutput> logOutput;
 	private final int defaultStatusCode;
 	private final Class<?> executorClass;
 	private final boolean session;
 
-	private JPostmanRuntimeOptions(boolean logs, Level debug, String debugFormat, int defaultStatusCode,
+	private JPostmanRuntimeOptions(boolean logs, EnumSet<LogOutput> logOutput, int defaultStatusCode,
 			Class<?> executorClass, boolean session) {
 		this.logs = logs;
-		this.debug = debug;
-		this.debugFormat = debugFormat == null || debugFormat.isBlank() ? "=== {} ===" : debugFormat;
+		this.logOutput = logOutput == null || logOutput.isEmpty() ? EnumSet.of(LogOutput.NONE)
+				: EnumSet.copyOf(logOutput);
 		this.defaultStatusCode = defaultStatusCode;
 		this.executorClass = executorClass == Void.class ? null : executorClass;
 		this.session = session;
@@ -60,12 +82,11 @@ final class JPostmanRuntimeOptions {
 	static JPostmanRuntimeOptions from(Object testInstance) {
 		JPostmanContext annotation = findContextAnnotation(testInstance);
 		if (annotation == null) {
-			return new JPostmanRuntimeOptions(false, Level.INFO, "=== {} ===", -1, null, false);
+			return new JPostmanRuntimeOptions(false, EnumSet.of(LogOutput.NONE), -1, null, false);
 		}
 
 		boolean logs = annotation.logs();
-		String debug = annotation.logLevel();
-		String debugFormat = annotation.debugFormat();
+		String[] output = annotation.logOutput();
 		int defaultStatusCode = annotation.verifyStatusCode();
 		Class<?> executorClass = annotation.executor();
 		boolean session = annotation.session();
@@ -74,8 +95,7 @@ final class JPostmanRuntimeOptions {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
 			String namespace = "";
 			logs = booleanValue(property(properties, "logs", namespace), logs);
-			debug = stringValue(property(properties, "logLevel", namespace), debug);
-			debugFormat = stringValue(property(properties, "debugFormat", namespace), debugFormat);
+			output = stringValues(property(properties, "logOutput", namespace), output);
 			defaultStatusCode = intValue(property(properties, "defaultStatusCode", namespace), defaultStatusCode);
 			executorClass = classValue(property(properties, "executor", namespace), executorClass,
 					testInstance.getClass().getClassLoader(), annotation);
@@ -87,8 +107,7 @@ final class JPostmanRuntimeOptions {
 			throw new IllegalStateException("Unable to load JPostman runtime options from " + annotation.config(), e);
 		}
 
-		return new JPostmanRuntimeOptions(logs, Level.from(debug), debugFormat, defaultStatusCode, executorClass,
-				session);
+		return new JPostmanRuntimeOptions(logs, LogOutput.from(output), defaultStatusCode, executorClass, session);
 	}
 
 	boolean hasDefaultExecutor() {
@@ -117,19 +136,27 @@ final class JPostmanRuntimeOptions {
 		return annotationLog || logs;
 	}
 
+	EnumSet<LogOutput> logOutput(JPostmanInfo info) {
+		String local = info == null ? "" : info.debug;
+		return local == null || local.isBlank() ? EnumSet.copyOf(logOutput) : LogOutput.from(local);
+	}
+
 	void debug(Object testInstance, JPostmanInfo info) {
 		if (testInstance == null || info == null) {
 			return;
 		}
 
-		Level level = info.debug == null || info.debug.isBlank() ? debug : Level.from(info.debug);
-		Logger logger = LoggerFactory.getLogger(testInstance.getClass());
-		if (level.isDebugOrTrace()) {
-			logger.debug(MessageFormat.format(debugFormat, info.method, info.annotation));
+		if (logOutput(info).contains(LogOutput.INFO)) {
+			printMethodHeader(testInstance, info);
+			info.print(false);
 		}
-		if (level.isTrace()) {
-			info.print();
+	}
+
+	static void printMethodHeader(Object testInstance, JPostmanInfo info) {
+		if (testInstance == null || info == null) {
+			return;
 		}
+		LoggerFactory.getLogger(testInstance.getClass()).debug(" === {} === ", info.method);
 	}
 
 	private static JPostmanContext findContextAnnotation(Object testInstance) {
@@ -150,8 +177,8 @@ final class JPostmanRuntimeOptions {
 		return null;
 	}
 
-	private static String stringValue(String value, String fallback) {
-		return value == null || value.isBlank() ? fallback : value;
+	private static String[] stringValues(String value, String[] fallback) {
+		return value == null || value.isBlank() ? fallback : new String[] { value };
 	}
 
 	private static boolean booleanValue(String value, boolean fallback) {
@@ -175,10 +202,7 @@ final class JPostmanRuntimeOptions {
 		try {
 			return Class.forName(name, true, loader);
 		} catch (ClassNotFoundException e) {
-			throw new IllegalArgumentException(JPostmanErrors.message(annotation,
-					"Invalid JPostman executor class: " + name, "The executor class could not be loaded.",
-					"Use a fully qualified class name available on the test classpath.",
-					"Example: executor = \"io.jpostman.restassured.RestAssuredExecutor\"."));
+			throw new IllegalArgumentException("Unable to load @JPostmanContext executor class: " + name, e);
 		}
 	}
 
@@ -186,10 +210,6 @@ final class JPostmanRuntimeOptions {
 		if (value == null || value.isBlank()) {
 			return fallback;
 		}
-		try {
-			return Integer.parseInt(value.trim());
-		} catch (NumberFormatException e) {
-			throw new IllegalArgumentException("Invalid @JPostmanContext defaultStatusCode: " + value, e);
-		}
+		return Integer.parseInt(value.trim());
 	}
 }

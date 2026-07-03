@@ -308,7 +308,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (requestAnnotation != null) {
 			JPostmanInfo info = new JPostmanInfo(requestAnnotation.tags(), requestAnnotation.executor(), methodName,
 					requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request())
-					.annotation("@JPostmanRequest").id(requestAnnotation.id()).debug(requestAnnotation.logLevel());
+					.annotation("@JPostmanRequest").id(requestAnnotation.id()).debug(requestAnnotation.logOutput());
 			if (!isBlank(requestAnnotation.request())) {
 				info.requestId(requestAnnotation.id());
 			}
@@ -318,12 +318,12 @@ public final class JPostmanAnnotationRunner<C> {
 		if (responseAnnotation != null) {
 			return new JPostmanInfo(responseAnnotation.tags(), responseAnnotation.executor(), methodName,
 					responseAnnotation.namespace(), responseAnnotation.folder(), responseAnnotation.request())
-					.annotation("@JPostmanResponse").id(responseAnnotation.id()).debug(responseAnnotation.logLevel());
+					.annotation("@JPostmanResponse").id(responseAnnotation.id()).debug(responseAnnotation.logOutput());
 		}
 
 		return new JPostmanInfo(runnerAnnotation.tags(), runnerAnnotation.executor(), methodName,
 				runnerAnnotation.namespace(), runnerAnnotation.folder(), "").annotation("@JPostmanRunner")
-				.debug(runnerAnnotation.logLevel());
+				.debug(runnerAnnotation.logOutput());
 	}
 
 	private void runDependencies(Object testInstance, PreparedContexts<C> resolver, String[] dependencyNames,
@@ -389,7 +389,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
 						annotation.namespace(), annotation.folder(), annotation.request())
-				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.logLevel());
+				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.logOutput());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
 		JPostmanReport report = report(testInstance);
@@ -440,7 +440,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.child(dependencyMethod.getName(), new String[0], annotation.executor(), "", annotation.namespace(),
 						annotation.folder(), parentInfo.request)
-				.annotation("@JPostmanRunner").debug(annotation.logLevel());
+				.annotation("@JPostmanRunner").debug(annotation.logOutput());
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(dependencyMethod.getName());
 		resolver.info(runnerInfo);
@@ -467,7 +467,7 @@ public final class JPostmanAnnotationRunner<C> {
 				: parentInfo.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
 						annotation.namespace(), annotation.folder(), annotation.request());
 
-		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.logLevel());
+		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.logOutput());
 		if (!isBlank(annotation.request())) {
 			info.requestId(annotation.id());
 		}
@@ -881,7 +881,7 @@ public final class JPostmanAnnotationRunner<C> {
 			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
-			debug(testInstance, info);
+			logOutput(testInstance, ctx, info, annotation.log());
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
 					annotation.log());
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
@@ -934,7 +934,7 @@ public final class JPostmanAnnotationRunner<C> {
 			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
-			debug(testInstance, info);
+			logOutput(testInstance, ctx, info, annotation.log());
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
 					annotation.log());
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
@@ -954,7 +954,7 @@ public final class JPostmanAnnotationRunner<C> {
 					.childExact(method.getName(), new String[0], info.executor, "", info.namespace, info.folder,
 							info.request)
 					.annotation("@JPostmanExecutor intercept").id(annotationId(annotation.id()))
-					.debug(annotation.logLevel());
+					.debug(annotation.logOutput());
 			interceptorInfo = interceptorInfo.context(resolver.resolve(info.namespace).contextAnnotation);
 			interceptorInfo.method(method.getName());
 			resolver.info(interceptorInfo);
@@ -1258,6 +1258,37 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void debug(Object testInstance, JPostmanInfo info) {
 		JPostmanRuntimeOptions.from(testInstance).debug(testInstance, info);
+	}
+
+	private void logOutput(Object testInstance, C ctx, JPostmanInfo info, boolean annotationLog) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		if (!options.log(annotationLog)) {
+			return;
+		}
+
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> outputs = options.logOutput(info);
+		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.NONE)) {
+			return;
+		}
+		printLogOutputHeader(testInstance, info);
+		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.ALL)) {
+			info.print(true);
+			framework.printContext(ctx);
+			return;
+		}
+		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.INFO)) {
+			info.print(false);
+		}
+		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.REQUEST)) {
+			framework.printRequest(ctx);
+		}
+		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE)) {
+			framework.printResponse(ctx);
+		}
+	}
+
+	private void printLogOutputHeader(Object testInstance, JPostmanInfo info) {
+		JPostmanRuntimeOptions.printMethodHeader(testInstance, info);
 	}
 
 	private JPostmanReport injectReportContext(Object testInstance) throws IllegalAccessException {
@@ -1757,7 +1788,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
 		JPostmanInfo executorInfo = info
 				.child(method.getName(), info.executor, info.namespace, info.folder, info.request)
-				.annotation("@JPostmanExecutor").id(annotationId(annotation.id())).debug(annotation.logLevel());
+				.annotation("@JPostmanExecutor").id(annotationId(annotation.id())).debug(annotation.logOutput());
 		return new ExecutorCall<>(method, annotation, executorInfo);
 	}
 

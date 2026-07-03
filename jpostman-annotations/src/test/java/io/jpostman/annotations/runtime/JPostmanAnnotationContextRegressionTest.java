@@ -62,7 +62,7 @@ public class JPostmanAnnotationContextRegressionTest {
 	@JPostman.TestNG
 	private static final class CompactContextTeardownFixture {
 
-		@JPostman.Context(verifyStatusCode = 200, logs = true, logLevel = "info")
+		@JPostman.Context(verifyStatusCode = 200, logs = true, logOutput = "none")
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
 		@JPostman.TestContext(active = false)

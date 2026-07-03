@@ -100,11 +100,11 @@ public @interface JPostmanRunner {
 	String executor() default "";
 
 	/**
-	 * Whether to attach secure log details to assertion failures.
+	 * Enables configured logOutput printing and diagnostic logs for this runner.
 	 *
-	 * @return {@code true} to attach secure log details
+	 * @return {@code true} to allow runner response logging
 	 */
-	boolean log() default false;
+	boolean log() default true;
 
 	/**
 	 * Whether to use soft assertion verification.
@@ -143,17 +143,19 @@ public @interface JPostmanRunner {
 	String[] asserts() default {};
 
 	/**
-	 * Local annotation log level for this runner execution.
+	 * Local annotation log output mode for this runner execution.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#logLevel()} value. Non-empty
-	 * values override the context log level for this runner invocation. Supported
-	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * Empty means inherit the {@link JPostmanContext#logOutput()} value. Non-empty
+	 * values override the context log output mode for this runner invocation.
+	 * Supported values are none, request, response, info, and all. request,
+	 * response, and info may be combined. none and all must be used alone. request,
+	 * response, and info may be combined. none and all must be used alone.
 	 * </p>
 	 *
-	 * @return local log level, or empty string to inherit from the context
+	 * @return local log output mode values, or empty to inherit from the context
 	 */
-	String logLevel() default "";
+	String[] logOutput() default {};
 
 	/**
 	 * Runs this runner even when {@link JPostmanContext#skipAll()} is enabled.

@@ -66,16 +66,18 @@ public @interface JPostmanExecutor {
 	boolean session() default false;
 
 	/**
-	 * Local annotation log level for this executor.
+	 * Local annotation log output mode for this executor.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#logLevel()} value. Non-empty
-	 * values override the context log level for this executor invocation. Supported
-	 * values are TRACE, DEBUG, INFO, WARN, and ERROR.
+	 * Empty means inherit the {@link JPostmanContext#logOutput()} value. Non-empty
+	 * values override the context log output mode for this executor invocation.
+	 * Supported values are none, request, response, info, and all. request,
+	 * response, and info may be combined. none and all must be used alone. request,
+	 * response, and info may be combined. none and all must be used alone.
 	 * </p>
 	 *
-	 * @return local log level, or empty string to inherit from the context
+	 * @return local log output mode values, or empty to inherit from the context
 	 */
-	String logLevel() default "";
+	String[] logOutput() default {};
 
 }

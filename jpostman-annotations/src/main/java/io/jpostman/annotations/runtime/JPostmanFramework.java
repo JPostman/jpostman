@@ -598,6 +598,54 @@ public interface JPostmanFramework<C> {
 		}
 	}
 
+	/** Prints the full framework context when supported. */
+	default void printContext(C context) {
+		invokePrint(context);
+	}
+
+	/** Prints only the current framework request when supported. */
+	default void printRequest(C context) {
+		invokeOwnerPrint(context, "request");
+	}
+
+	/** Prints only the current framework response when supported. */
+	default void printResponse(C context) {
+		invokeOwnerPrint(context, "response");
+	}
+
+	private static void invokeOwnerPrint(Object context, String ownerName) {
+		if (context == null || ownerName == null || ownerName.isBlank()) {
+			return;
+		}
+		try {
+			Method ownerMethod = context.getClass().getMethod(ownerName);
+			if (ownerMethod.getReturnType() == Void.TYPE) {
+				return;
+			}
+			invokePrint(ownerMethod.invoke(context));
+		} catch (NoSuchMethodException e) {
+			// Context does not expose this object.
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// Logging helpers must never hide the original execution.
+		}
+	}
+
+	private static void invokePrint(Object target) {
+		if (target == null) {
+			return;
+		}
+		try {
+			Method print = target.getClass().getMethod("print");
+			if (print.getReturnType() == Void.TYPE) {
+				print.invoke(target);
+			}
+		} catch (NoSuchMethodException e) {
+			// Object does not expose print().
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// Logging helpers must never hide the original execution.
+		}
+	}
+
 	/**
 	 * Returns best-effort diagnostic output for the current context.
 	 *

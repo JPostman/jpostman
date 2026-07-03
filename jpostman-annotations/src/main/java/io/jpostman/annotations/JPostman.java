@@ -166,11 +166,13 @@ public final class JPostman {
 		boolean logs() default false;
 
 		/**
-		 * Annotation log level.
+		 * Controls automatic annotation output. Supported values are none, request,
+		 * response, info, and all. request, response, and info may be combined. none
+		 * and all must be used alone.
 		 *
-		 * @return log level, or empty string to use defaults
+		 * @return log output mode values
 		 */
-		String logLevel() default "";
+		String[] logOutput() default { "none" };
 
 		/**
 		 * Annotation log message format.
@@ -277,11 +279,11 @@ public final class JPostman {
 		boolean session() default false;
 
 		/**
-		 * Executor log level.
+		 * Local log output override. Empty means inherit the context logOutput value.
 		 *
-		 * @return log level, or empty string to use defaults
+		 * @return local log output mode values, or empty to use context default
 		 */
-		String logLevel() default "";
+		String[] logOutput() default {};
 	}
 
 	/**
@@ -377,11 +379,11 @@ public final class JPostman {
 		String data() default "";
 
 		/**
-		 * Request log level.
+		 * Local log output override. Empty means inherit the context logOutput value.
 		 *
-		 * @return log level, or empty string to use defaults
+		 * @return local log output mode values, or empty to use context default
 		 */
-		String logLevel() default "";
+		String[] logOutput() default {};
 
 		/** @return {@code true} to skip this request helper or runner request */
 		boolean skip() default false;
@@ -476,11 +478,11 @@ public final class JPostman {
 		String cache() default JPostmanResponse.NO_CACHE;
 
 		/**
-		 * Enables logging for this response.
+		 * Enables configured logOutput printing and diagnostic logs for this response.
 		 *
-		 * @return {@code true} to log this response
+		 * @return {@code true} to allow response logging
 		 */
-		boolean log() default false;
+		boolean log() default true;
 
 		/**
 		 * Enables soft assertion mode.
@@ -504,11 +506,11 @@ public final class JPostman {
 		String[] asserts() default {};
 
 		/**
-		 * Response log level.
+		 * Local log output override. Empty means inherit the context logOutput value.
 		 *
-		 * @return log level, or empty string to use defaults
+		 * @return local log output mode values, or empty to use context default
 		 */
-		String logLevel() default "";
+		String[] logOutput() default {};
 
 		/**
 		 * @return {@code true} to run this response even when context skipAll is
@@ -602,11 +604,11 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Enables logging for this runner.
+		 * Enables configured logOutput printing and diagnostic logs for this runner.
 		 *
-		 * @return {@code true} to log runner execution
+		 * @return {@code true} to allow runner response logging
 		 */
-		boolean log() default false;
+		boolean log() default true;
 
 		/**
 		 * Enables soft assertion mode.
@@ -630,11 +632,11 @@ public final class JPostman {
 		String[] asserts() default {};
 
 		/**
-		 * Runner log level.
+		 * Local log output override. Empty means inherit the context logOutput value.
 		 *
-		 * @return log level, or empty string to use defaults
+		 * @return local log output mode values, or empty to use context default
 		 */
-		String logLevel() default "";
+		String[] logOutput() default {};
 
 		/**
 		 * @return {@code true} to run this runner even when context skipAll is enabled
@@ -682,37 +684,37 @@ public final class JPostman {
 		/**
 		 * Logs a trace message.
 		 *
-		 * @param message message to log
+		 * @param args message and optional format arguments to log
 		 */
-		void logTrace(String message);
+		void logTrace(Object... args);
 
 		/**
 		 * Logs a debug message.
 		 *
-		 * @param message message to log
+		 * @param args message and optional format arguments to log
 		 */
-		void logDebug(String message);
+		void logDebug(Object... args);
 
 		/**
 		 * Logs an info message.
 		 *
-		 * @param message message to log
+		 * @param args message and optional format arguments to log
 		 */
-		void logInfo(String message);
+		void logInfo(Object... args);
 
 		/**
 		 * Logs a warning message.
 		 *
-		 * @param message message to log
+		 * @param args message and optional format arguments to log
 		 */
-		void logWarn(String message);
+		void logWarn(Object... args);
 
 		/**
 		 * Logs an error message.
 		 *
-		 * @param message message to log
+		 * @param args message and optional format arguments to log
 		 */
-		void logError(String message);
+		void logError(Object... args);
 
 		/**
 		 * Returns the loaded collection.
@@ -1084,9 +1086,31 @@ public final class JPostman {
 		JPostmanInfo sauth(Map<String, ?> values);
 
 		/**
-		 * Prints execution info.
+		 * Builds a readable multi-line log message with full execution info.
+		 *
+		 * @return formatted runtime info
+		 */
+		String log();
+
+		/**
+		 * Builds a readable multi-line log message with optional full details.
+		 *
+		 * @param includeAll {@code true} to include method chain and timestamps
+		 * @return formatted runtime info
+		 */
+		String log(boolean includeAll);
+
+		/**
+		 * Prints full execution info.
 		 */
 		void print();
+
+		/**
+		 * Prints execution info with optional full details.
+		 *
+		 * @param includeAll {@code true} to include method chain and timestamps
+		 */
+		void print(boolean includeAll);
 	}
 
 	/**

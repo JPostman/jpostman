@@ -181,15 +181,16 @@ public @interface JPostmanContext {
 	boolean logs() default false;
 
 	/**
-	 * Annotation log level. Supported values are TRACE, DEBUG, INFO, WARN, ERROR.
-	 * Values are case-insensitive. INFO disables automatic annotation debug output.
+	 * Automatic annotation output mode. Supported values are none, request,
+	 * response, info, and all. Values are case-insensitive. request, response, and
+	 * info may be combined. none and all must be used alone.
 	 *
-	 * @return annotation log level
+	 * @return log output mode values
 	 */
-	String logLevel() default "info";
+	String[] logOutput() default { "none" };
 
 	/**
-	 * Format used when log level is DEBUG or TRACE.
+	 * Reserved annotation output format.
 	 *
 	 * <p>
 	 * Uses {@link java.text.MessageFormat} syntax. Argument {@code {0}} is the

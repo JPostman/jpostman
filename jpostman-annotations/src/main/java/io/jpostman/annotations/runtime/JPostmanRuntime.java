@@ -1,5 +1,6 @@
 package io.jpostman.annotations.runtime;
 
+import java.util.Arrays;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -123,56 +124,88 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	/**
 	 * Writes a trace message using the loaded core context logger.
 	 *
-	 * @param message message to write
+	 * @param args message and optional format arguments to write
 	 */
-	public void logTrace(String message) {
-		if (context != null) {
-			context.trace(message);
+	public void logTrace(Object... args) {
+		if (context != null && hasLogArgs(args)) {
+			if (args.length == 1) {
+				context.trace(message(args));
+			} else {
+				context.trace(message(args), rest(args));
+			}
 		}
 	}
 
 	/**
 	 * Writes a debug message using the loaded core context logger.
 	 *
-	 * @param message message to write
+	 * @param args message and optional format arguments to write
 	 */
-	public void logDebug(String message) {
-		if (context != null) {
-			context.debug(message);
+	public void logDebug(Object... args) {
+		if (context != null && hasLogArgs(args)) {
+			if (args.length == 1) {
+				context.debug(message(args));
+			} else {
+				context.debug(message(args), rest(args));
+			}
 		}
 	}
 
 	/**
 	 * Writes an info message using the loaded core context logger.
 	 *
-	 * @param message message to write
+	 * @param args message and optional format arguments to write
 	 */
-	public void logInfo(String message) {
-		if (context != null) {
-			context.info(message);
+	public void logInfo(Object... args) {
+		if (context != null && hasLogArgs(args)) {
+			if (args.length == 1) {
+				context.info(message(args));
+			} else {
+				context.info(message(args), rest(args));
+			}
 		}
 	}
 
 	/**
 	 * Writes a warning message using the loaded core context logger.
 	 *
-	 * @param message message to write
+	 * @param args message and optional format arguments to write
 	 */
-	public void logWarn(String message) {
-		if (context != null) {
-			context.warn(message);
+	public void logWarn(Object... args) {
+		if (context != null && hasLogArgs(args)) {
+			if (args.length == 1) {
+				context.warn(message(args));
+			} else {
+				context.warn(message(args), rest(args));
+			}
 		}
 	}
 
 	/**
 	 * Writes an error message using the loaded core context logger.
 	 *
-	 * @param message message to write
+	 * @param args message and optional format arguments to write
 	 */
-	public void logError(String message) {
-		if (context != null) {
-			context.error(message);
+	public void logError(Object... args) {
+		if (context != null && hasLogArgs(args)) {
+			if (args.length == 1) {
+				context.error(message(args));
+			} else {
+				context.error(message(args), rest(args));
+			}
 		}
+	}
+
+	private boolean hasLogArgs(Object[] args) {
+		return args != null && args.length > 0;
+	}
+
+	private String message(Object[] args) {
+		return String.valueOf(args[0]);
+	}
+
+	private Object[] rest(Object[] args) {
+		return Arrays.copyOfRange(args, 1, args.length);
 	}
 
 	/**

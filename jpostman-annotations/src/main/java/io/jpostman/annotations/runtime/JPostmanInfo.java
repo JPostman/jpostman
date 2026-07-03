@@ -462,24 +462,34 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Creates a copy of this info object with a local debug override.
+	 * Creates a copy of this info object with a local log output override.
 	 *
 	 * <p>
-	 * Blank values are ignored and keep the current inherited debug value.
-	 * Non-blank values override the class-level {@link JPostmanContext#logLevel()}
+	 * Blank values are ignored and keep the current inherited log output value.
+	 * Non-blank values override the class-level {@link JPostmanContext#logOutput()}
 	 * setting for this invocation and its children.
 	 * </p>
 	 *
-	 * @param value local debug level, or blank to keep the current value
-	 * @return copied info object with the supplied debug override when non-blank
+	 * @param values local log output modes, or empty to keep the current value
+	 * @return copied info object with the supplied log output override when
+	 *         non-blank
 	 */
-	public JPostmanInfo debug(String value) {
+	public JPostmanInfo debug(String... values) {
 		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request,
 				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context));
-		if (value != null && !value.isBlank()) {
-			copy.debug = value.trim();
+		String value = join(values);
+		if (!value.isBlank()) {
+			copy.debug = value;
 		}
 		return copy;
+	}
+
+	private static String join(String... values) {
+		if (values == null || values.length == 0) {
+			return "";
+		}
+		return Arrays.stream(values).filter(value -> value != null && !value.isBlank()).map(String::trim)
+				.reduce((left, right) -> left + "," + right).orElse("");
 	}
 
 	/**
@@ -1254,11 +1264,21 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Builds a readable multi-line log message with the current invocation values.
+	 * Builds a readable multi-line log message with full current invocation values.
 	 *
 	 * @return formatted runtime info
 	 */
 	public String log() {
+		return log(true);
+	}
+
+	/**
+	 * Builds a readable multi-line log message with the current invocation values.
+	 *
+	 * @param includeAll {@code true} to include method chain and timestamps
+	 * @return formatted runtime info
+	 */
+	public String log(boolean includeAll) {
 		StringBuilder builder = new StringBuilder();
 
 		builder.append("JPostmanInfo {");
@@ -1267,13 +1287,15 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		if (tags.length > 0)
 			builder.append("\n  tags=").append(Arrays.toString(tags));
 		append(builder, "method", method);
-		if (methodIndex >= 0)
-			builder.append("\n  methodIndex=").append(methodIndex);
-		builder.append("\n  methods=").append(methods);
+		if (includeAll) {
+			if (methodIndex >= 0)
+				builder.append("\n  methodIndex=").append(methodIndex);
+			builder.append("\n  methods=").append(methods);
+		}
 		append(builder, "namespace", namespace);
-		append(builder, "folder", folder);
-		append(builder, "request", request);
-		append(builder, "executor", executor);
+		concatenate(builder, "folder", folder);
+		concatenate(builder, "request", request);
+		concatenate(builder, "executor", executor);
 		append(builder, "cache", cache);
 		append(builder, "data", data);
 		if (body != null && body.size() > 0)
@@ -1292,9 +1314,11 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			builder.append("\n  path=").append(masked(path, false));
 		if (auth != null && auth.size() > 0)
 			builder.append("\n  auth=").append(masked(auth, true));
-		builder.append("\n  created=").append(date(created));
-		append(builder, "started", date(started));
-		append(builder, "ended", date(ended));
+		if (includeAll) {
+			builder.append("\n  created=").append(date(created));
+			append(builder, "started", date(started));
+			append(builder, "ended", date(ended));
+		}
 		if (duration > 0)
 			builder.append("\n  duration=").append(JPostmanInfo.formatDuration(duration, false));
 		builder.append("\n}");
@@ -1302,9 +1326,20 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		return builder.toString();
 	}
 
+	private static void concatenate(StringBuilder builder, String key, String value) {
+		if (!isBlank(value)) {
+			builder.append(", ").append(key).append("=").append(value);
+		}
+	}
+
 	/** Prints {@link #log()} using trace level. */
 	public void print() {
-		log.trace(log());
+		print(true);
+	}
+
+	/** Prints {@link #log(boolean)} using trace level. */
+	public void print(boolean includeAll) {
+		log.trace(log(includeAll));
 	}
 
 	public static String formatDuration(long millis, boolean includeHours) {

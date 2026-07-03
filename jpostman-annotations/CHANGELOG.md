@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.5
+
+### Added
+
+- Added `logOutput` automatic output modes for annotation execution: `none`, `request`, `response`, `info`, and `all`.
+- Added support for combining `logOutput` values such as `{ "info", "response" }`, while keeping `none` and `all` as exclusive single-value modes.
+- Added `JPostmanInfo.log(boolean)` and `JPostmanInfo.print(boolean)` so callers can choose full output or compact info output.
+- Added runtime log helper var args support for `logTrace(...)`, `logDebug(...)`, `logInfo(...)`, `logWarn(...)`, and `logError(...)`.
+
+### Changed
+
+- Renamed context and annotation-local `logLevel` settings to `logOutput` with no backward compatibility.
+- Changed response and runner `log()` defaults to `true`; automatic output is still suppressed by default because context `logOutput` defaults to `none`.
+- Changed compact info output so `print(false)` omits `methodIndex`, `methods`, and created/start/end timestamps while still showing the main invocation fields.
+
 ## 2.1.4
 
 ### Added
