@@ -15,14 +15,14 @@ import io.jpostman.annotations.JPostman;
 import io.jpostman.testng.TestNgContext;
 
 /**
- * Regression coverage for request-helper dependencies that inherit a caller
+ * Regression coverage for request-helper dependencies that inherit a parent
  * request location after running nested response dependencies.
  */
 public class JPostmanAnnotationRequestDependencyRegressionTest {
 
 	/**
 	 * Verifies that a blank @JPostman.Request helper used by a product request
-	 * keeps the caller's product request context after its nested login/token
+	 * keeps the parent product request context after its nested login/token
 	 * dependency finishes. The helper should see the inherited product request, not
 	 * the previous login request left behind by getToken().
 	 */

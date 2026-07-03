@@ -103,7 +103,7 @@ public final class JPostmanAnnotationRunner<C> {
 		List<String> stack = new ArrayList<>();
 		stack.add(testMethod.getName());
 		add(report, info);
-		info.methods.add(testMethod.getName());
+		info.method(testMethod.getName());
 		debug(testInstance, info);
 
 		try {
@@ -235,7 +235,7 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.usage(info, "@JPostmanResponse request is required when using response execution,",
 					"verification, assertions, or cache.",
 					"Set namespace, folder, and request directly on the @JPostmanResponse,",
-					"or depend on a @JPostmanRequest method that defines the request location: " + value(info.callee));
+					"or depend on a @JPostmanRequest method that defines the request location: " + value(info.method));
 		}
 
 		return false;
@@ -266,7 +266,8 @@ public final class JPostmanAnnotationRunner<C> {
 			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), name, info);
 			JPostmanRequest requestAnnotation = JPostmanAnnotations.request(dependencyMethod);
 			if (requestAnnotation != null && !isBlank(requestAnnotation.request())) {
-				info.location(requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request());
+				info.location(requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request())
+						.requestId(requestAnnotation.id());
 				return true;
 			}
 
@@ -274,7 +275,7 @@ public final class JPostmanAnnotationRunner<C> {
 			if (responseAnnotation != null) {
 				if (!isBlank(responseAnnotation.request())) {
 					info.location(responseAnnotation.namespace(), responseAnnotation.folder(),
-							responseAnnotation.request());
+							responseAnnotation.request()).requestId(responseAnnotation.id());
 					return true;
 				}
 				if (inheritResponseLocationFromDependencies(testInstance, dependencies(responseAnnotation.dependsOn()),
@@ -291,9 +292,13 @@ public final class JPostmanAnnotationRunner<C> {
 	private JPostmanInfo info(String methodName, JPostmanRequest requestAnnotation, JPostmanResponse responseAnnotation,
 			JPostmanRunner runnerAnnotation) {
 		if (requestAnnotation != null) {
-			return new JPostmanInfo(requestAnnotation.tags(), requestAnnotation.executor(), methodName,
+			JPostmanInfo info = new JPostmanInfo(requestAnnotation.tags(), requestAnnotation.executor(), methodName,
 					requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request())
 					.annotation("@JPostmanRequest").id(requestAnnotation.id()).debug(requestAnnotation.logLevel());
+			if (!isBlank(requestAnnotation.request())) {
+				info.requestId(requestAnnotation.id());
+			}
+			return info;
 		}
 
 		if (responseAnnotation != null) {
@@ -365,7 +370,7 @@ public final class JPostmanAnnotationRunner<C> {
 		/*
 		 * Response dependencies must use their own annotation location exactly. A blank
 		 * namespace/folder on @JPostmanResponse means the default context/root folder,
-		 * not the caller's current product namespace/folder.
+		 * not the parent chain's current product namespace/folder.
 		 */
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
@@ -374,10 +379,11 @@ public final class JPostmanAnnotationRunner<C> {
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
 		JPostmanReport report = report(testInstance);
-		add(report, info);
 
 		validateResponseSkipEnabled(annotation, info);
 		if (skipResponse(annotation)) {
+			info.method(dependencyMethod.getName());
+			add(report, info);
 			skipped(report, info);
 			throw JPostmanErrors.skip(framework, info, responseSkipLines(annotation));
 		}
@@ -392,6 +398,9 @@ public final class JPostmanAnnotationRunner<C> {
 			resolver.info(parentInfo);
 			return;
 		}
+
+		info.method(dependencyMethod.getName());
+		add(report, info);
 
 		C ctx = prepareRequest(resolver.context(info.namespace), resolver.collection(info.namespace), annotation, info);
 		resolver.update(info.namespace, ctx);
@@ -419,6 +428,7 @@ public final class JPostmanAnnotationRunner<C> {
 						annotation.folder(), parentInfo.request)
 				.annotation("@JPostmanRunner").debug(annotation.logLevel());
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
+		runnerInfo.method(dependencyMethod.getName());
 		resolver.info(runnerInfo);
 		applyData(testInstance, resolver, runnerInfo, annotation.data(), stack);
 		add(report(testInstance), runnerInfo);
@@ -429,14 +439,32 @@ public final class JPostmanAnnotationRunner<C> {
 		});
 	}
 
+	private JPostmanInfo requestDependencyInfo(JPostmanInfo parentInfo, Method dependencyMethod,
+			JPostmanRequest annotation, String cache) {
+		/*
+		 * A request helper that owns a request attribute gets its own exact request
+		 * location. Blank namespace on that helper means the default namespace while the
+		 * helper runs. Helpers without a request continue to inherit the parent context
+		 * so they can act as generic setup/tag helpers.
+		 */
+		JPostmanInfo info = isBlank(annotation.request())
+				? parentInfo.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
+						annotation.namespace(), annotation.folder(), annotation.request())
+				: parentInfo.childExact(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
+						annotation.namespace(), annotation.folder(), annotation.request());
+
+		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.logLevel());
+		if (!isBlank(annotation.request())) {
+			info.requestId(annotation.id());
+		}
+		return info;
+	}
+
 	private void runRequestDependency(Object testInstance, PreparedContexts<C> resolver, Method dependencyMethod,
 			JPostmanRequest annotation, JPostmanInfo parentInfo, List<String> stack) throws Exception {
 
 		String cache = cacheKey(dependencyMethod, annotation.cache());
-		JPostmanInfo dependencyInfo = parentInfo
-				.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache, annotation.namespace(),
-						annotation.folder(), annotation.request())
-				.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.logLevel());
+		JPostmanInfo dependencyInfo = requestDependencyInfo(parentInfo, dependencyMethod, annotation, cache);
 		resolver.info(dependencyInfo);
 		JPostmanReport report = report(testInstance);
 		add(report, dependencyInfo);
@@ -450,12 +478,12 @@ public final class JPostmanAnnotationRunner<C> {
 			 * JPostmanRequestDiscovery, where request/folder/namespace are used to match
 			 * collection requests.
 			 */
-			dependencyInfo.methods.add(dependencyMethod.getName());
+			dependencyInfo.method(dependencyMethod.getName());
 			return;
 		}
 		/*
 		 * Request dependencies are request helpers. Blank namespace/folder/request
-		 * values inherit the caller request location through dependencyInfo. Use the
+		 * values inherit the parent request location through dependencyInfo. Use the
 		 * resolved location consistently for both the context passed into the helper
 		 * method and the request prepared before/after nested dependencies.
 		 */
@@ -466,11 +494,11 @@ public final class JPostmanAnnotationRunner<C> {
 
 		/*
 		 * The helper receives invocation info. Add the current helper to the shared
-		 * chain before invocation so info.print() shows caller/callee and the full path
-		 * including the current method. This also keeps the invocation chain consistent
+		 * chain before invocation so info.print() shows method/methodIndex and the
+		 * full path including the current method. This also keeps the invocation chain consistent
 		 * when the current helper is skipped because its own cache key already exists.
 		 */
-		parentInfo.methods.add(dependencyMethod.getName());
+		dependencyInfo.method(dependencyMethod.getName());
 
 		boolean cached = cache != null && !cache.isBlank() && isCached(resolver.context(contextNamespace), cache);
 		if (!cached) {
@@ -607,6 +635,16 @@ public final class JPostmanAnnotationRunner<C> {
 		return result;
 	}
 
+	private C applyFilter(C context, String... filter) {
+		C result = context;
+		if (filter != null && filter.length > 0) {
+			C previous = result;
+			result = framework.filter(result, filter);
+			framework.copyCache(previous, result);
+		}
+		return result;
+	}
+
 	private C applyRuleAndFilter(C context, String rule, String... filter) {
 		C result = context;
 		if (rule != null && !rule.isBlank()) {
@@ -681,7 +719,7 @@ public final class JPostmanAnnotationRunner<C> {
 				continue;
 			}
 
-			JPostmanInfo requestInfo = info.child(info.callee, info.namespace, info.folder, requestName)
+			JPostmanInfo requestInfo = info.child(info.method, info.namespace, info.folder, requestName)
 					.annotation("@JPostmanRunner");
 			resolver.info(requestInfo);
 			add(report, requestInfo);
@@ -757,6 +795,30 @@ public final class JPostmanAnnotationRunner<C> {
 				"Check the namespace, folder, include/exclude values, or collection structure.");
 	}
 
+	private String executorStep(String executorName, JPostmanInfo info) {
+		String detail = executorStepDetail(info);
+		return detail.isBlank() ? executorName : executorName + "(" + detail + ")";
+	}
+
+	private String executorStepDetail(JPostmanInfo info) {
+		if (info == null) {
+			return "";
+		}
+		String id = value(info.id).trim();
+		if (!id.isBlank()) {
+			return id.startsWith(ID_PREFIX) ? id : ID_PREFIX + id;
+		}
+		String requestId = value(info.requestId).trim();
+		if (!requestId.isBlank()) {
+			return requestId.startsWith(ID_PREFIX) ? requestId : ID_PREFIX + requestId;
+		}
+		String request = value(info.request).trim();
+		if (!request.isBlank()) {
+			return "\"" + request.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+		}
+		return "";
+	}
+
 	private void executeRunnerResponse(Object testInstance, PreparedContexts<C> resolver, C ctx,
 			JPostmanRunner annotation, JPostmanInfo info, List<String> stack) throws Exception {
 
@@ -764,7 +826,8 @@ public final class JPostmanAnnotationRunner<C> {
 
 		ExecutorCall<C> executor = executorCall(testInstance, ctx, info);
 		resolver.info(executor.info);
-		info.methods.add(executor.name);
+		int executorIndex = info.appendMethod(executorStep(executor.name, info));
+		executor.info.methodIndex(executorIndex);
 		add(report(testInstance), executor.info);
 
 		Collection collection = resolver.collection(info.namespace);
@@ -788,18 +851,19 @@ public final class JPostmanAnnotationRunner<C> {
 			info.start();
 			try {
 				ctx = framework.response(ctx, (ApiExecutor) result);
+				ctx = applyFilter(ctx, annotation.filter());
 			} finally {
 				info.end();
 			}
 			resolver.update(info.namespace, ctx);
 			framework.setCurrent(ctx);
+			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
 			debug(testInstance, info);
-			if (!applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
-					annotation.log())) {
-				verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
-			}
+			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
+					annotation.log());
+			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
 			passed(report, info);
 		} catch (Exception | Error e) {
 			failed(report, info);
@@ -815,7 +879,8 @@ public final class JPostmanAnnotationRunner<C> {
 
 		ExecutorCall<C> executor = executorCall(testInstance, ctx, info);
 		resolver.info(executor.info);
-		info.methods.add(executor.name);
+		int executorIndex = info.appendMethod(executorStep(executor.name, info));
+		executor.info.methodIndex(executorIndex);
 		add(report(testInstance), executor.info);
 
 		Collection collection = resolver.collection(info.namespace);
@@ -839,24 +904,63 @@ public final class JPostmanAnnotationRunner<C> {
 			info.start();
 			try {
 				ctx = framework.response(ctx, (ApiExecutor) result);
+				ctx = applyFilter(ctx, annotation.filter());
 			} finally {
 				info.end();
 			}
 			resolver.update(info.namespace, ctx);
 			framework.setCurrent(ctx);
+			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
 			debug(testInstance, info);
-			if (!applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
-					annotation.log())) {
-				verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
-			}
+			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
+					annotation.log());
+			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
 			passed(report, info);
 		} catch (Exception | Error e) {
 			failed(report, info);
 			throw executionFailure(testInstance, latestContext(resolver, info.namespace, ctx), info, e,
 					annotation.log());
 		}
+	}
+
+	private void runExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx,
+			JPostmanInfo info) throws Exception {
+		for (Method method : executorInterceptors(testInstance.getClass(), info.namespace)) {
+			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+			JPostmanInfo interceptorInfo = info
+					.childExact(method.getName(), new String[0], info.executor, "", info.namespace, info.folder,
+							info.request)
+					.annotation("@JPostmanExecutor intercept").id(annotationId(annotation.id()))
+					.debug(annotation.logLevel());
+			interceptorInfo = interceptorInfo.context(resolver.resolve(info.namespace).contextAnnotation);
+			interceptorInfo.method(method.getName());
+			resolver.info(interceptorInfo);
+			invokeExecutor(testInstance, method, ctx, interceptorInfo);
+		}
+		resolver.info(info);
+	}
+
+	private List<Method> executorInterceptors(Class<?> type, String namespace) {
+		List<Method> methods = new ArrayList<>();
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+				if (annotation == null || !isExecutorInterceptor(method)) {
+					continue;
+				}
+				String configuredNamespace = value(annotation.namespace()).trim();
+				if (!configuredNamespace.isBlank() && !configuredNamespace.equals(value(namespace))) {
+					continue;
+				}
+				method.setAccessible(true);
+				methods.add(method);
+			}
+			current = current.getSuperclass();
+		}
+		return methods;
 	}
 
 	private void rejectVerifyAndAsserts(JPostmanResponse annotation, JPostmanInfo info) {
@@ -1030,25 +1134,30 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void verifyResponse(Object testInstance, C ctx, JPostmanInfo info, int annotationVerify, boolean soft,
 			boolean annotationLog) {
-		int statusCode = statusCode(testInstance, annotationVerify);
-		if (statusCode >= 0) {
+		int statusCode = statusCode(testInstance, annotationVerify, info);
+		if (statusCode >= 1) {
 			framework.verify(ctx, statusCode, soft, log(testInstance, annotationLog), info);
 		}
 	}
 
 	private void verifyRequestResponse(Object testInstance, C ctx, JPostmanInfo info) {
-		int statusCode = statusCode(testInstance, -1);
-		if (statusCode >= 0 && framework.hasResponse(ctx)) {
+		int statusCode = statusCode(testInstance, -1, info);
+		if (statusCode >= 1 && framework.hasResponse(ctx)) {
 			framework.verify(ctx, statusCode, false, log(testInstance, false), info);
 		}
 	}
 
-	private int statusCode(Object testInstance, int annotationVerify) {
-		return JPostmanRuntimeOptions.from(testInstance).statusCode(annotationVerify);
+	private int statusCode(Object testInstance, int annotationVerify, JPostmanInfo info) {
+		int statusCode = JPostmanRuntimeOptions.from(testInstance).statusCode(annotationVerify);
+		if ((statusCode > 0 && statusCode < 100) || statusCode > 599) {
+			throw JPostmanErrors.usage(info,
+					"verify status code must be between 100 and 599, or less than 1 to skip verification.");
+		}
+		return statusCode;
 	}
 
 	private boolean shouldVerify(int verify) {
-		return verify >= 0;
+		return verify > 0;
 	}
 
 	private String cacheKey(Method method, String rawCache) {
@@ -1071,9 +1180,18 @@ public final class JPostmanAnnotationRunner<C> {
 			return null;
 		}
 
+		C target = resolver.context(info.namespace);
+		if (framework.hasCache(target, cache)) {
+			return framework.cache(target, cache);
+		}
+
 		for (C context : resolver.contexts()) {
 			if (framework.hasCache(context, cache)) {
-				return framework.cache(context, cache);
+				Object value = framework.cache(context, cache);
+				if (!framework.contextType().isInstance(value)) {
+					framework.cache(target, cache, value);
+				}
+				return value;
 			}
 		}
 
@@ -1386,7 +1504,7 @@ public final class JPostmanAnnotationRunner<C> {
 					ids.computeIfAbsent(id, key -> new ArrayList<>()).add(method);
 				}
 
-				if ("default".equals(id) || id.isBlank()) {
+				if (isExecutorProvider(method) && ("default".equals(id) || id.isBlank())) {
 					defaults.add(method);
 				}
 			}
@@ -1406,6 +1524,14 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
+	private boolean isExecutorProvider(Method method) {
+		return method != null && ApiExecutor.class.isAssignableFrom(method.getReturnType());
+	}
+
+	private boolean isExecutorInterceptor(Method method) {
+		return method != null && method.getReturnType() == Void.TYPE;
+	}
+
 	private void validateExecutorMethod(Method method, List<Method> invalidSignatures, List<Method> invalidReturns) {
 		Class<?>[] types = method.getParameterTypes();
 		boolean valid = false;
@@ -1422,7 +1548,7 @@ public final class JPostmanAnnotationRunner<C> {
 			invalidSignatures.add(method);
 		}
 
-		if (!ApiExecutor.class.isAssignableFrom(method.getReturnType())) {
+		if (!isExecutorProvider(method) && !isExecutorInterceptor(method)) {
 			invalidReturns.add(method);
 		}
 	}
@@ -1488,8 +1614,8 @@ public final class JPostmanAnnotationRunner<C> {
 			if (needBlank) {
 				message.append(JPostmanErrors.ENDL);
 			}
-			message.append("@JPostmanExecutor methods must return ApiExecutor.").append(JPostmanErrors.ENDL)
-					.append("They configure request execution and must return the executor used by JPostman.")
+			message.append("@JPostmanExecutor methods must return ApiExecutor or void.").append(JPostmanErrors.ENDL)
+					.append("ApiExecutor methods configure request execution; void methods run as post-response interceptors.")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid executor return methods:")
 					.append(JPostmanErrors.ENDL);
 			for (Method method : invalidReturns) {
@@ -1522,7 +1648,8 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		if (!invalidReturns.isEmpty()) {
-			throw JPostmanErrors.usage(info, "@JPostmanExecutor method must return ApiExecutor: " + method.getName());
+			throw JPostmanErrors.usage(info,
+					"@JPostmanExecutor method must return ApiExecutor or void: " + method.getName());
 		}
 	}
 
@@ -1579,7 +1706,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
 		}
-		return invoke(testInstance, method, ctx, info);
+		return invoke(testInstance, method, contextArg(types[0], ctx), info);
 	}
 
 	private void verifyExecutorResult(Object result, Method executor, JPostmanInfo info) {
@@ -1623,7 +1750,7 @@ public final class JPostmanAnnotationRunner<C> {
 				}
 
 				String id = annotationId(annotation.id());
-				if (id.isBlank() || "default".equals(id)) {
+				if (isExecutorProvider(method) && (id.isBlank() || "default".equals(id))) {
 					return true;
 				}
 			}
@@ -1671,6 +1798,9 @@ public final class JPostmanAnnotationRunner<C> {
 				}
 
 				validateExecutorMethod(method, info);
+				if (!isExecutorProvider(method)) {
+					continue;
+				}
 				method.setAccessible(true);
 
 				String id = annotationId(annotation.id());
@@ -1870,7 +2000,8 @@ public final class JPostmanAnnotationRunner<C> {
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
-				if (JPostmanAnnotations.executor(method) != null && requested.equals(method.getName())) {
+				if (JPostmanAnnotations.executor(method) != null && isExecutorProvider(method)
+						&& requested.equals(method.getName())) {
 					method.setAccessible(true);
 					return method;
 				}
@@ -1890,7 +2021,7 @@ public final class JPostmanAnnotationRunner<C> {
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
 				JPostmanExecutor executor = JPostmanAnnotations.executor(method);
-				if (executor != null && requested.equals(annotationId(executor.id()))) {
+				if (executor != null && isExecutorProvider(method) && requested.equals(annotationId(executor.id()))) {
 					method.setAccessible(true);
 					return method;
 				}
@@ -1983,10 +2114,10 @@ public final class JPostmanAnnotationRunner<C> {
 			return invoke(testInstance, method, contextArg(types[0], ctx), info);
 		}
 		if (types.length == 2) {
-			return invoke(testInstance, method, contextArg(types[0], ctx), info.callee);
+			return invoke(testInstance, method, contextArg(types[0], ctx), info.method);
 		}
 		Object contextArg = contextArg(types[0], ctx);
-		return invoke(testInstance, method, contextArg, info.callee, info.request);
+		return invoke(testInstance, method, contextArg, info.method, info.request);
 	}
 
 	private Object invoke(Object testInstance, Method method, Object... args) throws Exception {

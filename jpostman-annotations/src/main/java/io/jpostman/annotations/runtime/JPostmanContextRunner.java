@@ -57,7 +57,7 @@ final class JPostmanContextRunner<C> {
 		 * collection/environment/rules/config.
 		 */
 		prepareImplicitContexts(testInstance, prepared);
-		prepared.missingContextFactory(namespace -> createMissingNamespaceContext(testInstance, prepared, namespace));
+		prepared.missingContextFactory(namespace -> createMissingNamespaceContext(testInstance, prepared, previous, namespace));
 		prepareNamedContexts(testInstance, prepared);
 		prepareActiveContexts(testInstance, prepared);
 		preservePreviousCaches(prepared, previous);
@@ -102,9 +102,9 @@ final class JPostmanContextRunner<C> {
 		C previousContext = previous.context(namespace);
 		PreparedContext<C> preparedContext = prepared.resolve(namespace);
 		/*
-		 * Keep each prepared context fresh between test method executions. Only cache
-		 * is carried forward; request, response, filter, soft/log, and other per-run
-		 * state must not be reused from the previous context.
+		 * Keep each prepared context fresh between test method executions.
+		 * Only cache is carried forward; request, response, filter, soft/log, and other
+		 * per-run state must not be reused from the previous context.
 		 */
 		framework.copyCache(previousContext, preparedContext.context);
 	}
@@ -290,19 +290,28 @@ final class JPostmanContextRunner<C> {
 				setTestContextField(testInstance, field, fieldContext);
 				prepared.addActive(new PreparedContext<>(fieldContext, source.loaded, source.contextAnnotation,
 						source.dataloadLocations, source.assertionRules, testInstance, field));
+				/*
+				 * If a previous test already produced an active response, keep that response as
+				 * the runtime active context while preparing the next method. This matters when
+				 * the next method is skipped before execution: active @JPostmanTestContext
+				 * fields still point to the previous active response, and jpostman.ctx() must
+				 * resolve to the same context instead of falling back to the default namespace.
+				 */
+				if (hasResponse(fieldContext)) {
+					prepared.updateActive(fieldContext);
+				}
 			}
 			current = current.getSuperclass();
 		}
 	}
 
 	private PreparedContext<C> createMissingNamespaceContext(Object testInstance, PreparedContexts<C> prepared,
-			String namespace) throws Exception {
+			PreparedContexts<C> previous, String namespace) throws Exception {
 
 		if (prepared.isEmpty()) {
 			return null;
 		}
 
-		PreparedContexts<C> previous = currentContexts(testInstance);
 		PreparedContext<C> source = prepared.contains("") ? prepared.resolve("") : prepared.firstPreparedContext();
 
 		/*
@@ -530,9 +539,11 @@ final class JPostmanContextRunner<C> {
 		if (compactTestRuntime) {
 			return new JPostmanRuntime<>(context, namespace,
 					name -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).context(name)),
+					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext()),
 					() -> activeContexts(testInstance, contexts).info());
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
+				() -> activeContexts(testInstance, contexts).activeContext(),
 				() -> activeContexts(testInstance, contexts).info());
 	}
 

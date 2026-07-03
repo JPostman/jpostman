@@ -321,7 +321,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400Fixture {
-		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -350,7 +350,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400LogsFixture {
-		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json", logs = true)
+		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json", logs = true)
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -419,7 +419,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// The following asserts failed
 	private static final class ExecutionFailedSoftVerifyFixture {
-		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanTestContext
@@ -456,7 +456,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// The following asserts failed
 	private static final class ExecutionFailedSoftVerifyTrueFixture {
-		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanTestContext

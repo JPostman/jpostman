@@ -43,6 +43,15 @@ public @interface JPostmanExecutor {
 	String[] dependsOn() default {};
 
 	/**
+	 * Namespace where this executor interceptor applies. Empty means all
+	 * namespaces for void interceptors and the default executor provider for
+	 * ApiExecutor-returning methods.
+	 *
+	 * @return namespace, or empty string
+	 */
+	String namespace() default "";
+
+	/**
 	 * Reuse the executor instance returned by this method during the current
 	 * annotation runner execution.
 	 *

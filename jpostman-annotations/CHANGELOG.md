@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.3
+
+### Added
+
+- Added `methodIndex` to `JPostmanInfo` so logs can show the zero-based index of the current method inside the shared execution chain.
+- Added `methods` chain support for executor steps with readable entries such as `HttpClientExecutor(#auth)`, `HttpClientExecutor(#token)`, and named request execution.
+- Added namespace support to `@JPostmanExecutor` and compact `@JPostman.Executor` so `void` executor interceptors can be limited to a specific namespace.
+- Added compact `JPostman.Ref<T>` plus `info.ref(...)` helpers for mutable values inside Java lambda chains.
+
+### Changed
+
+- Changed `JPostmanInfo` logging from the old `caller` / `callee` model to the cleaner `method`, `methodIndex`, and `methods` model.
+- Changed `JPostman.Info.attr()` examples and tests to use `info.attr().method`, `info.attr().methodIndex`, and `info.attr().methods`.
+- Changed `JPostman.Runtime.ctx()` to return the latest active framework context; use `ctx("")` for the default namespace and `ctx("name")` for a specific namespace.
+- Changed response and runner execution so filters are applied again after `framework.response(...)`, ensuring the secure log reflects the current response and the current annotation `filter` value.
+- Changed status-code configuration so context `verifyStatusCode < 1` skips automatic status-code verification, while values from `1` to `99` or greater than `599` are rejected as invalid.
+- Changed response and runner `verify < 1` behavior to inherit the context-level `verifyStatusCode` setting.
+
+### Removed
+
+- Removed `caller` and `callee` fields and related runtime handling from `JPostmanInfo`; use `method`, `methodIndex`, and `methods` instead.
+
 ## 2.1.2
 
 ### Added

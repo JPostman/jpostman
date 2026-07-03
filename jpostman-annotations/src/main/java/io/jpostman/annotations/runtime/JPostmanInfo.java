@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.jpostman.Params;
+import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanContext;
 
 /**
@@ -56,16 +57,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public final String executor;
 
-	/**
-	 * Java method that triggered this invocation, or empty string for a top-level
-	 * test/runner call.
-	 */
-	public final String caller;
-
-	/**
-	 * Java test/helper/executor method currently represented by this info object.
-	 */
-	public final String callee;
+	/** Java test/helper/executor method represented by this info object. */
+	public final String method;
 
 	/**
 	 * JPostman annotation represented by this info object, or empty string when
@@ -87,6 +80,12 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	/** Ordered Java methods visited by this JPostman execution chain. */
 	public final List<String> methods;
 
+	/**
+	 * Zero-based index of the current invocation entry inside {@link #methods}, or
+	 * {@code -1} when this invocation has not been added to the method chain.
+	 */
+	public int methodIndex;
+
 	/** Context namespace associated with this invocation. */
 	public String namespace;
 
@@ -95,6 +94,13 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	/** Postman request associated with this invocation. */
 	public String request;
+
+	/**
+	 * Annotation id that originally selected the current Postman request, or empty
+	 * when the request was selected without an annotation id. This is used for
+	 * readable executor-chain logging without replacing the current invocation id.
+	 */
+	public String requestId;
 
 	/**
 	 * Mutable body values shared by methods in the same execution chain.
@@ -158,8 +164,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	private long duration;
 
 	/**
-	 * Creates a new top-level runtime info object using the Java method name as the
-	 * callee and no annotation tags.
+	 * Creates a new top-level runtime info object using the Java method name and no
+	 * annotation tags.
 	 *
 	 * @param method    Java test/helper/executor method name
 	 * @param namespace context namespace
@@ -171,7 +177,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	public JPostmanInfo(String annotation, String method, String namespace, String folder, String request) {
-		this(new String[0], "", "", "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
+		this(new String[0], "", "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), System.currentTimeMillis(), null);
 		this.annotation = annotation;
@@ -179,12 +185,12 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	public JPostmanInfo(String[] tags, String executor, String method, String namespace, String folder,
 			String request) {
-		this(tags, executor, "", "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
+		this(tags, executor, "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), System.currentTimeMillis(), null);
 	}
 
-	private JPostmanInfo(String[] tags, String executor, String cache, String caller, String callee, String namespace,
+	private JPostmanInfo(String[] tags, String executor, String cache, String method, String namespace,
 			String folder, String request, List<String> methods, Map<String, Object> body, Map<String, Object> query,
 			Map<String, Object> headers, Map<String, Object> bodyAdd, Map<String, Object> queryAdd,
 			Map<String, Object> headersAdd, Map<String, Object> path, Map<String, Object> auth, long created,
@@ -193,8 +199,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		this.context = context;
 		this.executor = value(executor);
 		this.cache = value(cache);
-		this.caller = value(caller);
-		this.callee = value(callee);
+		this.method = value(method);
 		this.annotation = "";
 		this.id = "";
 		this.data = "";
@@ -202,7 +207,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		this.namespace = value(namespace);
 		this.folder = value(folder);
 		this.request = value(request);
+		this.requestId = "";
 		this.methods = methods;
+		this.methodIndex = -1;
 		this.body = body;
 		this.query = query;
 		this.headers = headers;
@@ -236,6 +243,50 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		return this;
 	}
 
+	@Override
+	public <T> JPostman.Ref<T> ref() {
+		return new JPostman.Ref<>();
+	}
+
+	@Override
+	public <T> JPostman.Ref<T> ref(T value) {
+		return new JPostman.Ref<>(value);
+	}
+
+	/**
+	 * Appends a method/executor display entry to the shared method chain and returns
+	 * the zero-based index assigned to that entry.
+	 *
+	 * @param method method or executor display name
+	 * @return zero-based index inside {@link #methods}
+	 */
+	public int appendMethod(String method) {
+		methods.add(value(method));
+		return methods.size() - 1;
+	}
+
+	/**
+	 * Marks this info object as the current invocation for the supplied method entry.
+	 *
+	 * @param method method or executor display name
+	 * @return this info object
+	 */
+	public JPostmanInfo method(String method) {
+		this.methodIndex = appendMethod(method);
+		return this;
+	}
+
+	/**
+	 * Sets the current invocation index without appending another method entry.
+	 *
+	 * @param index zero-based method-chain index
+	 * @return this info object
+	 */
+	public JPostmanInfo methodIndex(int index) {
+		this.methodIndex = index;
+		return this;
+	}
+
 	/**
 	 * Starts fluent tag-conditional actions for this invocation.
 	 *
@@ -262,6 +313,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public static final class TagRules {
 		private final JPostmanInfo info;
+		private boolean matched;
 
 		private TagRules(JPostmanInfo info) {
 			this.info = info;
@@ -285,6 +337,24 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		 */
 		public TagCondition any(String... values) {
 			return new TagCondition(this, hasAny(values));
+		}
+
+		/**
+		 * Runs the action when no previous {@link #has(String...)} or
+		 * {@link #any(String...)} condition matched in this rule chain.
+		 *
+		 * @param action default action to run with the current {@link JPostmanInfo}
+		 * @return this tag rule builder
+		 */
+		public TagRules otherwise(Consumer<JPostmanInfo> action) {
+			if (!matched && action != null) {
+				action.accept(info);
+			}
+			return this;
+		}
+
+		private void matched() {
+			this.matched = true;
 		}
 
 		private boolean hasAll(String... values) {
@@ -325,8 +395,11 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		 * @return parent tag rule builder for additional chained conditions
 		 */
 		public TagRules then(Consumer<JPostmanInfo> action) {
-			if (matched && action != null) {
-				action.accept(rules.info);
+			if (matched) {
+				rules.matched();
+				if (action != null) {
+					action.accept(rules.info);
+				}
 			}
 			return rules;
 		}
@@ -340,7 +413,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with the supplied context
 	 */
 	public JPostmanInfo context(JPostmanContext value) {
-		return copyMeta(new JPostmanInfo(this.tags, executor, cache, caller, callee, namespace, folder, request,
+		return copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request,
 				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, value));
 	}
 
@@ -357,7 +430,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with the supplied debug override when non-blank
 	 */
 	public JPostmanInfo debug(String value) {
-		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, caller, callee, namespace, folder,
+		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder,
 				request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context));
 		if (value != null && !value.isBlank()) {
 			copy.debug = value.trim();
@@ -374,7 +447,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with merged tags
 	 */
 	public JPostmanInfo withTags(String... values) {
-		return copyMeta(new JPostmanInfo(mergeTags(this.tags, values), executor, cache, caller, callee, namespace,
+		return copyMeta(new JPostmanInfo(mergeTags(this.tags, values), executor, cache, method, namespace,
 				folder, request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created,
 				context));
 	}
@@ -384,6 +457,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		copy.id = this.id;
 		copy.data = this.data;
 		copy.debug = this.debug;
+		copy.requestId = this.requestId;
+		copy.methodIndex = this.methodIndex;
 		return copy;
 	}
 
@@ -411,7 +486,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return child info object
 	 */
 	public JPostmanInfo child(String method, String namespace, String folder, String request) {
-		return new JPostmanInfo(this.tags, executor, "", this.callee, method, first(namespace, this.namespace),
+		return new JPostmanInfo(this.tags, executor, "", method, first(namespace, this.namespace),
 				first(folder, this.folder), first(request, this.request), methods, body, query, headers, bodyAdd,
 				queryAdd, headersAdd, path, auth, created, context).debug(this.debug);
 	}
@@ -461,7 +536,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	public JPostmanInfo child(String method, String[] tags, String executor, String cache, String namespace,
 			String folder, String request) {
-		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), this.callee, method,
+		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method,
 				first(namespace, this.namespace), first(folder, this.folder), first(request, this.request), methods,
 				body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context).debug(this.debug);
 	}
@@ -477,7 +552,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return child info object
 	 */
 	public JPostmanInfo childExact(String method, String namespace, String folder, String request) {
-		return new JPostmanInfo(this.tags, executor, "", this.callee, method, value(namespace), value(folder),
+		return new JPostmanInfo(this.tags, executor, "", method, value(namespace), value(folder),
 				value(request), methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created,
 				context).debug(this.debug);
 	}
@@ -526,7 +601,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	public JPostmanInfo childExact(String method, String[] tags, String executor, String cache, String namespace,
 			String folder, String request) {
-		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), this.callee, method,
+		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method,
 				value(namespace), value(folder), value(request), methods, body, query, headers, bodyAdd, queryAdd,
 				headersAdd, path, auth, created, context).debug(this.debug);
 	}
@@ -595,6 +670,17 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo id(String value) {
 		id = annotationId(value);
+		return this;
+	}
+
+	/**
+	 * Updates the annotation id that owns the current Postman request location.
+	 *
+	 * @param value request-owner annotation id
+	 * @return this info object
+	 */
+	public JPostmanInfo requestId(String value) {
+		requestId = annotationId(value);
 		return this;
 	}
 
@@ -1137,8 +1223,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		append(builder, "id", id);
 		if (tags.length > 0)
 			builder.append("\n  tags=").append(Arrays.toString(tags));
-		append(builder, "callee", callee);
-		append(builder, "caller", caller);
+		append(builder, "method", method);
+		if (methodIndex >= 0)
+			builder.append("\n  methodIndex=").append(methodIndex);
 		builder.append("\n  methods=").append(methods);
 		append(builder, "namespace", namespace);
 		append(builder, "folder", folder);

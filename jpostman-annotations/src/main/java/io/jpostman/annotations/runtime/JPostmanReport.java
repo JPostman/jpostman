@@ -129,7 +129,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private boolean isTopLevel(JPostmanInfo info) {
-		return info != null && value(info.caller).isBlank();
+		return info != null && (info.methodIndex == 0
+				|| (info.methodIndex < 0 && (info.methods == null || info.methods.isEmpty())));
 	}
 
 	private void removeRecorded(JPostmanInfo info) {
@@ -144,11 +145,12 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		}
 
 		if (isTopLevel(left) && isTopLevel(right)) {
-			return value(left.callee).equals(value(right.callee));
+			return value(left.method).equals(value(right.method));
 		}
 
-		return value(left.annotation).equals(value(right.annotation)) && value(left.caller).equals(value(right.caller))
-				&& value(left.callee).equals(value(right.callee))
+		return value(left.annotation).equals(value(right.annotation))
+				&& value(left.method).equals(value(right.method))
+				&& left.methodIndex == right.methodIndex
 				&& value(left.namespace).equals(value(right.namespace))
 				&& value(left.folder).equals(value(right.folder)) && value(left.request).equals(value(right.request));
 	}

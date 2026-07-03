@@ -29,7 +29,8 @@ import io.jpostman.annotations.JPostmanContext;
  * // Compact alias:
  * private io.jpostman.annotations.JPostman.Runtime<TestNgContext> jctx;
  *
- * jctx.ctx().verify();
+ * jctx.ctx().verify(); // latest active context
+ * jctx.ctx("").print(); // default namespace context
  * jctx.ctx("product").response().print();
  * jctx.info().body("title", "Wireless Mouse");
  * }
@@ -43,21 +44,25 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	private final JPostman.Context context;
 	private final String namespace;
 	private final Function<String, C> contextResolver;
+	private final Supplier<C> activeContextResolver;
 	private final Supplier<JPostmanInfo> infoSupplier;
 
 	/**
 	 * Creates a runtime view.
 	 *
 	 * @param context         loaded core JPostman context
-	 * @param namespace       default namespace for {@link #ctx()}
+	 * @param namespace       fallback namespace used by {@link #ctx()} before an
+	 *                        active context exists
 	 * @param contextResolver framework-context resolver by namespace
-	 * @param infoSupplier    current annotation execution info supplier
+	 * @param activeContextResolver latest active framework-context resolver
+	 * @param infoSupplier current annotation execution info supplier
 	 */
 	public JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
-			Supplier<JPostmanInfo> infoSupplier) {
+			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier) {
 		this.context = context;
 		this.namespace = namespace == null ? "" : namespace;
 		this.contextResolver = contextResolver;
+		this.activeContextResolver = activeContextResolver;
 		this.infoSupplier = infoSupplier;
 	}
 
@@ -71,12 +76,20 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	}
 
 	/**
-	 * Returns the framework context for this runtime default namespace.
+	 * Returns the latest active framework context.
 	 *
-	 * @return framework context
+	 * <p>
+	 * Use {@link #ctx(String)} with an empty namespace to explicitly resolve the
+	 * default namespace, or with a namespace value to resolve a namespace-specific
+	 * context.
+	 * </p>
+	 *
+	 * @return latest active framework context, or the runtime default namespace
+	 *         context before any annotated execution has completed
 	 */
 	public C ctx() {
-		return ctx(namespace);
+		C active = activeContextResolver == null ? null : activeContextResolver.get();
+		return active == null ? ctx(namespace) : active;
 	}
 
 	/**

@@ -29,8 +29,9 @@ public class JPostmanAnnotationContextRegressionTest {
 	 * the default namespace response is the cached login response.</li>
 	 * <li>{@code active = true} follows the latest active context. In this flow,
 	 * the latest active response is the product namespace response.</li>
-	 * <li>{@code jpostman.ctx()} and {@code jpostman.ctx("product")} expose the
-	 * same teardown-visible contexts as the injected fields.</li>
+	 * <li>{@code jpostman.ctx()} exposes the latest active context,
+	 * {@code jpostman.ctx("")} exposes the default namespace context, and
+	 * {@code jpostman.ctx("product")} exposes the product namespace context.</li>
 	 * <li>A later skipped response must not replace the injected fields with fresh
 	 * empty contexts.</li>
 	 * </ul>
@@ -105,7 +106,9 @@ public class JPostmanAnnotationContextRegressionTest {
 		public void newKeyboardProduct() {
 			assertEquals("product", product.path("source"));
 			assertEquals("product", active.path("source"));
+			assertEquals("product", jpostman.ctx().path("source"));
 			assertEquals("login", api.path("source"));
+			assertEquals("login", jpostman.ctx("").path("source"));
 		}
 
 		@JPostman.Response(tags = "shoes", dependsOn = "newProduct", skipReason = "Testing")
@@ -137,14 +140,17 @@ public class JPostmanAnnotationContextRegressionTest {
 			assertNotNull(api.response(), phase + ": active=false api response should not be null");
 			assertNotNull(active.response(), phase + ": active=true response should not be null");
 			assertNotNull(product.response(), phase + ": product response should not be null");
-			assertNotNull(jpostman.ctx().response(), phase + ": default runtime response should not be null");
+			assertNotNull(jpostman.ctx().response(), phase + ": active runtime response should not be null");
+			assertNotNull(jpostman.ctx("").response(), phase + ": default runtime response should not be null");
 			assertNotNull(jpostman.ctx("product").response(), phase + ": product runtime response should not be null");
 
 			assertEquals("login", api.path("source"), phase + ": active=false should keep default login response");
 			assertEquals("product", active.path("source"), phase + ": active=true should follow product response");
 			assertEquals("product", product.path("source"), phase + ": product namespace should keep product response");
-			assertEquals("login", jpostman.ctx().path("source"),
-					phase + ": runtime default ctx should keep login response");
+			assertEquals("product", jpostman.ctx().path("source"),
+					phase + ": runtime ctx() should follow the latest active response");
+			assertEquals("login", jpostman.ctx("").path("source"),
+					phase + ": runtime ctx(\"\") should keep the default login response");
 			assertEquals("product", jpostman.ctx("product").path("source"),
 					phase + ": runtime product ctx should keep product response");
 		}

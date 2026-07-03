@@ -28,7 +28,8 @@ import io.jpostman.annotations.runtime.JPostmanRuntime;
  * // Or with the compact facade import:
  * private io.jpostman.annotations.JPostman.Runtime<TestNgContext> jctx;
  *
- * jctx.ctx(); // default framework context
+ * jctx.ctx(); // latest active framework context
+ * jctx.ctx(""); // default framework context
  * jctx.ctx("product"); // namespace-specific framework context
  * jctx.info(); // current JPostmanInfo
  * }
@@ -106,12 +107,14 @@ public @interface JPostmanContext {
 	 * </p>
 	 *
 	 * <p>
-	 * Use a negative value, such as {@code -1}, to disable default status-code
-	 * verification.
+	 * Use a value less than {@code 1}, such as {@code 0} or {@code -1}, to
+	 * disable default status-code verification. Values from {@code 1} to
+	 * {@code 99} are invalid because the lowest standard HTTP status code is
+	 * {@code 100}; values greater than {@code 599} are also invalid.
 	 * </p>
 	 *
-	 * @return default expected status code, or a negative value to disable default
-	 *         verification
+	 * @return default expected HTTP status code, or a value less than {@code 1} to
+	 *         skip status code verification
 	 */
 	int verifyStatusCode() default 200;
 
@@ -191,7 +194,7 @@ public @interface JPostmanContext {
 	 *
 	 * <p>
 	 * Uses {@link java.text.MessageFormat} syntax. Argument {@code {0}} is the
-	 * current callee/method name. Argument {@code {1}} is the JPostman annotation
+	 * current method name. Argument {@code {1}} is the JPostman annotation
 	 * name.
 	 * </p>
 	 *

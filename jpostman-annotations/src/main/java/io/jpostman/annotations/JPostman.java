@@ -8,6 +8,8 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Map;
 
 import org.junit.jupiter.api.TestInstance;
@@ -119,9 +121,10 @@ public final class JPostman {
 		String[] assertions() default {};
 
 		/**
-		 * Default expected status code.
+		 * Default expected HTTP status code.
 		 *
-		 * @return default status code
+		 * @return expected HTTP status code, or a value less than {@code 1} to skip
+		 *         status code verification
 		 */
 		int verifyStatusCode() default 200;
 
@@ -256,6 +259,15 @@ public final class JPostman {
 		 * @return dependency method names or "#id" references
 		 */
 		String[] dependsOn() default {};
+
+		/**
+		 * Namespace where this executor interceptor applies. Empty means all
+		 * namespaces for void interceptors and the default executor provider for
+		 * ApiExecutor-returning methods.
+		 *
+		 * @return namespace, or empty string
+		 */
+		String namespace() default "";
 
 		/**
 		 * Reuses executor state when supported.
@@ -442,9 +454,10 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Expected status code.
+		 * Expected HTTP status code.
 		 *
-		 * @return expected status code, or {@code -1} to use context default
+		 * @return expected HTTP status code, or a value less than {@code 1} to use the
+		 *         context default
 		 */
 		int verify() default -1;
 
@@ -574,9 +587,10 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Expected status code.
+		 * Expected HTTP status code.
 		 *
-		 * @return expected status code, or {@code -1} to use context default
+		 * @return expected HTTP status code, or a value less than {@code 1} to use the
+		 *         context default
 		 */
 		int verify() default -1;
 
@@ -643,14 +657,15 @@ public final class JPostman {
 		io.jpostman.JPostman.Context context();
 
 		/**
-		 * Returns the current or stored framework context.
+		 * Returns the latest active framework context.
 		 *
-		 * @return framework context
+		 * @return active framework context
 		 */
 		C ctx();
 
 		/**
-		 * Returns the framework context for a namespace.
+		 * Returns the framework context for a namespace. Use an empty namespace to
+		 * explicitly resolve the default context.
 		 *
 		 * @param namespace namespace to resolve
 		 * @return namespace context
@@ -714,16 +729,183 @@ public final class JPostman {
 		Environment getEnvironment();
 	}
 
+	/**
+	 * Small mutable reference for values that need to be updated inside Java
+	 * lambdas and read after the fluent chain finishes.
+	 *
+	 * @param <T> referenced value type
+	 */
+	public static final class Ref<T> {
+		private T value;
+
+		/**
+		 * Creates an empty reference.
+		 */
+		public Ref() {
+		}
+
+		/**
+		 * Creates a reference with an initial value.
+		 *
+		 * @param value initial value
+		 */
+		public Ref(T value) {
+			this.value = value;
+		}
+
+		/**
+		 * Returns the current value.
+		 *
+		 * @return current value
+		 */
+		public T get() {
+			return value;
+		}
+
+		/**
+		 * Updates the current value and returns this reference for fluent use.
+		 *
+		 * @param value new value
+		 * @return this reference
+		 */
+		public Ref<T> set(T value) {
+			this.value = value;
+			return this;
+		}
+
+		/**
+		 * Adds the supplied value to the current reference value.
+		 *
+		 * <p>
+		 * Strings are concatenated and numbers are added while preserving the current
+		 * numeric type when possible. When the current value is null, the supplied value
+		 * becomes the reference value. Other value types should use {@link #set(Object)}.
+		 * </p>
+		 *
+		 * @param value value to add
+		 * @return this reference
+		 */
+		@SuppressWarnings("unchecked")
+		public Ref<T> add(T value) {
+			if (this.value == null) {
+				this.value = value;
+				return this;
+			}
+
+			if (this.value instanceof CharSequence || value instanceof CharSequence) {
+				this.value = (T) (String.valueOf(this.value) + String.valueOf(value));
+				return this;
+			}
+
+			if (this.value instanceof Number && value instanceof Number) {
+				this.value = (T) addNumbers((Number) this.value, (Number) value);
+				return this;
+			}
+
+			throw new UnsupportedOperationException(
+					"JPostman.Ref.add(...) supports String and Number values. Use set(...) for this value type.");
+		}
+
+		private static Number addNumbers(Number current, Number value) {
+			if (current instanceof BigDecimal || value instanceof BigDecimal) {
+				return toBigDecimal(current).add(toBigDecimal(value));
+			}
+			if (current instanceof BigInteger || value instanceof BigInteger) {
+				return toBigInteger(current).add(toBigInteger(value));
+			}
+			if (current instanceof Double || value instanceof Double) {
+				return current.doubleValue() + value.doubleValue();
+			}
+			if (current instanceof Float || value instanceof Float) {
+				return current.floatValue() + value.floatValue();
+			}
+			if (current instanceof Long || value instanceof Long) {
+				return current.longValue() + value.longValue();
+			}
+			if (current instanceof Short || value instanceof Short) {
+				return (short) (current.shortValue() + value.shortValue());
+			}
+			if (current instanceof Byte || value instanceof Byte) {
+				return (byte) (current.byteValue() + value.byteValue());
+			}
+			return current.intValue() + value.intValue();
+		}
+
+		private static BigDecimal toBigDecimal(Number value) {
+			return value instanceof BigDecimal ? (BigDecimal) value : new BigDecimal(String.valueOf(value));
+		}
+
+		private static BigInteger toBigInteger(Number value) {
+			return value instanceof BigInteger ? (BigInteger) value : BigInteger.valueOf(value.longValue());
+		}
+
+		/**
+		 * Returns true when the reference has no usable value.
+		 *
+		 * <p>
+		 * Null values are empty. Empty strings, empty collections, empty maps, and
+		 * empty arrays are also treated as empty. Other non-null values are treated as
+		 * not empty.
+		 * </p>
+		 *
+		 * @return true when value is null or empty
+		 */
+		public boolean isEmpty() {
+			if (value == null) {
+				return true;
+			}
+			if (value instanceof CharSequence) {
+				return ((CharSequence) value).length() == 0;
+			}
+			if (value instanceof java.util.Collection<?>) {
+				return ((java.util.Collection<?>) value).isEmpty();
+			}
+			if (value instanceof Map<?, ?>) {
+				return ((Map<?, ?>) value).isEmpty();
+			}
+			if (value.getClass().isArray()) {
+				return java.lang.reflect.Array.getLength(value) == 0;
+			}
+			return false;
+		}
+
+		/**
+		 * Returns true when the reference value is null.
+		 *
+		 * @return true when value is null
+		 */
+		public boolean isNull() {
+			return value == null;
+		}
+	}
+
 	/** Compact facade for execution info. */
 	public interface Info {
 
 		/**
 		 * Returns the full runtime info object for direct access to execution
-		 * attributes such as caller, callee, request, namespace, cache, and id.
+		 * attributes such as method, methodIndex, request, namespace, cache, and id.
 		 *
 		 * @return runtime execution info
 		 */
 		JPostmanInfo attr();
+
+		/**
+		 * Creates an empty mutable reference that can be updated inside Java lambdas.
+		 *
+		 * @param <T> referenced value type
+		 * @return empty reference
+		 */
+		<T> JPostman.Ref<T> ref();
+
+		/**
+		 * Creates a mutable reference with an initial value.
+		 *
+		 * @param value initial value
+		 * @param <T> referenced value type
+		 * @return initialized reference
+		 */
+		<T> JPostman.Ref<T> ref(T value);
 
 		/**
 		 * Returns tag-based rules for the current execution.

@@ -134,6 +134,7 @@ public final class JPostmanTestNgAnnotationListener
 		} catch (Throwable e) {
 			AssertionError failure = JPostmanStackTraceCleaner.cleanFailure(testMethod.getDeclaringClass(), testMethod,
 					e);
+			runTestBodyAfterAnnotationFailure(callBack, testResult, failure);
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
 		} finally {
@@ -178,6 +179,21 @@ public final class JPostmanTestNgAnnotationListener
 			if (invokedMethod.isTestMethod()) {
 				TestNgContext.clearCurrent();
 			}
+		}
+	}
+
+	private void runTestBodyAfterAnnotationFailure(IHookCallBack callBack, ITestResult testResult, Throwable failure) {
+		try {
+			callBack.runTestMethod(testResult);
+		} catch (Throwable bodyFailure) {
+			if (bodyFailure != null && bodyFailure != failure) {
+				failure.addSuppressed(bodyFailure);
+			}
+		}
+
+		Throwable reported = testResult.getThrowable();
+		if (reported != null && reported != failure) {
+			failure.addSuppressed(reported);
 		}
 	}
 

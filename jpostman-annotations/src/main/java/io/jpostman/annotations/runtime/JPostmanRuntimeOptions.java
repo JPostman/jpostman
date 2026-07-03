@@ -104,7 +104,7 @@ final class JPostmanRuntimeOptions {
 	}
 
 	int statusCode(int annotationVerify) {
-		return annotationVerify >= 0 ? annotationVerify : defaultStatusCode;
+		return annotationVerify > 0 ? annotationVerify : defaultStatusCode;
 	}
 
 	boolean log(boolean annotationLog) {
@@ -119,7 +119,7 @@ final class JPostmanRuntimeOptions {
 		Level level = info.debug == null || info.debug.isBlank() ? debug : Level.from(info.debug);
 		Logger logger = LoggerFactory.getLogger(testInstance.getClass());
 		if (level.isDebugOrTrace()) {
-			logger.debug(MessageFormat.format(debugFormat, info.callee, info.annotation));
+			logger.debug(MessageFormat.format(debugFormat, info.method, info.annotation));
 		}
 		if (level.isTrace()) {
 			info.print();

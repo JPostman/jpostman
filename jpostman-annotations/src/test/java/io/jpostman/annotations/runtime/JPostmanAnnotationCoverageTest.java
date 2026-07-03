@@ -752,7 +752,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(error.getMessage().contains("Only one default @JPostmanExecutor is allowed"));
 		assertTrue(error.getMessage().contains("@JPostmanExecutor methods have unsupported parameters"));
 		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badSignature"));
-		assertTrue(error.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor"));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void"));
 		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badReturn"));
 		assertTrue(error.getStackTrace().length >= 6);
 	}
@@ -804,6 +804,21 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, fixture.runnerDependencyCount);
 		assertEquals(3, fixture.executorCount);
 		assertEquals(3L, fixture.executorMethodNames.stream().filter("dependencyExecutor"::equals).count());
+		assertNotNull(fixture.responseDependencyInfo);
+		assertEquals("responseDependency", fixture.responseDependencyInfo.method);
+		assertTrue(fixture.responseDependencyInfo.methodIndex >= 0);
+		assertEquals("responseDependency", fixture.responseDependencyInfo.methods
+				.get(fixture.responseDependencyInfo.methodIndex));
+		assertNotNull(fixture.runnerDependencyInfo);
+		assertEquals("runnerDependency", fixture.runnerDependencyInfo.method);
+		assertTrue(fixture.runnerDependencyInfo.methodIndex >= 0);
+		assertEquals("runnerDependency", fixture.runnerDependencyInfo.methods
+				.get(fixture.runnerDependencyInfo.methodIndex));
+
+		runner.run(fixture, method);
+
+		assertEquals(1, fixture.responseDependencyCount);
+		assertEquals(2, fixture.runnerDependencyCount);
 	}
 
 	/**
@@ -858,7 +873,7 @@ public class JPostmanAnnotationCoverageTest {
 
 		AssertionError wrongExecutorType = assertThrows(AssertionError.class, () -> runner
 				.run(new WrongExecutorTypeFixture(), WrongExecutorTypeFixture.class.getDeclaredMethod("response")));
-		assertTrue(wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor."));
+		assertTrue(wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void."));
 	}
 
 	/**
@@ -952,23 +967,133 @@ public class JPostmanAnnotationCoverageTest {
 
 	/**
 	 * Verifies the compact JPostman.Info facade can expose the full runtime info
-	 * attributes when a test needs direct access to caller, callee, request, id,
-	 * namespace, or other runtime fields.
+	 * attributes when a test needs direct access to method, request, id, namespace,
+	 * or other runtime fields.
 	 */
 	@Test
 	public void compactInfoAttrReturnsRuntimeInfoAttributes() {
 		JPostmanInfo parent = new JPostmanInfo("filter1", "", "", "").annotation("@JPostmanResponse")
 				.id("#response");
-		JPostman.Info info = parent.child("authRequest", "", "", "Get current auth user")
+		parent.method("filter1");
+		JPostmanInfo child = parent.child("authRequest", "", "", "Get current auth user")
 				.annotation("@JPostmanRequest").id("#token");
+		child.method("authRequest");
+		JPostman.Info info = child;
 
 		JPostmanInfo attr = info.attr();
 
 		assertSame(info, attr);
-		assertEquals("filter1", attr.caller);
-		assertEquals("authRequest", attr.callee);
+		assertEquals("authRequest", attr.method);
+		assertEquals(1, attr.methodIndex);
+		assertEquals(List.of("filter1", "authRequest"), attr.methods);
 		assertEquals("Get current auth user", attr.request);
 		assertEquals("token", attr.id);
+	}
+
+	/**
+	 * Verifies JPostmanInfo exposes the zero-based index of the current method
+	 * entry inside the shared execution chain.
+	 */
+	@Test
+	public void infoLogShowsCurrentMethodIndex() {
+		JPostmanInfo info = new JPostmanInfo("filter1", "", "", "Get current auth user")
+				.annotation("@JPostmanResponse");
+
+		info.method("filter1");
+		int executorIndex = info.appendMethod("HttpClientExecutor(#token)");
+		JPostmanInfo executor = info.child("HttpClientExecutor", "", "", "Get current auth user")
+				.annotation("@JPostmanContext executor").methodIndex(executorIndex);
+		JPostmanInfo interceptor = info.childExact("defaultIntercept", new String[0], "", "", "", "",
+				"Get current auth user").annotation("@JPostmanExecutor intercept");
+
+		interceptor.method("defaultIntercept");
+
+		assertEquals(0, info.methodIndex);
+		assertEquals(1, executor.methodIndex);
+		assertEquals(2, interceptor.methodIndex);
+		assertTrue(interceptor.log().contains("methodIndex=2"));
+	}
+
+
+
+	/**
+	 * Verifies compact mutable references can be updated from tag lambdas without
+	 * exposing AtomicReference in user examples.
+	 */
+	@Test
+	public void compactInfoRefSupportsLambdaUpdates() {
+		JPostmanInfo info = new JPostmanInfo(new String[] { "mouse" }, "", "authRequest", "", "",
+				"Get current auth user");
+		JPostman.Info compact = info;
+
+		JPostman.Ref<String> product = compact.ref("");
+		JPostman.Ref<Integer> quantity = compact.ref();
+		JPostman.Ref<Boolean> matched = compact.ref(false);
+
+		compact.tags().any("mouse", "shoes").then(i -> {
+			product.set("MOUSE");
+			quantity.set(2);
+			matched.set(true);
+		}).otherwise(i -> product.set("DEFAULT"));
+
+		assertEquals("MOUSE", product.get());
+		assertEquals(2, quantity.get());
+		assertEquals(true, matched.get());
+		assertFalse(product.isEmpty());
+		assertFalse(product.isNull());
+
+		assertTrue(compact.ref().isEmpty());
+		assertTrue(compact.ref("").isEmpty());
+		assertFalse(compact.ref("value").isEmpty());
+	}
+
+	/**
+	 * Verifies compact mutable references can append strings and add numeric values
+	 * without exposing AtomicReference in user examples.
+	 */
+	@Test
+	public void compactInfoRefAddSupportsStringAndNumericUpdates() {
+		JPostman.Ref<String> used = new JPostman.Ref<>("");
+		used.set("mouse").add(" keyboard");
+		assertEquals("mouse keyboard", used.get());
+
+		JPostman.Ref<Integer> count = new JPostman.Ref<>(1);
+		count.add(2).add(3);
+		assertEquals(6, count.get());
+
+		JPostman.Ref<Double> score = new JPostman.Ref<>(1.5);
+		score.add(0.25);
+		assertEquals(1.75, score.get());
+
+		JPostman.Ref<Object> unsupported = new JPostman.Ref<>(new Object());
+		assertThrows(UnsupportedOperationException.class, () -> unsupported.add(new Object()));
+	}
+
+	/**
+	 * Verifies otherwise runs only when none of the previous has/any tag conditions
+	 * matched.
+	 */
+	@Test
+	public void tagRulesOtherwiseRunsOnlyWhenNoConditionMatched() {
+		JPostmanInfo mouse = new JPostmanInfo(new String[] { "mouse" }, "", "authRequest", "", "",
+				"Get current auth user");
+		JPostman.Ref<String> selected = mouse.ref("");
+
+		mouse.tags().has("keyboard").then(i -> selected.set("KEYBOARD"))
+				.any("mouse", "shoes").then(i -> selected.set("MOUSE"))
+				.otherwise(i -> selected.set("DEFAULT"));
+
+		assertEquals("MOUSE", selected.get());
+
+		JPostmanInfo missing = new JPostmanInfo(new String[] { "monitor" }, "", "authRequest", "", "",
+				"Get current auth user");
+		JPostman.Ref<String> fallback = missing.ref("");
+
+		missing.tags().has("keyboard").then(i -> fallback.set("KEYBOARD"))
+				.any("mouse", "shoes").then(i -> fallback.set("MOUSE"))
+				.otherwise(i -> fallback.set("DEFAULT"));
+
+		assertEquals("DEFAULT", fallback.get());
 	}
 
 	/**
@@ -1575,7 +1700,7 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanExecutor(id = "auth", dependsOn = { "login" })
 		ApiExecutor authExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodName = info.callee;
+			executorMethodName = info.method;
 
 			assertEquals("token-123", context.cache("accessToken"));
 			assertNotNull(context.request());
@@ -1665,7 +1790,7 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanExecutor(id = "runner", dependsOn = { "runnerDependency" })
 		ApiExecutor runnerExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodName = info.callee;
+			executorMethodName = info.method;
 			executorRequestName = info.request;
 			assertEquals("runner-token", context.cache("runnerToken"));
 			return okExecutor("{\"id\":1}");
@@ -1738,17 +1863,21 @@ public class JPostmanAnnotationCoverageTest {
 		private int responseDependencyCount;
 		private int runnerDependencyCount;
 		private int executorCount;
+		private JPostmanInfo responseDependencyInfo;
+		private JPostmanInfo runnerDependencyInfo;
 		private final List<String> executorMethodNames = new java.util.ArrayList<>();
 
-		@JPostmanResponse(request = "Get current auth user", executor = "#dependency", verify = 200)
-		String responseDependency() {
+		@JPostmanResponse(request = "Get current auth user", executor = "#dependency", verify = 200, cache = "responseDependency")
+		String responseDependency(JUnitContext context, JPostmanInfo info) {
 			responseDependencyCount++;
+			responseDependencyInfo = info;
 			return "response-cache-value";
 		}
 
 		@JPostmanRunner(include = { "Login user and get tokens" }, executor = "#dependency", verify = 200)
-		String runnerDependency() {
+		String runnerDependency(JUnitContext context, JPostmanInfo info) {
 			runnerDependencyCount++;
+			runnerDependencyInfo = info;
 			return "runner-cache-value";
 		}
 
@@ -1760,7 +1889,7 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanExecutor(id = "dependency")
 		ApiExecutor dependencyExecutor(JUnitContext context, JPostmanInfo info) {
 			executorCount++;
-			executorMethodNames.add(info.callee);
+			executorMethodNames.add(info.method);
 			assertNotNull(context.request());
 			assertNotNull(info.request);
 

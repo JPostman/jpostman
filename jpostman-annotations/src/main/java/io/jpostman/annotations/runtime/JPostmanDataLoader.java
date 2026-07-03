@@ -465,7 +465,7 @@ public final class JPostmanDataLoader {
 			if (!matchesValue("request", info.request)) {
 				return false;
 			}
-			if (!matchesAnyKey(new String[] { "method", "methodName" }, info.callee)) {
+			if (!matchesAnyKey(new String[] { "method", "methodName" }, info.method)) {
 				return false;
 			}
 			if (!matchesValueIgnoreCase("httpMethod", httpMethod)) {
