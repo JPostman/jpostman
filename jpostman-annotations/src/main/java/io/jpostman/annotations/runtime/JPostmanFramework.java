@@ -3,8 +3,10 @@ package io.jpostman.annotations.runtime;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,6 +14,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import io.jpostman.ApiExecutor;
+import io.jpostman.ApiResponse;
 import io.jpostman.Request;
 
 /**
@@ -106,6 +109,63 @@ public interface JPostmanFramework<C> {
 	 * @return context with filtering applied
 	 */
 	C filter(C context, String... paths);
+
+	/**
+	 * Applies response field filtering to an already available response and returns
+	 * a context whose active response is the filtered response clone.
+	 *
+	 * <p>
+	 * This is intentionally separate from {@link #filter(Object, String...)}.
+	 * Context filters are useful before a request is executed, but a response-reuse
+	 * path must filter the response object that already exists. Otherwise a caller
+	 * response that depends on another response keeps printing the dependency
+	 * response view.
+	 * </p>
+	 *
+	 * @param context framework context with an existing response
+	 * @param paths   response paths to keep
+	 * @return context whose response is the filtered response clone
+	 */
+	default C filterResponse(C context, String... paths) {
+		if (context == null || paths == null || paths.length == 0) {
+			return context;
+		}
+
+		ApiResponse filtered = filteredApiResponse(context, paths);
+		if (filtered == null) {
+			return filter(context, paths);
+		}
+
+		C result = response(context, () -> filtered);
+		copyCache(context, result);
+		return result;
+	}
+
+	private static ApiResponse filteredApiResponse(Object context, String... paths) {
+		try {
+			Method responseMethod = context.getClass().getMethod("response");
+			Object response = responseMethod.invoke(context);
+			if (response == null) {
+				return null;
+			}
+
+			Object filtered = invokeResponseFilter(response, paths);
+			return filtered instanceof ApiResponse ? (ApiResponse) filtered : null;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	private static Object invokeResponseFilter(Object response, String... paths) throws ReflectiveOperationException {
+		List<String> values = Arrays.asList(paths);
+		try {
+			Method method = response.getClass().getMethod("filter", List.class);
+			return method.invoke(response, values);
+		} catch (NoSuchMethodException e) {
+			Method method = response.getClass().getMethod("filter", java.util.Collection.class);
+			return method.invoke(response, values);
+		}
+	}
 
 	/**
 	 * Applies a Postman request to the context.

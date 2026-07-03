@@ -133,8 +133,12 @@ public final class JPostmanTestNgAnnotationListener
 				callBack.runTestMethod(testResult);
 			}
 		} catch (SkipException e) {
-			e.setStackTrace(JPostmanStackTraceCleaner.cleanStack(testMethod.getDeclaringClass(), testMethod, e));
-			testResult.setThrowable(e);
+			if (isJPostmanSkip(e)) {
+				testResult.setThrowable(null);
+			} else {
+				e.setStackTrace(JPostmanStackTraceCleaner.cleanStack(testMethod.getDeclaringClass(), testMethod, e));
+				testResult.setThrowable(e);
+			}
 			testResult.setStatus(ITestResult.SKIP);
 		} catch (Throwable e) {
 			AssertionError failure = JPostmanStackTraceCleaner.cleanFailure(testMethod.getDeclaringClass(), testMethod,
@@ -185,6 +189,13 @@ public final class JPostmanTestNgAnnotationListener
 				TestNgContext.clearCurrent();
 			}
 		}
+	}
+
+	private boolean isJPostmanSkip(SkipException e) {
+		String message = e == null ? "" : String.valueOf(e.getMessage());
+		return message.startsWith("JPostman request skipped.") || message.startsWith("JPostman response skipped.")
+				|| message.startsWith("JPostman runner skipped.")
+				|| message.startsWith("WARN JPostman runner found zero requests");
 	}
 
 	private void runTestBodyAfterAnnotationFailure(IHookCallBack callBack, ITestResult testResult, Throwable failure) {

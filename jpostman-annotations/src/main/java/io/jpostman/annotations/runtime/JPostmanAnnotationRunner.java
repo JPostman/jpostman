@@ -140,9 +140,12 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 
 			if (responseAnnotation != null) {
+				boolean reusedResponse = isReusableResponseDependency(testInstance, responseAnnotation, info);
 				C currentContext = runAnnotatedResponse(testInstance, prepared, current.collection, responseAnnotation,
 						info, responseAnnotation.data(), stack);
-				if (hasResponseExecution(responseAnnotation, info)) {
+				if (reusedResponse) {
+					completeReusedResponse(testInstance, prepared, currentContext, responseAnnotation, info);
+				} else if (hasResponseExecution(responseAnnotation, info)) {
 					executeResponse(testInstance, prepared, currentContext, responseAnnotation, info, stack);
 				}
 				prepared.info(info);
@@ -224,6 +227,26 @@ public final class JPostmanAnnotationRunner<C> {
 	private C runAnnotatedResponse(Object testInstance, PreparedContexts<C> prepared, Collection collection,
 			JPostmanResponse annotation, JPostmanInfo info, String data, List<String> stack) throws Exception {
 
+		if (isReusableResponseDependency(testInstance, annotation, info)) {
+			C ctx = applyRuleAndFilter(prepared.context(info.namespace), annotation.rule());
+			prepared.update(info.namespace, ctx);
+			framework.setCurrent(ctx);
+
+			runDependencies(testInstance, prepared, dependencies(annotation.dependsOn()),
+					info.withTags(annotation.tags()), stack);
+			applyData(testInstance, prepared, info, data, stack);
+
+			C source = prepared.activeContext();
+			if (source == null) {
+				source = prepared.context(info.namespace);
+			}
+			ctx = applyResponseFilter(source, annotation.filter());
+			prepared.update(info.namespace, ctx);
+			framework.setCurrent(ctx);
+			info.request = "";
+			return ctx;
+		}
+
 		C ctx = prepareRequest(prepared.context(info.namespace), prepared.collection(info.namespace), annotation, info);
 		prepared.update(info.namespace, ctx);
 		framework.setCurrent(ctx);
@@ -237,6 +260,45 @@ public final class JPostmanAnnotationRunner<C> {
 		prepared.update(info.namespace, ctx);
 		framework.setCurrent(ctx);
 		return ctx;
+	}
+
+	private boolean isReusableResponseDependency(Object testInstance, JPostmanResponse annotation, JPostmanInfo info) {
+		return annotation != null && isBlank(annotation.request())
+				&& hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()), info);
+	}
+
+	private boolean hasDirectResponseDependency(Object testInstance, String[] dependencyNames, JPostmanInfo info) {
+		if (dependencyNames == null || dependencyNames.length == 0) {
+			return false;
+		}
+
+		for (String dependencyName : dependencyNames) {
+			String name = value(dependencyName).trim();
+			if (name.isBlank()) {
+				continue;
+			}
+
+			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), name, info);
+			if (JPostmanAnnotations.response(dependencyMethod) != null) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private void completeReusedResponse(Object testInstance, PreparedContexts<C> prepared, C ctx,
+			JPostmanResponse annotation, JPostmanInfo info) throws Exception {
+		C latest = ctx != null ? ctx : latestContext(prepared, info.namespace, ctx);
+		prepared.update(info.namespace, latest);
+		framework.setCurrent(latest);
+		runExecutorInterceptors(testInstance, prepared, latest, info);
+		prepared.info(info);
+		logOutput(testInstance, latest, info, annotation.log());
+		applyAssertions(testInstance, prepared, latest, info, annotation.asserts(), annotation.soft(),
+				annotation.log());
+		verifyResponse(testInstance, latest, info, annotation.verify(), annotation.soft(), annotation.log());
+		passed(report(testInstance), info);
 	}
 
 	private boolean hasResponseExecution(JPostmanResponse annotation, JPostmanInfo info) {
@@ -655,6 +717,16 @@ public final class JPostmanAnnotationRunner<C> {
 		if (filter != null && filter.length > 0) {
 			C previous = result;
 			result = framework.filter(result, filter);
+			framework.copyCache(previous, result);
+		}
+		return result;
+	}
+
+	private C applyResponseFilter(C context, String... filter) {
+		C result = context;
+		if (filter != null && filter.length > 0) {
+			C previous = result;
+			result = framework.filterResponse(result, filter);
 			framework.copyCache(previous, result);
 		}
 		return result;

@@ -82,6 +82,28 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 	}
 
 	@Test
+	public void responseFilterOverrideFromResponseDependencyIsActiveForTestBody() throws Exception {
+		ResponseDependencyOverrideFixture fixture = new ResponseDependencyOverrideFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNgWithBody(fixture, "filter1");
+		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"gender\": \"female-1\"", "firstName", "lastName",
+				"\"id\"");
+		assertEquals(1, fixture.authResponseBodyChecks);
+
+		runTestNgWithBody(fixture, "filter2");
+		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"firstName\": \"Emily-2\"", "lastName", "gender",
+				"\"id\"");
+		assertEquals(2, fixture.authResponseBodyChecks);
+
+		runTestNgWithBody(fixture, "filter3");
+		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"lastName\": \"Johnson-3\"", "firstName", "gender",
+				"\"id\"");
+		assertEquals(3, fixture.authResponseBodyChecks);
+	}
+
+	@Test
 	public void contextVerifyStatusCodeStillRunsWhenAssertionRulesApplyAfterDependencyRequest() throws Exception {
 		VerifyStatusAfterAssertionsFixture fixture = new VerifyStatusAfterAssertionsFixture();
 
@@ -110,6 +132,12 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
+	}
+
+	private static void runTestNgWithBody(Object fixture, String methodName) throws Exception {
+		Method method = fixture.getClass().getDeclaredMethod(methodName);
+		JPostmanAnnotationEngine.runTestNg(fixture, method);
+		method.invoke(fixture);
 	}
 
 	@JPostman.TestNG
@@ -216,6 +244,73 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 			int execution = profileExecutions;
 			String body = "{" + "\"id\":" + execution + "," + "\"firstName\":\"Emily-" + execution + "\","
 					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"gender\":\"female-" + execution + "\"" + "}";
+			return okExecutor(body);
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ResponseDependencyOverrideFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int profileExecutions;
+		private int authResponseBodyChecks;
+
+		@JPostman.Response(id = "auth", namespace = "test", request = "Login user and get tokens", cache = CACHE_TOKEN)
+		public String getToken(JPostman.Test test, JPostman.Info info) {
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("/**/")).log());
+			return test.asserts().exists("accessToken", "Access token not found").verify().path("accessToken");
+		}
+
+		@JPostman.Request(id = "tokenReq", namespace = "test", request = "Get current auth user", dependsOn = "#auth")
+		public void authRequest(JPostman.Test ctx, JPostman.Info info) {
+			assertEquals("token-123", ctx.cache(CACHE_TOKEN));
+			info.sauth("oauth2", ctx.cache(CACHE_TOKEN));
+		}
+
+		@JPostman.Response(id = TOKEN_API, dependsOn = "#tokenReq", filter = { "id", "firstName", "lastName", "gender",
+				"date" })
+		public void authRequestResponse(JPostman.Test test, JPostman.Info info) {
+			authResponseBodyChecks++;
+			assertEquals(jpostman.ctx().response().log(), jpostman.ctx().response()
+					.filter(java.util.List.of("id", "firstName", "lastName", "gender", "date")).log());
+		}
+
+		@JPostman.Response(namespace = "test", dependsOn = TOKEN_API, filter = { "gender" })
+		@org.testng.annotations.Test
+		public void filter1() {
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("gender")).log());
+		}
+
+		@JPostman.Response(namespace = "test", dependsOn = TOKEN_API, filter = { "firstName" })
+		@org.testng.annotations.Test
+		public void filter2() {
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("firstName")).log());
+		}
+
+		@JPostman.Response(namespace = "test", dependsOn = TOKEN_API, filter = { "lastName" })
+		@org.testng.annotations.Test
+		public void filter3() {
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("lastName")).log());
+		}
+
+		@JPostman.Executor(namespace = "test")
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String requestLog = ctx.request().log();
+			if (requestLog.contains("Login user and get tokens")) {
+				return okExecutor("{\"accessToken\":\"token-123\",\"gender\":\"female-login\"}");
+			}
+
+			profileExecutions++;
+			int execution = profileExecutions;
+			String body = "{" + "\"id\":" + execution + "," + "\"firstName\":\"Emily-" + execution + "\","
+					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"maidenName\":\"Smith\","
+					+ "\"gender\":\"female-" + execution + "\"" + "}";
 			return okExecutor(body);
 		}
 	}
