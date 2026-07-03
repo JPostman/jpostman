@@ -9,13 +9,14 @@ import java.util.Set;
 
 import org.opentest4j.TestAbortedException;
 
-import io.jpostman.junit.JPostmanJUnit;
 
 /**
  * Builds short, clickable stack traces for annotation-driven failures.
  */
 public final class JPostmanStackTraceCleaner {
 	private static final Set<String> DEFAULT_STACK_TRACE_FILTER = Set.of();
+	private static final String REFLECTION_BOUNDARY_CLASS = "jdk.internal.reflect.NativeMethodAccessorImpl";
+	private static final String REFLECTION_BOUNDARY_METHOD = "invoke0";
 
 	private JPostmanStackTraceCleaner() {
 	}
@@ -148,13 +149,28 @@ public final class JPostmanStackTraceCleaner {
 
 		int maxStackTrace = maxStackTrace(testClass);
 		Set<String> filter = stackTraceFilter(testClass);
+		StackTraceElement firstUserFrame = firstUserFrame(root, testClassName);
 
-		result.add(testFrame);
+		// For a failure thrown directly inside the currently executing test method, add
+		// a clickable annotation/method hint first, then keep the real assertion line.
+		// For a dependency failure, do not replace the dependency line with the caller
+		// test method. The first frame must be the actual user-code failure line.
+		if (firstUserFrame == null || firstUserFrame.getMethodName().equals(testMethod.getName())) {
+			addFrame(result, testFrame, maxStackTrace);
+		}
 
 		for (StackTraceElement element : root.getStackTrace()) {
+			if (isReflectionBoundary(element)) {
+				break;
+			}
+
 			String frameClass = element.getClassName();
 
 			if (frameClass.equals(testClassName)) {
+				addFrame(result, element, maxStackTrace);
+				if (result.size() >= maxStackTrace) {
+					break;
+				}
 				continue;
 			}
 
@@ -162,13 +178,43 @@ public final class JPostmanStackTraceCleaner {
 				continue;
 			}
 
-			result.add(element);
+			addFrame(result, element, maxStackTrace);
 			if (result.size() >= maxStackTrace) {
 				break;
 			}
 		}
 
 		return result.toArray(new StackTraceElement[0]);
+	}
+
+	private static StackTraceElement firstUserFrame(Throwable root, String testClassName) {
+		for (StackTraceElement element : root.getStackTrace()) {
+			if (testClassName.equals(element.getClassName())) {
+				return element;
+			}
+		}
+		return null;
+	}
+
+	private static void addFrame(List<StackTraceElement> result, StackTraceElement frame, int maxStackTrace) {
+		if (frame == null || result.size() >= maxStackTrace || containsFrame(result, frame)) {
+			return;
+		}
+		result.add(frame);
+	}
+
+	private static boolean containsFrame(List<StackTraceElement> result, StackTraceElement frame) {
+		for (StackTraceElement existing : result) {
+			if (sameFrame(existing, frame)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean sameFrame(StackTraceElement left, StackTraceElement right) {
+		return left.getLineNumber() == right.getLineNumber() && left.getClassName().equals(right.getClassName())
+				&& left.getMethodName().equals(right.getMethodName()) && left.getFileName().equals(right.getFileName());
 	}
 
 	private static StackTraceElement testFrame(Class<?> testClass, Method testMethod) {
@@ -222,13 +268,31 @@ public final class JPostmanStackTraceCleaner {
 			for (int i = 0; i < lines.size(); i++) {
 				String line = lines.get(i);
 				if (line.contains(methodName + "(")) {
-					return i + 1;
+					int annotationLine = findJPostmanAnnotationLine(lines, i);
+					return annotationLine > 0 ? annotationLine : i + 1;
 				}
 			}
 		} catch (Exception e) {
 			return -1;
 		}
 
+		return -1;
+	}
+
+	private static int findJPostmanAnnotationLine(List<String> lines, int methodIndex) {
+		for (int i = methodIndex - 1; i >= 0; i--) {
+			String trimmed = lines.get(i).trim();
+			if (trimmed.isBlank() || trimmed.startsWith("//")) {
+				continue;
+			}
+			if (trimmed.startsWith("@JPostman")) {
+				return i + 1;
+			}
+			if (trimmed.startsWith("@") || trimmed.startsWith("}") || trimmed.startsWith(")")) {
+				continue;
+			}
+			break;
+		}
 		return -1;
 	}
 
@@ -240,10 +304,15 @@ public final class JPostmanStackTraceCleaner {
 				return Math.max(1, Integer.parseInt(value));
 			}
 		} catch (Exception e) {
-			// Use default when the file or property is missing or invalid.
+			// Use unlimited user/application frames when the file or property is missing or invalid.
 		}
 
-		return JPostmanJUnit.DEFAULT_MAX_STACK_TRACE;
+		return Integer.MAX_VALUE;
+	}
+
+	private static boolean isReflectionBoundary(StackTraceElement element) {
+		return REFLECTION_BOUNDARY_CLASS.equals(element.getClassName())
+				&& REFLECTION_BOUNDARY_METHOD.equals(element.getMethodName());
 	}
 
 	private static Set<String> stackTraceFilter(Class<?> testClass) {

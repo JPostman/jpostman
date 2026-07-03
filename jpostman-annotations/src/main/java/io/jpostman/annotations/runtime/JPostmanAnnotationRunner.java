@@ -13,6 +13,8 @@ import java.util.Set;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.Collection;
+import io.jpostman.Environment;
+import io.jpostman.Params;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanExecutor;
@@ -247,16 +249,31 @@ public final class JPostmanAnnotationRunner<C> {
 			return ctx;
 		}
 
-		C ctx = prepareRequest(prepared.context(info.namespace), prepared.collection(info.namespace), annotation, info);
+		String ownerNamespace = info.namespace;
+		C ownerContext = prepared.context(ownerNamespace);
+		C ctx = prepareRequest(ownerContext, prepared.collection(info.namespace), annotation, info, false);
 		prepared.update(info.namespace, ctx);
 		framework.setCurrent(ctx);
 
 		runDependencies(testInstance, prepared, dependencies(annotation.dependsOn()), info.withTags(annotation.tags()),
 				stack);
+		boolean responseDependency = hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()), info);
 		inheritResponseLocationFromDependencies(testInstance, annotation, info);
 		applyData(testInstance, prepared, info, data, stack);
 
-		ctx = prepareRequest(prepared.context(info.namespace), prepared.collection(info.namespace), annotation, info);
+		C source = prepared.context(info.namespace);
+		if (responseDependency && hasResponseRequest(info) && hasFilter(annotation.filter())) {
+			/*
+			 * The dependency response owns its filter. The caller response owns its
+			 * filter. When the caller has its own request, start from a fresh context
+			 * and copy only dependency cache values; otherwise the dependency filter
+			 * remains attached and the output becomes merged, for example
+			 * firstName+lastName.
+			 */
+			source = freshContext(prepared, info.namespace, source);
+		}
+
+		ctx = prepareRequest(source, prepared.collection(info.namespace), annotation, info, true);
 		prepared.update(info.namespace, ctx);
 		framework.setCurrent(ctx);
 		return ctx;
@@ -265,6 +282,14 @@ public final class JPostmanAnnotationRunner<C> {
 	private boolean isReusableResponseDependency(Object testInstance, JPostmanResponse annotation, JPostmanInfo info) {
 		return annotation != null && isBlank(annotation.request())
 				&& hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()), info);
+	}
+
+	private boolean hasResponseRequest(JPostmanInfo info) {
+		return info != null && info.request != null && !info.request.isBlank();
+	}
+
+	private boolean hasFilter(String... filter) {
+		return filter != null && filter.length > 0;
 	}
 
 	private boolean hasDirectResponseDependency(Object testInstance, String[] dependencyNames, JPostmanInfo info) {
@@ -679,6 +704,32 @@ public final class JPostmanAnnotationRunner<C> {
 		framework.cache(resolver.context(contextNamespace), cache, cacheValue);
 	}
 
+	private C freshContext(PreparedContexts<C> prepared, String namespace, C cacheSource) {
+		C result = framework.create();
+		PreparedContext<C> preparedContext = prepared.resolve(namespace);
+		if (preparedContext.loaded != null) {
+			loadEnvironment(result, preparedContext.loaded.getEnvironment());
+		}
+		framework.copyCache(cacheSource, result);
+		return result;
+	}
+
+	private void loadEnvironment(C context, Environment environment) {
+		if (context == null || environment == null) {
+			return;
+		}
+
+		framework.secret(context, environment);
+		environment.getParams().keySet().forEach(key -> {
+			Params.Entry entry = environment.entry(key);
+			if (entry.isEnabled()) {
+				framework.plain(context, key, entry.getValue());
+			} else {
+				framework.secret(context, key, entry.getValue());
+			}
+		});
+	}
+
 	private C prepareRequest(C context, Collection collection, JPostmanRequest annotation, JPostmanInfo info) {
 		return prepareRequest(context, collection, annotation, info, info.namespace, info.folder, info.request);
 	}
@@ -693,7 +744,13 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private C prepareRequest(C context, Collection collection, JPostmanResponse annotation, JPostmanInfo info) {
-		C result = applyRuleAndFilter(context, annotation.rule(), annotation.filter());
+		return prepareRequest(context, collection, annotation, info, true);
+	}
+
+	private C prepareRequest(C context, Collection collection, JPostmanResponse annotation, JPostmanInfo info,
+			boolean includeFilter) {
+		C result = includeFilter ? applyRuleAndFilter(context, annotation.rule(), annotation.filter())
+				: applyRuleAndFilter(context, annotation.rule());
 		if (info.request == null || info.request.isBlank()) {
 			return result;
 		}

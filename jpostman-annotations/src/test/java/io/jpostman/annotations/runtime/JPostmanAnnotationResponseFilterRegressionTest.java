@@ -104,6 +104,19 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 	}
 
 	@Test
+	public void responseDependencyFilterDoesNotLeakIntoCallerOwnRequestFilter() throws Exception {
+		ResponseDependencyFilterIsolationFixture fixture = new ResponseDependencyFilterIsolationFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNgWithBody(fixture, "getCurrentAuthUser");
+		assertEquals(1, fixture.loginBodyChecks);
+		assertEquals(1, fixture.currentUserExecutions);
+		assertFilteredLog(fixture.jpostman.ctx().response().log(), "\"lastName\": \"Johnson\"", "firstName",
+				"\"id\"", "gender");
+	}
+
+	@Test
 	public void contextVerifyStatusCodeStillRunsWhenAssertionRulesApplyAfterDependencyRequest() throws Exception {
 		VerifyStatusAfterAssertionsFixture fixture = new VerifyStatusAfterAssertionsFixture();
 
@@ -312,6 +325,41 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"maidenName\":\"Smith\","
 					+ "\"gender\":\"female-" + execution + "\"" + "}";
 			return okExecutor(body);
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ResponseDependencyFilterIsolationFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int loginBodyChecks;
+		private int currentUserExecutions;
+
+		@JPostman.Response(id = "#login2", request = "Login user and get tokens", filter = "firstName")
+		public void login(JPostman.Test test) {
+			loginBodyChecks++;
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("firstName")).log());
+		}
+
+		@JPostman.Response(request = "Get current auth user", dependsOn = "#login2", filter = "lastName")
+		@org.testng.annotations.Test
+		public void getCurrentAuthUser() {
+			assertEquals(jpostman.ctx().response().log(),
+					jpostman.ctx().response().filter(java.util.List.of("lastName")).log());
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String requestLog = ctx.request().log();
+			if (requestLog.contains("Login user and get tokens")) {
+				return okExecutor("{\"firstName\":\"Emily-login\",\"lastName\":\"Johnson-login\",\"gender\":\"female-login\"}");
+			}
+
+			currentUserExecutions++;
+			return okExecutor("{\"id\":1,\"firstName\":\"Emily\",\"lastName\":\"Johnson\",\"gender\":\"female\"}");
 		}
 	}
 
