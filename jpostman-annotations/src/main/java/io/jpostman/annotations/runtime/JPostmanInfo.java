@@ -21,9 +21,12 @@ import io.jpostman.annotations.JPostmanContext;
  * Runtime information shared across a JPostman annotation execution chain.
  *
  * <p>
- * The same method list and parameter map are shared between parent responses,
- * dependency requests/responses and executors so helper methods can pass state
- * through the full chain.
+ * A single request execution chain shares its method list and request parameter
+ * maps between parent responses, dependency requests/responses, and executors
+ * so helper methods can pass state through that chain. Runner executions fork
+ * this state for each collection request so one request cannot leak method
+ * history, headers, auth, timing, or response-specific info into the next
+ * request.
  * </p>
  */
 public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info {
@@ -190,8 +193,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), System.currentTimeMillis(), null);
 	}
 
-	private JPostmanInfo(String[] tags, String executor, String cache, String method, String namespace,
-			String folder, String request, List<String> methods, Map<String, Object> body, Map<String, Object> query,
+	private JPostmanInfo(String[] tags, String executor, String cache, String method, String namespace, String folder,
+			String request, List<String> methods, Map<String, Object> body, Map<String, Object> query,
 			Map<String, Object> headers, Map<String, Object> bodyAdd, Map<String, Object> queryAdd,
 			Map<String, Object> headersAdd, Map<String, Object> path, Map<String, Object> auth, long created,
 			JPostmanContext context) {
@@ -254,8 +257,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Appends a method/executor display entry to the shared method chain and returns
-	 * the zero-based index assigned to that entry.
+	 * Appends a method/executor display entry to the shared method chain and
+	 * returns the zero-based index assigned to that entry.
 	 *
 	 * @param method method or executor display name
 	 * @return zero-based index inside {@link #methods}
@@ -266,7 +269,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Marks this info object as the current invocation for the supplied method entry.
+	 * Marks this info object as the current invocation for the supplied method
+	 * entry.
 	 *
 	 * @param method method or executor display name
 	 * @return this info object
@@ -406,6 +410,46 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
+	 * Creates a new independent info chain for one {@code @JPostmanRunner}
+	 * collection request.
+	 *
+	 * <p>
+	 * Runner-level dependencies may prepare shared request customizations such as
+	 * auth, headers, body, query, and path values. Those values are copied into
+	 * each request info object, but the per-request info then owns its own maps and
+	 * method list. This prevents one runner request from leaking executor steps,
+	 * timing, response metadata, or request-specific mutations into the next runner
+	 * request.
+	 * </p>
+	 *
+	 * @param requestName collection request name for this runner step
+	 * @return independent info object for the runner request
+	 */
+	public JPostmanInfo runnerRequest(String requestName) {
+		JPostmanInfo copy = new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, value(requestName),
+				new ArrayList<>(methods), copy(body), copy(query), copy(headers), copy(bodyAdd), copy(queryAdd),
+				copy(headersAdd), copy(path), copy(auth), System.currentTimeMillis(), context);
+		copy.annotation = this.annotation;
+		copy.id = this.id;
+		copy.data = this.data;
+		copy.debug = this.debug;
+		copy.requestId = this.requestId;
+		copy.methodIndex = copiedMethodIndex(copy.methods);
+		return copy;
+	}
+
+	private int copiedMethodIndex(List<String> copiedMethods) {
+		if (methodIndex >= 0 && methodIndex < copiedMethods.size() && method.equals(copiedMethods.get(methodIndex))) {
+			return methodIndex;
+		}
+		return copiedMethods.indexOf(method);
+	}
+
+	private static Map<String, Object> copy(Map<String, Object> source) {
+		return source == null ? new LinkedHashMap<>() : new LinkedHashMap<>(source);
+	}
+
+	/**
 	 * Creates a copy of this info object associated with the @JPostmanContext
 	 * annotation.
 	 *
@@ -413,8 +457,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with the supplied context
 	 */
 	public JPostmanInfo context(JPostmanContext value) {
-		return copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request,
-				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, value));
+		return copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request, methods, body,
+				query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, value));
 	}
 
 	/**
@@ -430,8 +474,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with the supplied debug override when non-blank
 	 */
 	public JPostmanInfo debug(String value) {
-		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder,
-				request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context));
+		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request,
+				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context));
 		if (value != null && !value.isBlank()) {
 			copy.debug = value.trim();
 		}
@@ -447,9 +491,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return copied info object with merged tags
 	 */
 	public JPostmanInfo withTags(String... values) {
-		return copyMeta(new JPostmanInfo(mergeTags(this.tags, values), executor, cache, method, namespace,
-				folder, request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created,
-				context));
+		return copyMeta(new JPostmanInfo(mergeTags(this.tags, values), executor, cache, method, namespace, folder,
+				request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context));
 	}
 
 	private JPostmanInfo copyMeta(JPostmanInfo copy) {
@@ -552,9 +595,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return child info object
 	 */
 	public JPostmanInfo childExact(String method, String namespace, String folder, String request) {
-		return new JPostmanInfo(this.tags, executor, "", method, value(namespace), value(folder),
-				value(request), methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created,
-				context).debug(this.debug);
+		return new JPostmanInfo(this.tags, executor, "", method, value(namespace), value(folder), value(request),
+				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, created, context)
+				.debug(this.debug);
 	}
 
 	/**
@@ -601,9 +644,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	public JPostmanInfo childExact(String method, String[] tags, String executor, String cache, String namespace,
 			String folder, String request) {
-		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method,
-				value(namespace), value(folder), value(request), methods, body, query, headers, bodyAdd, queryAdd,
-				headersAdd, path, auth, created, context).debug(this.debug);
+		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method, value(namespace),
+				value(folder), value(request), methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth,
+				created, context).debug(this.debug);
 	}
 
 	/**

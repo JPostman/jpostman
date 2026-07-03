@@ -124,9 +124,14 @@ public final class JPostmanTestNgAnnotationListener
 		}
 
 		Method testMethod = testResult.getMethod().getConstructorOrMethod().getMethod();
+		boolean runnerMethod = JPostmanAnnotations.runner(testMethod) != null;
 		try {
-			JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
-			callBack.runTestMethod(testResult);
+			if (runnerMethod) {
+				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod, () -> callBack.runTestMethod(testResult));
+			} else {
+				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
+				callBack.runTestMethod(testResult);
+			}
 		} catch (SkipException e) {
 			e.setStackTrace(JPostmanStackTraceCleaner.cleanStack(testMethod.getDeclaringClass(), testMethod, e));
 			testResult.setThrowable(e);

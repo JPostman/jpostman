@@ -119,8 +119,25 @@ public final class JPostmanAnnotationEngine {
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod) throws Exception {
+		runTestNg(testInstance, testMethod, null);
+	}
+
+	/**
+	 * Runs JPostman annotation support for a TestNG test method and optionally
+	 * invokes a callback after each top-level @JPostmanRunner request completes.
+	 *
+	 * @param testInstance               TestNG test instance
+	 * @param testMethod                 current TestNG test method
+	 * @param afterRunnerRequestCallback callback invoked after each runner request,
+	 *                                   or null when no per-request callback is
+	 *                                   needed
+	 * @throws Exception when annotation execution fails
+	 */
+	public static void runTestNg(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
+			throws Exception {
 		JPostmanAnnotationValidator.validateTestMethod(testMethod);
-		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).run(testInstance, testMethod);
+		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework(), afterRunnerRequestCallback).run(testInstance,
+				testMethod);
 	}
 
 	/**

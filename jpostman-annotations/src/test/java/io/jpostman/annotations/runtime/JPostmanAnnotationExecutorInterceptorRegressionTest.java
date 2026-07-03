@@ -64,8 +64,8 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 
 		AssertionError defaultError = assertThrows(AssertionError.class, () -> runTestNg(invalidDefault, "profile"));
 
-		assertTrue(defaultError.getMessage()
-				.contains("verify status code must be between 100 and 599, or less than 1 to skip verification"),
+		assertTrue(defaultError.getMessage().contains(
+				"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599"),
 				"Actual message: " + defaultError.getMessage());
 
 		InvalidResponseVerifyFixture invalidResponse = new InvalidResponseVerifyFixture();
@@ -73,9 +73,22 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 
 		AssertionError responseError = assertThrows(AssertionError.class, () -> runTestNg(invalidResponse, "profile"));
 
-		assertTrue(responseError.getMessage()
-				.contains("verify status code must be between 100 and 599, or less than 1 to skip verification"),
+		assertTrue(responseError.getMessage().contains(
+				"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599"),
 				"Actual message: " + responseError.getMessage());
+	}
+
+	@Test
+	public void responseAndRunnerVerifyZeroSkipContextDefaultVerification() throws Exception {
+		ResponseVerifyZeroFixture response = new ResponseVerifyZeroFixture();
+		JPostmanAnnotationEngine.setupTestNg(response);
+		runTestNg(response, "profile");
+		assertEquals(1, response.defaultExecutorCalls);
+
+		RunnerVerifyZeroFixture runner = new RunnerVerifyZeroFixture();
+		JPostmanAnnotationEngine.setupTestNg(runner);
+		runTestNg(runner, "runProfile");
+		assertEquals(1, runner.defaultExecutorCalls);
 	}
 
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
@@ -167,6 +180,44 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 		public ApiExecutor defaultExecutor() {
 			defaultExecutorCalls++;
 			return okResponseExecutor(401, "{\"message\":\"not checked\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ResponseVerifyZeroFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int defaultExecutorCalls;
+
+		@JPostman.Response(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor() {
+			defaultExecutorCalls++;
+			return okResponseExecutor(201, "{\"message\":\"created but not verified\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RunnerVerifyZeroFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int defaultExecutorCalls;
+
+		@JPostman.Runner(include = { "Get current auth user" }, verify = 0)
+		@org.testng.annotations.Test
+		public void runProfile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor() {
+			defaultExecutorCalls++;
+			return okResponseExecutor(201, "{\"message\":\"created but not verified\"}");
 		}
 	}
 

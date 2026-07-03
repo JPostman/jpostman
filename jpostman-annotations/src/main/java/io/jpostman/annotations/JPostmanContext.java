@@ -107,14 +107,13 @@ public @interface JPostmanContext {
 	 * </p>
 	 *
 	 * <p>
-	 * Use a value less than {@code 1}, such as {@code 0} or {@code -1}, to
-	 * disable default status-code verification. Values from {@code 1} to
-	 * {@code 99} are invalid because the lowest standard HTTP status code is
-	 * {@code 100}; values greater than {@code 599} are also invalid.
+	 * Use {@code 0} to disable default status-code verification. Values from
+	 * {@code 1} to {@code 99} are invalid because the lowest standard HTTP status
+	 * code is {@code 100}; values greater than {@code 599} are also invalid.
 	 * </p>
 	 *
-	 * @return default expected HTTP status code, or a value less than {@code 1} to
-	 *         skip status code verification
+	 * @return default expected HTTP status code, or {@code 0} to skip status code
+	 *         verification by default
 	 */
 	int verifyStatusCode() default 200;
 
@@ -194,8 +193,7 @@ public @interface JPostmanContext {
 	 *
 	 * <p>
 	 * Uses {@link java.text.MessageFormat} syntax. Argument {@code {0}} is the
-	 * current method name. Argument {@code {1}} is the JPostman annotation
-	 * name.
+	 * current method name. Argument {@code {1}} is the JPostman annotation name.
 	 * </p>
 	 *
 	 * @return debug log format

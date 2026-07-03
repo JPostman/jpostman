@@ -81,16 +81,14 @@ public @interface JPostmanRunner {
 	 * Expected HTTP status code for each executed request.
 	 *
 	 * <p>
-	 * A value less than {@code 1} uses
-	 * {@link JPostmanContext#verifyStatusCode()}. When the context default is also
-	 * less than {@code 1}, automatic status-code verification is
-	 * disabled. This is the default so runners can execute mixed request flows
-	 * without assuming every response must be {@code 200}. Set a concrete value
-	 * when each runner request should be verified by the annotation runtime.
+	 * The default value {@code -1} uses {@link JPostmanContext#verifyStatusCode()}.
+	 * Use {@code 0} to explicitly skip status-code verification for this runner,
+	 * even when the context has a default expected status code. Set a concrete
+	 * value when each runner request should be verified by the annotation runtime.
 	 * </p>
 	 *
-	 * @return expected HTTP status code, or a value less than {@code 1} to use the
-	 *         context default
+	 * @return expected HTTP status code, {@code -1} to use the context default, or
+	 *         {@code 0} to skip status-code verification for this runner
 	 */
 	int verify() default -1;
 

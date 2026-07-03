@@ -93,17 +93,15 @@ public @interface JPostmanResponse {
 	 * Expected HTTP status code.
 	 *
 	 * <p>
-	 * A value less than {@code 1} uses
-	 * {@link JPostmanContext#verifyStatusCode()}. When the context default is also
-	 * less than {@code 1}, automatic status-code verification is
-	 * disabled. This is the default so dependency-heavy flows do not accidentally
-	 * verify a previous or unrelated response. Set a concrete value, such as
-	 * {@code 200} or {@code 201}, when the response should be verified by the
-	 * annotation runtime.
+	 * The default value {@code -1} uses {@link JPostmanContext#verifyStatusCode()}.
+	 * Use {@code 0} to explicitly skip status-code verification for this response,
+	 * even when the context has a default expected status code. Set a concrete
+	 * value, such as {@code 200} or {@code 201}, when the response should be
+	 * verified by the annotation runtime.
 	 * </p>
 	 *
-	 * @return expected HTTP status code, or a value less than {@code 1} to use the
-	 *         context default
+	 * @return expected HTTP status code, {@code -1} to use the context default, or
+	 *         {@code 0} to skip status-code verification for this response
 	 */
 	int verify() default -1;
 

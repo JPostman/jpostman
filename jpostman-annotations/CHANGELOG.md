@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.4
+
+### Added
+
+- Added TestNG runner request callbacks so a `@JPostmanRunner` test method body can run after each executed collection request and inspect the current `jpostman.info()` / `jpostman.ctx()` state.
+- Added `JPostmanInfo.runnerRequest(...)` to create an isolated info chain for each request executed by `@JPostmanRunner`.
+- Added regression coverage for per-request runner test body execution, runner info isolation, and explicit `verify = 0` verification skipping.
+
+### Changed
+
+- Changed `@JPostmanResponse.verify()` and compact `@JPostman.Response.verify()` semantics so `-1` uses the context default, `0` explicitly skips status-code verification, and concrete values verify that exact HTTP status code.
+- Updated `verifyStatusCode` documentation to describe `0` as the default status-code verification skip value and reject invalid values from `1` to `99` or greater than `599`.
+
 ## 2.1.3
 
 ### Added

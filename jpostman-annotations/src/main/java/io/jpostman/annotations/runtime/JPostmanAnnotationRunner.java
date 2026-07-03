@@ -35,6 +35,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private final JPostmanContextRunner<C> contextRunner;
 	private final JPostmanAssertionRunner<C> assertionRunner;
 	private final JPostmanRequestDiscovery requestDiscovery;
+	private final Runnable afterRunnerRequestCallback;
 	private final Map<String, ApiExecutor> sessionExecutors = new LinkedHashMap<>();
 
 	/**
@@ -43,10 +44,23 @@ public final class JPostmanAnnotationRunner<C> {
 	 * @param framework framework bridge used to perform context operations
 	 */
 	public JPostmanAnnotationRunner(JPostmanFramework<C> framework) {
+		this(framework, null);
+	}
+
+	/**
+	 * Creates a runner for the supplied framework bridge.
+	 *
+	 * @param framework                  framework bridge used to perform context
+	 *                                   operations
+	 * @param afterRunnerRequestCallback optional callback invoked after each
+	 *                                   top-level runner request completes
+	 */
+	public JPostmanAnnotationRunner(JPostmanFramework<C> framework, Runnable afterRunnerRequestCallback) {
 		this.framework = framework;
 		this.contextRunner = new JPostmanContextRunner<>(framework);
 		this.assertionRunner = new JPostmanAssertionRunner<>(framework);
 		this.requestDiscovery = new JPostmanRequestDiscovery();
+		this.afterRunnerRequestCallback = afterRunnerRequestCallback;
 	}
 
 	/**
@@ -138,7 +152,7 @@ public final class JPostmanAnnotationRunner<C> {
 			if (runnerAnnotation != null) {
 				runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
 						info.withTags(runnerAnnotation.tags()), stack);
-				executeRunner(testInstance, prepared, runnerAnnotation, info, stack);
+				executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true);
 			}
 		} catch (Exception | Error e) {
 			if (isFrameworkSkip(e)) {
@@ -435,7 +449,7 @@ public final class JPostmanAnnotationRunner<C> {
 		runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
 			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
 					runnerInfo.withTags(annotation.tags()), stack);
-			executeRunner(testInstance, resolver, annotation, runnerInfo, stack);
+			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false);
 		});
 	}
 
@@ -443,9 +457,9 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanRequest annotation, String cache) {
 		/*
 		 * A request helper that owns a request attribute gets its own exact request
-		 * location. Blank namespace on that helper means the default namespace while the
-		 * helper runs. Helpers without a request continue to inherit the parent context
-		 * so they can act as generic setup/tag helpers.
+		 * location. Blank namespace on that helper means the default namespace while
+		 * the helper runs. Helpers without a request continue to inherit the parent
+		 * context so they can act as generic setup/tag helpers.
 		 */
 		JPostmanInfo info = isBlank(annotation.request())
 				? parentInfo.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
@@ -494,9 +508,10 @@ public final class JPostmanAnnotationRunner<C> {
 
 		/*
 		 * The helper receives invocation info. Add the current helper to the shared
-		 * chain before invocation so info.print() shows method/methodIndex and the
-		 * full path including the current method. This also keeps the invocation chain consistent
-		 * when the current helper is skipped because its own cache key already exists.
+		 * chain before invocation so info.print() shows method/methodIndex and the full
+		 * path including the current method. This also keeps the invocation chain
+		 * consistent when the current helper is skipped because its own cache key
+		 * already exists.
 		 */
 		dependencyInfo.method(dependencyMethod.getName());
 
@@ -675,7 +690,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void executeRunner(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
-			JPostmanInfo info, List<String> stack) throws Exception {
+			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest) throws Exception {
 
 		JPostmanReport report = report(testInstance);
 		Collection collection = resolver.collection(info.namespace);
@@ -719,8 +734,7 @@ public final class JPostmanAnnotationRunner<C> {
 				continue;
 			}
 
-			JPostmanInfo requestInfo = info.child(info.method, info.namespace, info.folder, requestName)
-					.annotation("@JPostmanRunner");
+			JPostmanInfo requestInfo = info.runnerRequest(requestName).annotation("@JPostmanRunner");
 			resolver.info(requestInfo);
 			add(report, requestInfo);
 			C ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo, requestName);
@@ -734,6 +748,7 @@ public final class JPostmanAnnotationRunner<C> {
 			executed++;
 			try {
 				executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
+				notifyAfterRunnerRequest(notifyAfterRequest);
 			} catch (Exception | Error e) {
 				if (!annotation.soft()) {
 					throw e;
@@ -751,6 +766,12 @@ public final class JPostmanAnnotationRunner<C> {
 
 		if (!failures.isEmpty()) {
 			throw combinedRunnerError(failures);
+		}
+	}
+
+	private void notifyAfterRunnerRequest(boolean enabled) {
+		if (enabled && afterRunnerRequestCallback != null) {
+			afterRunnerRequestCallback.run();
 		}
 	}
 
@@ -925,8 +946,8 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
-	private void runExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx,
-			JPostmanInfo info) throws Exception {
+	private void runExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx, JPostmanInfo info)
+			throws Exception {
 		for (Method method : executorInterceptors(testInstance.getClass(), info.namespace)) {
 			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
 			JPostmanInfo interceptorInfo = info
@@ -1151,7 +1172,7 @@ public final class JPostmanAnnotationRunner<C> {
 		int statusCode = JPostmanRuntimeOptions.from(testInstance).statusCode(annotationVerify);
 		if ((statusCode > 0 && statusCode < 100) || statusCode > 599) {
 			throw JPostmanErrors.usage(info,
-					"verify status code must be between 100 and 599, or less than 1 to skip verification.");
+					"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599.");
 		}
 		return statusCode;
 	}

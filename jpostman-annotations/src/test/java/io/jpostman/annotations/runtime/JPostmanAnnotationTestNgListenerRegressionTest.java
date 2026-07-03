@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,11 +43,36 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
 
 		assertEquals(1, fixture.bodyCalls, "The user test body should still run so it can print the prepared context.");
-		assertTrue(fixture.sawResponse, "The user test body should see the response created before verification failed.");
+		assertTrue(fixture.sawResponse,
+				"The user test body should see the response created before verification failed.");
 		assertEquals(ITestResult.FAILURE, status.get());
 		assertNotNull(throwable.get());
 		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [401] but found [200]"),
 				"Actual message: " + throwable.get().getMessage());
+	}
+
+	@Test
+	public void listenerRunsTestBodyAfterSuccessfulAnnotationRunnerForDiagnostics() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		SuccessfulRunnerBodyFixture fixture = new SuccessfulRunnerBodyFixture();
+		Method method = SuccessfulRunnerBodyFixture.class.getDeclaredMethod("printLatestRunnerInfo");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(2, fixture.bodyCalls,
+				"The user test body should run after each successful JPostman runner request.");
+		assertEquals(2, fixture.executorCalls, "The runner should execute each discovered collection request.");
+		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.bodyRequests,
+				"Each body call should see the current runner request info, not only the final request.");
+		assertTrue(fixture.sawLatestInfo,
+				"The user test body should see the current runner JPostmanInfo after each request.");
+		assertTrue(fixture.sawLatestResponse,
+				"The user test body should see the latest active response context after each request.");
+		assertEquals(ITestResult.SUCCESS, status.get());
+		assertEquals(null, throwable.get());
 	}
 
 	@JPostman.TestNG
@@ -70,8 +97,40 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		}
 	}
 
+	@JPostman.TestNG
+	private static final class SuccessfulRunnerBodyFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int executorCalls;
+		private int bodyCalls;
+		private final List<String> bodyRequests = new ArrayList<>();
+		private boolean sawLatestInfo;
+		private boolean sawLatestResponse;
+
+		@JPostman.Runner(verify = 0)
+		@org.testng.annotations.Test
+		public void printLatestRunnerInfo() {
+			bodyCalls++;
+			JPostmanInfo info = jpostman.info().attr();
+			if (info != null) {
+				bodyRequests.add(info.attr().request);
+			}
+			sawLatestInfo = info != null && info.methods.contains("defaultExecutor(\"" + info.request + "\")");
+			sawLatestResponse = jpostman.ctx() != null && jpostman.ctx().response() != null;
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executorCalls++;
+			return okExecutor("{\"id\":" + executorCalls + ",\"request\":\"" + info.request + "\"}");
+		}
+	}
+
 	private static IHookCallBack hookCallBack(Runnable body) {
-		return (IHookCallBack) Proxy.newProxyInstance(JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
+		return (IHookCallBack) Proxy.newProxyInstance(
+				JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
 				new Class<?>[] { IHookCallBack.class }, (proxy, method, args) -> {
 					if ("runTestMethod".equals(method.getName())) {
 						body.run();
@@ -83,7 +142,8 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 	private static ITestResult testResult(Object instance, Method javaMethod, AtomicReference<Throwable> throwable,
 			AtomicInteger status) {
-		return (ITestResult) Proxy.newProxyInstance(JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
+		return (ITestResult) Proxy.newProxyInstance(
+				JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
 				new Class<?>[] { ITestResult.class }, (proxy, method, args) -> {
 					if ("getInstance".equals(method.getName())) {
 						return instance;
@@ -112,7 +172,8 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	@SuppressWarnings("unused")
 	private static IInvokedMethod invokedMethod(Method javaMethod, boolean testMethod, boolean configurationMethod) {
 		ITestNGMethod testNgMethod = testNgMethod(javaMethod);
-		return (IInvokedMethod) Proxy.newProxyInstance(JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
+		return (IInvokedMethod) Proxy.newProxyInstance(
+				JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
 				new Class<?>[] { IInvokedMethod.class }, (proxy, method, args) -> {
 					if ("isTestMethod".equals(method.getName())) {
 						return testMethod;
@@ -128,7 +189,8 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	private static ITestNGMethod testNgMethod(Method javaMethod) {
-		return (ITestNGMethod) Proxy.newProxyInstance(JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
+		return (ITestNGMethod) Proxy.newProxyInstance(
+				JPostmanAnnotationTestNgListenerRegressionTest.class.getClassLoader(),
 				new Class<?>[] { ITestNGMethod.class }, (proxy, method, args) -> {
 					if ("getRealClass".equals(method.getName())) {
 						return javaMethod.getDeclaringClass();

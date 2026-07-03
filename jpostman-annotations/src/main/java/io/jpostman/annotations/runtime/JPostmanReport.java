@@ -148,10 +148,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 			return value(left.method).equals(value(right.method));
 		}
 
-		return value(left.annotation).equals(value(right.annotation))
-				&& value(left.method).equals(value(right.method))
-				&& left.methodIndex == right.methodIndex
-				&& value(left.namespace).equals(value(right.namespace))
+		return value(left.annotation).equals(value(right.annotation)) && value(left.method).equals(value(right.method))
+				&& left.methodIndex == right.methodIndex && value(left.namespace).equals(value(right.namespace))
 				&& value(left.folder).equals(value(right.folder)) && value(left.request).equals(value(right.request));
 	}
 

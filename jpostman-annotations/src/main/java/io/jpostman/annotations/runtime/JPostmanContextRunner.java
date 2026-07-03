@@ -57,7 +57,8 @@ final class JPostmanContextRunner<C> {
 		 * collection/environment/rules/config.
 		 */
 		prepareImplicitContexts(testInstance, prepared);
-		prepared.missingContextFactory(namespace -> createMissingNamespaceContext(testInstance, prepared, previous, namespace));
+		prepared.missingContextFactory(
+				namespace -> createMissingNamespaceContext(testInstance, prepared, previous, namespace));
 		prepareNamedContexts(testInstance, prepared);
 		prepareActiveContexts(testInstance, prepared);
 		preservePreviousCaches(prepared, previous);
@@ -102,9 +103,9 @@ final class JPostmanContextRunner<C> {
 		C previousContext = previous.context(namespace);
 		PreparedContext<C> preparedContext = prepared.resolve(namespace);
 		/*
-		 * Keep each prepared context fresh between test method executions.
-		 * Only cache is carried forward; request, response, filter, soft/log, and other
-		 * per-run state must not be reused from the previous context.
+		 * Keep each prepared context fresh between test method executions. Only cache
+		 * is carried forward; request, response, filter, soft/log, and other per-run
+		 * state must not be reused from the previous context.
 		 */
 		framework.copyCache(previousContext, preparedContext.context);
 	}

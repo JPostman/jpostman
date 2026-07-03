@@ -807,13 +807,13 @@ public class JPostmanAnnotationCoverageTest {
 		assertNotNull(fixture.responseDependencyInfo);
 		assertEquals("responseDependency", fixture.responseDependencyInfo.method);
 		assertTrue(fixture.responseDependencyInfo.methodIndex >= 0);
-		assertEquals("responseDependency", fixture.responseDependencyInfo.methods
-				.get(fixture.responseDependencyInfo.methodIndex));
+		assertEquals("responseDependency",
+				fixture.responseDependencyInfo.methods.get(fixture.responseDependencyInfo.methodIndex));
 		assertNotNull(fixture.runnerDependencyInfo);
 		assertEquals("runnerDependency", fixture.runnerDependencyInfo.method);
 		assertTrue(fixture.runnerDependencyInfo.methodIndex >= 0);
-		assertEquals("runnerDependency", fixture.runnerDependencyInfo.methods
-				.get(fixture.runnerDependencyInfo.methodIndex));
+		assertEquals("runnerDependency",
+				fixture.runnerDependencyInfo.methods.get(fixture.runnerDependencyInfo.methodIndex));
 
 		runner.run(fixture, method);
 
@@ -873,7 +873,8 @@ public class JPostmanAnnotationCoverageTest {
 
 		AssertionError wrongExecutorType = assertThrows(AssertionError.class, () -> runner
 				.run(new WrongExecutorTypeFixture(), WrongExecutorTypeFixture.class.getDeclaredMethod("response")));
-		assertTrue(wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void."));
+		assertTrue(
+				wrongExecutorType.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void."));
 	}
 
 	/**
@@ -972,11 +973,10 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	@Test
 	public void compactInfoAttrReturnsRuntimeInfoAttributes() {
-		JPostmanInfo parent = new JPostmanInfo("filter1", "", "", "").annotation("@JPostmanResponse")
-				.id("#response");
+		JPostmanInfo parent = new JPostmanInfo("filter1", "", "", "").annotation("@JPostmanResponse").id("#response");
 		parent.method("filter1");
-		JPostmanInfo child = parent.child("authRequest", "", "", "Get current auth user")
-				.annotation("@JPostmanRequest").id("#token");
+		JPostmanInfo child = parent.child("authRequest", "", "", "Get current auth user").annotation("@JPostmanRequest")
+				.id("#token");
 		child.method("authRequest");
 		JPostman.Info info = child;
 
@@ -1003,8 +1003,9 @@ public class JPostmanAnnotationCoverageTest {
 		int executorIndex = info.appendMethod("HttpClientExecutor(#token)");
 		JPostmanInfo executor = info.child("HttpClientExecutor", "", "", "Get current auth user")
 				.annotation("@JPostmanContext executor").methodIndex(executorIndex);
-		JPostmanInfo interceptor = info.childExact("defaultIntercept", new String[0], "", "", "", "",
-				"Get current auth user").annotation("@JPostmanExecutor intercept");
+		JPostmanInfo interceptor = info
+				.childExact("defaultIntercept", new String[0], "", "", "", "", "Get current auth user")
+				.annotation("@JPostmanExecutor intercept");
 
 		interceptor.method("defaultIntercept");
 
@@ -1013,8 +1014,6 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(2, interceptor.methodIndex);
 		assertTrue(interceptor.log().contains("methodIndex=2"));
 	}
-
-
 
 	/**
 	 * Verifies compact mutable references can be updated from tag lambdas without
@@ -1079,9 +1078,8 @@ public class JPostmanAnnotationCoverageTest {
 				"Get current auth user");
 		JPostman.Ref<String> selected = mouse.ref("");
 
-		mouse.tags().has("keyboard").then(i -> selected.set("KEYBOARD"))
-				.any("mouse", "shoes").then(i -> selected.set("MOUSE"))
-				.otherwise(i -> selected.set("DEFAULT"));
+		mouse.tags().has("keyboard").then(i -> selected.set("KEYBOARD")).any("mouse", "shoes")
+				.then(i -> selected.set("MOUSE")).otherwise(i -> selected.set("DEFAULT"));
 
 		assertEquals("MOUSE", selected.get());
 
@@ -1089,9 +1087,8 @@ public class JPostmanAnnotationCoverageTest {
 				"Get current auth user");
 		JPostman.Ref<String> fallback = missing.ref("");
 
-		missing.tags().has("keyboard").then(i -> fallback.set("KEYBOARD"))
-				.any("mouse", "shoes").then(i -> fallback.set("MOUSE"))
-				.otherwise(i -> fallback.set("DEFAULT"));
+		missing.tags().has("keyboard").then(i -> fallback.set("KEYBOARD")).any("mouse", "shoes")
+				.then(i -> fallback.set("MOUSE")).otherwise(i -> fallback.set("DEFAULT"));
 
 		assertEquals("DEFAULT", fallback.get());
 	}

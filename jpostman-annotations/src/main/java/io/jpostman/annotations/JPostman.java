@@ -123,8 +123,8 @@ public final class JPostman {
 		/**
 		 * Default expected HTTP status code.
 		 *
-		 * @return expected HTTP status code, or a value less than {@code 1} to skip
-		 *         status code verification
+		 * @return expected HTTP status code, or {@code 0} to skip status code
+		 *         verification by default
 		 */
 		int verifyStatusCode() default 200;
 
@@ -261,8 +261,8 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Namespace where this executor interceptor applies. Empty means all
-		 * namespaces for void interceptors and the default executor provider for
+		 * Namespace where this executor interceptor applies. Empty means all namespaces
+		 * for void interceptors and the default executor provider for
 		 * ApiExecutor-returning methods.
 		 *
 		 * @return namespace, or empty string
@@ -456,8 +456,8 @@ public final class JPostman {
 		/**
 		 * Expected HTTP status code.
 		 *
-		 * @return expected HTTP status code, or a value less than {@code 1} to use the
-		 *         context default
+		 * @return expected HTTP status code, {@code -1} to use the context default, or
+		 *         {@code 0} to skip status code verification for this response
 		 */
 		int verify() default -1;
 
@@ -589,8 +589,8 @@ public final class JPostman {
 		/**
 		 * Expected HTTP status code.
 		 *
-		 * @return expected HTTP status code, or a value less than {@code 1} to use the
-		 *         context default
+		 * @return expected HTTP status code, {@code -1} to use the context default, or
+		 *         {@code 0} to skip status code verification for this runner
 		 */
 		int verify() default -1;
 
@@ -778,8 +778,9 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Strings are concatenated and numbers are added while preserving the current
-		 * numeric type when possible. When the current value is null, the supplied value
-		 * becomes the reference value. Other value types should use {@link #set(Object)}.
+		 * numeric type when possible. When the current value is null, the supplied
+		 * value becomes the reference value. Other value types should use
+		 * {@link #set(Object)}.
 		 * </p>
 		 *
 		 * @param value value to add
@@ -902,7 +903,7 @@ public final class JPostman {
 		 * Creates a mutable reference with an initial value.
 		 *
 		 * @param value initial value
-		 * @param <T> referenced value type
+		 * @param <T>   referenced value type
 		 * @return initialized reference
 		 */
 		<T> JPostman.Ref<T> ref(T value);

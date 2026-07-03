@@ -104,7 +104,13 @@ final class JPostmanRuntimeOptions {
 	}
 
 	int statusCode(int annotationVerify) {
-		return annotationVerify > 0 ? annotationVerify : defaultStatusCode;
+		if (annotationVerify > 0) {
+			return annotationVerify;
+		}
+		if (annotationVerify == 0) {
+			return 0;
+		}
+		return defaultStatusCode;
 	}
 
 	boolean log(boolean annotationLog) {

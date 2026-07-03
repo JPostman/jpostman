@@ -50,12 +50,12 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	/**
 	 * Creates a runtime view.
 	 *
-	 * @param context         loaded core JPostman context
-	 * @param namespace       fallback namespace used by {@link #ctx()} before an
-	 *                        active context exists
-	 * @param contextResolver framework-context resolver by namespace
+	 * @param context               loaded core JPostman context
+	 * @param namespace             fallback namespace used by {@link #ctx()} before
+	 *                              an active context exists
+	 * @param contextResolver       framework-context resolver by namespace
 	 * @param activeContextResolver latest active framework-context resolver
-	 * @param infoSupplier current annotation execution info supplier
+	 * @param infoSupplier          current annotation execution info supplier
 	 */
 	public JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier) {

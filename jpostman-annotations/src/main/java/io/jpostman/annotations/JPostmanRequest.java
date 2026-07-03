@@ -64,8 +64,8 @@ public @interface JPostmanRequest {
 	 * Context namespace to use.
 	 *
 	 * <p>
-	 * Empty means inherit from the parent chain. If there is no parent namespace, the
-	 * default context is used.
+	 * Empty means inherit from the parent chain. If there is no parent namespace,
+	 * the default context is used.
 	 * </p>
 	 *
 	 * @return context namespace
@@ -88,9 +88,9 @@ public @interface JPostmanRequest {
 	 * Postman request name to prepare.
 	 *
 	 * <p>
-	 * Empty means inherit from the parent chain. This allows helper methods to modify
-	 * {@link JPostmanInfo#body} without repeating the same request name on every
-	 * method in the chain.
+	 * Empty means inherit from the parent chain. This allows helper methods to
+	 * modify {@link JPostmanInfo#body} without repeating the same request name on
+	 * every method in the chain.
 	 * </p>
 	 *
 	 * @return Postman request name
