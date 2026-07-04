@@ -6,19 +6,22 @@
 
 - Added shared `JPostman.Log` debug modes: `NONE`, `REQUEST`, `RESPONSE`, `INFO`, `ERROR`, and `ALL`.
 - Added enum-based `debug` configuration for compact and legacy context annotations, plus executor, request, response, and runner annotations.
+- Added context-level `logs` failure-output modes with string values `none`, `debug`, and `error`.
+- Added configurable stack-trace cleanup properties: `stacktrace.max`, `stacktrace.filter.skip`, `stacktrace.boundary`, and `stacktrace.boundary.add`.
 - Added fluent tag value lookup with `info.tags().get(...)`, returning the plain tag value for matching plain tags and the value part for `key=value` tags.
 - Added two-parameter tag rule callbacks with `then((info, tags) -> ...)` so callbacks can use the tag helper directly.
 - Added regular expression support to `info.tags().has(...)` and `info.tags().any(...)`, including case-insensitive patterns such as `(?i).*mouse.*` and escaped patterns such as `\\+\\d{1,2}`.
+- Added `JPostmanInfo.toJson()` and compact `JPostman.Info.toJson()` to convert values in the last body, query, header, path, or auth group to JSON literal strings.
 
 ### Changed
 
-- Renamed context automatic output configuration from `logOutput` to `debug` for compact `@JPostman.Context` and legacy `@JPostmanContext`.
+- Renamed context automatic annotation output from `logOutput` to `debug` for compact `@JPostman.Context` and legacy `@JPostmanContext`.
 - Changed annotation debug configuration from string arrays to the shared `JPostman.Log` enum.
 
 ### Removed
 
 - Removed `debugFormat()` from compact `@JPostman.Context` and legacy `@JPostmanContext`.
-- Removed local annotation `logOutput()` overrides in favor of enum-based `debug()` overrides.
+- Removed local annotation `logOutput()` overrides from executor, request, response, and runner annotations.
 - Removed `info.tags().contains(...)`; use `has(...)` or `any(...)` with regular expressions such as `.*mouse.*` instead.
 
 ## 2.1.5

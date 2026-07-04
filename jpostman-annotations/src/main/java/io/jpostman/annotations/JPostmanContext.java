@@ -160,30 +160,34 @@ public @interface JPostmanContext {
 	boolean skipAll() default false;
 
 	/**
-	 * Enables secure request/response logging by default for this JPostman context.
+	 * Controls automatic JPostman failure output. Values are single-choice; use one
+	 * value only.
 	 *
-	 * <p>
-	 * This is a class-level/default logging flag. When enabled, annotation-driven
-	 * executions such as {@code @JPostmanRunner}, {@code @JPostmanRequest}, and
-	 * {@code @JPostmanResponse} will collect secure request/response logs unless
-	 * the implementation explicitly defines another logging policy.
-	 * </p>
+	 * <ul>
+	 * <li>{@code none} - print only the minimum failure message and the first
+	 * useful user-code stack frame.</li>
+	 * <li>{@code debug} - print the configured debug output and use minimum failure
+	 * output when debug is {@code none}.</li>
+	 * <li>{@code error} - print the failure message and include the trace.</li>
+	 * </ul>
 	 *
-	 * <p>
-	 * Note: Java boolean annotation values cannot distinguish between an omitted
-	 * value and an explicit {@code false}. Therefore, a local annotation value such
-	 * as {@code log = false} is treated the same as omitting {@code log}. It does
-	 * not override this global {@code logs = true} value.
-	 * </p>
-	 *
-	 * @return {@code true} to enable secure request/response logging by default
+	 * @return automatic failure output mode
 	 */
-	boolean logs() default false;
+	String[] logs() default { "debug" };
 
 	/**
-	 * Controls automatic annotation output. Supported values are none, request,
-	 * response, info, and all. request, response, and info may be combined. none
-	 * and all must be used alone.
+	 * Controls automatic annotation output.
+	 *
+	 * <ul>
+	 * <li>{@code none} - do not print automatic annotation output.</li>
+	 * <li>{@code request} - print the prepared request.</li>
+	 * <li>{@code response} - print the received response.</li>
+	 * <li>{@code info} - print runtime annotation information.</li>
+	 * <li>{@code all} - print request, response, and info output.</li>
+	 * </ul>
+	 *
+	 * {@code request}, {@code response}, and {@code info} may be combined.
+	 * {@code none} and {@code all} must be used alone.
 	 *
 	 * @return debug output mode values
 	 */

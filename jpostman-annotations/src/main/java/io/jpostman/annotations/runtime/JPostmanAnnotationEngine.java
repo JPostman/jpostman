@@ -69,9 +69,9 @@ public final class JPostmanAnnotationEngine {
 		} catch (Throwable e) {
 			Throwable root = JPostmanStackTraceCleaner.rootCause(e);
 			if (JPostmanStackTraceCleaner.isJUnitSkip(root)) {
-				throw asException(JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, root));
+				throw asException(cleanThrowable(testInstance, testMethod, root));
 			}
-			throw JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, e);
+			throw cleanFailure(testInstance, testMethod, e);
 		}
 	}
 
@@ -160,9 +160,37 @@ public final class JPostmanAnnotationEngine {
 
 		Throwable root = JPostmanStackTraceCleaner.rootCause(error);
 		if (root instanceof AssertionError) {
-			return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error);
+			return cleanFailure(testInstance, testMethod, error);
 		}
-		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error);
+		return cleanThrowable(testInstance, testMethod, error);
+	}
+
+	/**
+	 * Creates the same configured failure display used by JUnit for TestNG.
+	 *
+	 * @param testInstance test instance
+	 * @param testMethod   current test method
+	 * @param error        original failure
+	 * @return cleaned assertion failure
+	 */
+	public static AssertionError cleanFailure(Object testInstance, Method testMethod, Throwable error) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
+				options.minimumErrorOutput(error), options.failureDiagnostics(error));
+	}
+
+	/**
+	 * Creates the same configured throwable display used by JUnit for TestNG.
+	 *
+	 * @param testInstance test instance
+	 * @param testMethod   current test or configuration method
+	 * @param error        original failure
+	 * @return cleaned throwable
+	 */
+	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
+				options.minimumErrorOutput(error));
 	}
 
 }

@@ -543,11 +543,12 @@ final class JPostmanContextRunner<C> {
 							() -> activeContexts(testInstance, contexts).activeContext()),
 					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext(),
 							() -> activeContexts(testInstance, contexts).activeContext()),
-					() -> activeContexts(testInstance, contexts).info());
+					() -> activeContexts(testInstance, contexts).info(),
+					() -> JPostmanRuntimeOptions.from(testInstance));
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
 				() -> activeContexts(testInstance, contexts).activeContext(),
-				() -> activeContexts(testInstance, contexts).info());
+				() -> activeContexts(testInstance, contexts).info(), () -> JPostmanRuntimeOptions.from(testInstance));
 	}
 
 	private boolean compactTestRuntime(Field field) {

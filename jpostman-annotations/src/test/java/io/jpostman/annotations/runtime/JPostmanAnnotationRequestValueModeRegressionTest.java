@@ -61,6 +61,38 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	}
 
 	@Test
+	public void toJsonStringifiesLastRequestValueGroup() {
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");
+
+		info.body("username", "emilys", "password", "emilyspass").toJson();
+
+		assertEquals("\"emilys\"", info.body.get("username"));
+		assertEquals("\"emilyspass\"", info.body.get("password"));
+
+		info.query("limit", 25).toJson();
+
+		assertEquals("25", info.query.get("limit"));
+		assertEquals("\"emilys\"", info.body.get("username"),
+				"toJson() should affect only the most recent request-value group.");
+	}
+
+	@Test
+	public void toJsonStringifiesCollectionItemsAndSecretValues() {
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");
+
+		info.body("products", Arrays.asList("1", "2", "3")).toJson();
+
+		assertEquals(Arrays.asList("\"1\"", "\"2\"", "\"3\""), info.body.get("products"));
+
+		JPostmanInfo secret = new JPostmanInfo("response", "", "", "Update product");
+
+		secret.sheaders("Authorization", "Bearer token").toJson();
+
+		assertEquals("\"Bearer token\"", secret.secretValues().get("Authorization"));
+		assertTrue(Arrays.asList(secret.secretHeaders()).contains("Authorization"));
+	}
+
+	@Test
 	public void sauthOAuth2AddsBearerAuthorizationHeaderForExecutorCompatibility() throws Exception {
 		Request request = requestWithExistingBodyQueryAndHeader();
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");

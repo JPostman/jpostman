@@ -159,16 +159,34 @@ public final class JPostman {
 		boolean skipAll() default false;
 
 		/**
-		 * Enables annotation logging for this context.
+		 * Controls automatic JPostman failure output. Values are single-choice; use one
+		 * value only.
 		 *
-		 * @return {@code true} to enable context logging
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return automatic failure output mode
 		 */
-		boolean logs() default false;
+		String[] logs() default { "debug" };
 
 		/**
-		 * Controls automatic annotation output. Supported values are none, request,
-		 * response, info, and all. request, response, and info may be combined. none
-		 * and all must be used alone.
+		 * Controls automatic annotation output.
+		 *
+		 * <ul>
+		 * <li>{@code none} - do not print automatic annotation output.</li>
+		 * <li>{@code request} - print the prepared request.</li>
+		 * <li>{@code response} - print the received response.</li>
+		 * <li>{@code info} - print runtime annotation information.</li>
+		 * <li>{@code all} - print request, response, and info output.</li>
+		 * </ul>
+		 *
+		 * {@code request}, {@code response}, and {@code info} may be combined.
+		 * {@code none} and {@code all} must be used alone.
 		 *
 		 * @return debug output mode values
 		 */
@@ -272,11 +290,21 @@ public final class JPostman {
 		boolean session() default false;
 
 		/**
-		 * Local log output override. Empty means inherit the context debug value.
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
-		 * @return local log output mode values, or empty to use context default
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return local automatic failure output mode
 		 */
-		String[] logOutput() default {};
+		String log() default "debug";
+
 	}
 
 	/**
@@ -358,11 +386,20 @@ public final class JPostman {
 		String cache() default JPostmanRequest.NO_CACHE;
 
 		/**
-		 * Enables logging for this request.
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
-		 * @return {@code true} to log this request
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return local automatic failure output mode
 		 */
-		boolean log() default false;
+		String log() default "debug";
 
 		/**
 		 * Data section name.
@@ -370,13 +407,6 @@ public final class JPostman {
 		 * @return data section
 		 */
 		String data() default "";
-
-		/**
-		 * Local log output override. Empty means inherit the context debug value.
-		 *
-		 * @return local log output mode values, or empty to use context default
-		 */
-		String[] logOutput() default {};
 
 		/** @return {@code true} to skip this request helper or runner request */
 		boolean skip() default false;
@@ -471,12 +501,20 @@ public final class JPostman {
 		String cache() default JPostmanResponse.NO_CACHE;
 
 		/**
-		 * Enables configured debug output printing and diagnostic logs for this
-		 * response.
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
-		 * @return {@code true} to allow response logging
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return local automatic failure output mode
 		 */
-		boolean log() default true;
+		String log() default "debug";
 
 		/**
 		 * Enables soft assertion mode.
@@ -498,13 +536,6 @@ public final class JPostman {
 		 * @return assertion sections
 		 */
 		String[] asserts() default {};
-
-		/**
-		 * Local log output override. Empty means inherit the context debug value.
-		 *
-		 * @return local log output mode values, or empty to use context default
-		 */
-		String[] logOutput() default {};
 
 		/**
 		 * @return {@code true} to run this response even when context skipAll is
@@ -598,11 +629,20 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Enables configured debug output printing and diagnostic logs for this runner.
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
-		 * @return {@code true} to allow runner response logging
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return local automatic failure output mode
 		 */
-		boolean log() default true;
+		String log() default "debug";
 
 		/**
 		 * Enables soft assertion mode.
@@ -624,13 +664,6 @@ public final class JPostman {
 		 * @return assertion sections
 		 */
 		String[] asserts() default {};
-
-		/**
-		 * Local log output override. Empty means inherit the context debug value.
-		 *
-		 * @return local log output mode values, or empty to use context default
-		 */
-		String[] logOutput() default {};
 
 		/**
 		 * @return {@code true} to run this runner even when context skipAll is enabled
@@ -918,6 +951,14 @@ public final class JPostman {
 		 * @return updated info
 		 */
 		JPostmanInfo add();
+
+		/**
+		 * Converts values in the last body/query/header/path/auth group to JSON literal
+		 * strings.
+		 *
+		 * @return updated info
+		 */
+		JPostmanInfo toJson();
 
 		/**
 		 * Adds body values.

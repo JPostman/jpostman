@@ -104,8 +104,15 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 	/** {@inheritDoc} */
 	@Override
 	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info) {
-		Object assertions = soft ? context.soft(log) : context.asserts(log);
-		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog(context));
+		verify(context, statusCode, soft, log, info, diagnosticLog(context));
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info,
+			String diagnosticLog) {
+		Object assertions = soft ? context.soft(false) : context.asserts(false);
+		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog);
 	}
 
 	/** {@inheritDoc} */

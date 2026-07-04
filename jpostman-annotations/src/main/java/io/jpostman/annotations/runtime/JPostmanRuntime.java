@@ -60,6 +60,22 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 */
 	public JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier) {
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, null);
+	}
+
+	/**
+	 * Creates a runtime view with runtime option access for log helper gating.
+	 *
+	 * @param context               loaded core JPostman context
+	 * @param namespace             fallback namespace
+	 * @param contextResolver       framework-context resolver by namespace
+	 * @param activeContextResolver latest active framework-context resolver
+	 * @param infoSupplier          current annotation execution info supplier
+	 * @param optionsSupplier       runtime options supplier
+	 */
+	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
+			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
+			Supplier<JPostmanRuntimeOptions> optionsSupplier) {
 		this.context = context;
 		this.namespace = namespace == null ? "" : namespace;
 		this.contextResolver = contextResolver;

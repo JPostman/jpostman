@@ -350,7 +350,8 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400LogsFixture {
-		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json", logs = true)
+		@JPostmanContext(verifyStatusCode = 200, debug = { "request",
+				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -387,7 +388,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// Call not allowed
 	private static final class ExecutionFailedSoftFixture {
-		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json", logs = true)
+		@JPostmanContext(logs = "error", collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -456,7 +457,8 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// The following asserts failed
 	private static final class ExecutionFailedSoftVerifyTrueFixture {
-		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, debug = { "request",
+				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanTestContext
@@ -468,7 +470,7 @@ public class JPostmanAnnotationFunctionalTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true, log = true)
+		@JPostmanRunner(soft = true)
 		public void productRunner() {
 			api.verify();
 		}
@@ -508,7 +510,7 @@ public class JPostmanAnnotationFunctionalTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true, log = true, include = "Login user and get tokens")
+		@JPostmanRunner(soft = true, include = "Login user and get tokens")
 		public void productRunner() {
 			api.verify();
 			report.summary();

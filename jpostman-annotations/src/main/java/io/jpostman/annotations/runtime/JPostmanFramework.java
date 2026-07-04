@@ -449,6 +449,10 @@ public interface JPostmanFramework<C> {
 		verify(context, statusCode, soft, log);
 	}
 
+	default void verify(C context, int statusCode, boolean soft, boolean log, JPostmanInfo info, String diagnosticLog) {
+		verify(context, statusCode, soft, log, info);
+	}
+
 	/**
 	 * Reads a cached value from the context.
 	 *
@@ -720,28 +724,36 @@ public interface JPostmanFramework<C> {
 	 * @param context framework context
 	 * @return diagnostic text, or an empty string when unavailable
 	 */
+	default String diagnosticLog(C context, boolean request, boolean response) {
+		if (context == null) {
+			return "";
+		}
+
+		if (request && response) {
+			return diagnosticLog(context);
+		}
+
+		StringBuilder result = new StringBuilder();
+		if (request) {
+			appendOwnerLog(context, "request", result);
+		}
+		if (response) {
+			appendOwnerLog(context, "response", result);
+		}
+		return result.toString();
+	}
+
 	default String diagnosticLog(C context) {
 		if (context == null) {
 			return "";
 		}
 
-		StringBuilder result = new StringBuilder();
-
-		for (String methodName : new String[] { "log" }) {
-			try {
-				Method method = context.getClass().getMethod(methodName);
-				if (method.getReturnType() != Void.TYPE) {
-					Object value = method.invoke(context);
-					if (value != null && !String.valueOf(value).isBlank()) {
-						result.append(String.valueOf(value));
-					}
-				}
-			} catch (NoSuchMethodException e) {
-				// Try request/response logs below.
-			} catch (ReflectiveOperationException | RuntimeException e) {
-				// Diagnostics must never hide the original execution failure.
-			}
+		String contextLog = contextLog(context);
+		if (!contextLog.isBlank()) {
+			return contextLog;
 		}
+
+		StringBuilder result = new StringBuilder();
 
 		for (String ownerName : new String[] { "request", "response" }) {
 			try {
@@ -775,6 +787,59 @@ public interface JPostmanFramework<C> {
 		}
 
 		return result.toString();
+	}
+
+	private static String contextLog(Object context) {
+		if (context == null) {
+			return "";
+		}
+		try {
+			Method method = context.getClass().getMethod("log");
+			if (method.getReturnType() == Void.TYPE) {
+				return "";
+			}
+			Object value = method.invoke(context);
+			return value == null ? "" : String.valueOf(value);
+		} catch (NoSuchMethodException e) {
+			return "";
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// Diagnostics must never hide the original execution failure.
+			return "";
+		}
+	}
+
+	private static void appendOwnerLog(Object context, String ownerName, StringBuilder result) {
+		if (context == null || ownerName == null || result == null) {
+			return;
+		}
+		try {
+			Method ownerMethod = context.getClass().getMethod(ownerName);
+			if (ownerMethod.getReturnType() == Void.TYPE) {
+				return;
+			}
+			Object owner = ownerMethod.invoke(context);
+			if (owner == null) {
+				return;
+			}
+			try {
+				Method log = owner.getClass().getMethod("log");
+				if (log.getReturnType() != Void.TYPE) {
+					Object value = log.invoke(owner);
+					if (value != null && !String.valueOf(value).isBlank()) {
+						if (result.length() > 0) {
+							result.append(JPostmanErrors.ENDL);
+						}
+						result.append(String.valueOf(value));
+					}
+				}
+			} catch (NoSuchMethodException e) {
+				// Object does not expose log().
+			}
+		} catch (NoSuchMethodException e) {
+			// Context does not expose this object.
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// Diagnostics must never hide the original execution failure.
+		}
 	}
 
 	/**

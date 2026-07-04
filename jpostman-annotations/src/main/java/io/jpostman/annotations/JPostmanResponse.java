@@ -129,12 +129,20 @@ public @interface JPostmanResponse {
 	String cache() default NO_CACHE;
 
 	/**
-	 * Enables configured debug output printing and diagnostic logs for this
-	 * response.
+	 * Local automatic JPostman failure output mode. Values are single-choice; use
+	 * one value only.
 	 *
-	 * @return {@code true} to allow response logging
+	 * <ul>
+	 * <li>{@code none} - print only the minimum failure message and the first
+	 * useful user-code stack frame.</li>
+	 * <li>{@code debug} - print the configured debug output and use minimum failure
+	 * output when debug is {@code none}.</li>
+	 * <li>{@code error} - print the failure message and include the trace.</li>
+	 * </ul>
+	 *
+	 * @return local automatic failure output mode
 	 */
-	boolean log() default true;
+	String log() default "debug";
 
 	/**
 	 * Whether to use soft assertion verification.
@@ -171,21 +179,6 @@ public @interface JPostmanResponse {
 	 *         resolution
 	 */
 	String[] asserts() default {};
-
-	/**
-	 * Local annotation log output mode for this response execution.
-	 *
-	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
-	 * values override the context log output mode for this response invocation.
-	 * Supported values are none, request, response, info, and all. request,
-	 * response, and info may be combined. none and all must be used alone. request,
-	 * response, and info may be combined. none and all must be used alone.
-	 * </p>
-	 *
-	 * @return local log output mode values, or empty to inherit from the context
-	 */
-	String[] logOutput() default {};
 
 	/**
 	 * Runs this response even when {@link JPostmanContext#skipAll()} is enabled.

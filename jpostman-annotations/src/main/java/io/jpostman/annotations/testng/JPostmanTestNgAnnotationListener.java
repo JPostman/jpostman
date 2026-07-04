@@ -136,13 +136,11 @@ public final class JPostmanTestNgAnnotationListener
 			if (isJPostmanSkip(e)) {
 				testResult.setThrowable(null);
 			} else {
-				e.setStackTrace(JPostmanStackTraceCleaner.cleanStack(testMethod.getDeclaringClass(), testMethod, e));
-				testResult.setThrowable(e);
+				testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, e));
 			}
 			testResult.setStatus(ITestResult.SKIP);
 		} catch (Throwable e) {
-			AssertionError failure = JPostmanStackTraceCleaner.cleanFailure(testMethod.getDeclaringClass(), testMethod,
-					e);
+			AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, e);
 			runTestBodyAfterAnnotationFailure(callBack, testResult, failure);
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
@@ -175,14 +173,15 @@ public final class JPostmanTestNgAnnotationListener
 			// method. TestNG may reuse the same configuration throwable for those skipped
 			// results, and cleaning it with the skipped test method would make the original
 			// @BeforeClass failure point to the wrong line.
-			if (invokedMethod.isTestMethod() && testResult.getStatus() == ITestResult.SKIP) {
+			if (invokedMethod.isTestMethod()) {
 				return;
 			}
 
-			if (invokedMethod.isTestMethod() || invokedMethod.isConfigurationMethod()) {
+			if (invokedMethod.isConfigurationMethod()) {
+				@SuppressWarnings("unused")
 				Class<?> testClass = invokedMethod.getTestMethod().getRealClass();
 				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
-				testResult.setThrowable(JPostmanStackTraceCleaner.cleanThrowable(testClass, javaMethod, throwable));
+				testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, javaMethod, throwable));
 			}
 		} finally {
 			if (invokedMethod.isTestMethod()) {

@@ -1027,14 +1027,20 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	@Test
 	public void debugDefaultsUseNoAutomaticOutputButResponseLoggingEnabled() throws Exception {
+		assertArrayEquals(new String[] { "debug" },
+				(String[]) JPostman.Context.class.getMethod("logs").getDefaultValue());
+		assertArrayEquals(new String[] { "debug" },
+				(String[]) JPostmanContext.class.getMethod("logs").getDefaultValue());
 		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostman.Context.class.getMethod("debug").getDefaultValue());
 		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostmanContext.class.getMethod("debug").getDefaultValue());
-		assertEquals(true, JPostman.Response.class.getMethod("log").getDefaultValue());
-		assertEquals(true, JPostmanResponse.class.getMethod("log").getDefaultValue());
-		assertEquals(true, JPostman.Runner.class.getMethod("log").getDefaultValue());
-		assertEquals(true, JPostmanRunner.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostman.Request.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostmanRequest.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostman.Response.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostmanResponse.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostman.Runner.class.getMethod("log").getDefaultValue());
+		assertEquals("debug", JPostmanRunner.class.getMethod("log").getDefaultValue());
 	}
 
 	/**
@@ -1052,6 +1058,25 @@ public class JPostmanAnnotationCoverageTest {
 
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("none", "info"));
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("all", "response"));
+	}
+
+	/**
+	 * Verifies logs uses one output mode only and supports failure verbosity modes.
+	 */
+	@Test
+	public void logsSupportSingleFailureOutputModesOnly() {
+		assertEquals(JPostmanRuntimeOptions.LogMode.NONE, JPostmanRuntimeOptions.LogMode.from("none"));
+		assertEquals(JPostmanRuntimeOptions.LogMode.ERROR, JPostmanRuntimeOptions.LogMode.from("error"));
+		assertEquals(JPostmanRuntimeOptions.LogMode.DEBUG, JPostmanRuntimeOptions.LogMode.from("debug"));
+
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("none"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
+
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug", "error"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug,error"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("request"));
 	}
 
 	/**
@@ -1334,9 +1359,55 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(rootCause instanceof IllegalStateException);
 		assertEquals("inner", rootCause.getMessage());
 
+		AssertionError testNgBoundary = new AssertionError("testng boundary");
+		testNgBoundary.setStackTrace(new StackTraceElement[] {
+				new StackTraceElement(EmptyFixture.class.getName(), "plain", "EmptyFixture.java", 123),
+				new StackTraceElement("io.jpostman.annotations.runtime.JPostmanAnnotationRunner", "run",
+						"JPostmanAnnotationRunner.java", 151),
+				new StackTraceElement("org.testng.internal.invokers.MethodInvocationHelper", "invokeHookable",
+						"MethodInvocationHelper.java", 274),
+				new StackTraceElement("org.testng.internal.invokers.TestInvoker", "invokeMethod", "TestInvoker.java",
+						689) });
+		StackTraceElement[] cleanedTestNgBoundary = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method,
+				testNgBoundary);
+		for (StackTraceElement element : cleanedTestNgBoundary) {
+			assertFalse(element.getClassName().startsWith("org.testng.internal.invokers"));
+		}
+
+		Properties noBoundaries = new Properties();
+		noBoundaries.setProperty("stacktrace.boundary", "");
+		StackTraceElement[] unbounded = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method, testNgBoundary,
+				noBoundaries);
+		assertTrue(hasStackFrame(unbounded, "org.testng.internal.invokers.TestInvoker"));
+
+		Properties limitedBoundary = new Properties();
+		limitedBoundary.setProperty("stacktrace.max", "3");
+		limitedBoundary.setProperty("stacktrace.boundary",
+				"org.testng.internal.invokers.MethodInvocationHelper,invoke0");
+		StackTraceElement[] limited = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method, testNgBoundary,
+				limitedBoundary);
+		assertTrue(limited.length <= 3);
+		assertFalse(hasStackFrame(limited, "org.testng.internal.invokers.TestInvoker"));
+
+		Properties appendedBoundary = new Properties();
+		appendedBoundary.setProperty("stacktrace.boundary.add",
+				"io.jpostman.annotations.runtime.JPostmanAnnotationRunner");
+		StackTraceElement[] appended = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method, testNgBoundary,
+				appendedBoundary);
+		assertFalse(hasStackFrame(appended, "org.testng.internal.invokers.MethodInvocationHelper"));
+
 		int plainSourceLine = JPostmanStackTraceCleaner.findSourceLine(EmptyFixture.class, "plain");
 		assertTrue(plainSourceLine == -1 || plainSourceLine > 0);
 		assertEquals(-1, JPostmanStackTraceCleaner.findSourceLine(EmptyFixture.class, "missingMethod"));
+	}
+
+	private static boolean hasStackFrame(StackTraceElement[] stackTrace, String className) {
+		for (StackTraceElement element : stackTrace) {
+			if (element.getClassName().equals(className) || element.getClassName().startsWith(className + ".")) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

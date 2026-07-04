@@ -63,15 +63,77 @@ final class JPostmanRuntimeOptions {
 		}
 	}
 
-	private final boolean logs;
+	enum LogMode {
+		NONE, DEBUG, ERROR;
+
+		static LogMode from(String... values) {
+			LogMode result = null;
+			if (values != null) {
+				for (String value : values) {
+					result = parseValue(result, value, values);
+				}
+			}
+			return result == null ? DEBUG : result;
+		}
+
+		static LogMode from(String value, LogMode fallback) {
+			if (value == null || value.isBlank()) {
+				return fallback == null ? DEBUG : fallback;
+			}
+			return from(value);
+		}
+
+		static void validateLocal(String value) {
+			from(value, DEBUG);
+		}
+
+		private static LogMode parseValue(LogMode current, String value, String... rawValues) {
+			if (value == null || value.isBlank()) {
+				return current;
+			}
+			for (String part : value.split(",")) {
+				String item = part.trim();
+				if (item.isEmpty()) {
+					continue;
+				}
+				if (current != null) {
+					throw new IllegalArgumentException(
+							"JPostman logs/log must use one value only: " + Arrays.toString(rawValues));
+				}
+				try {
+					current = LogMode.valueOf(item.toUpperCase(Locale.ROOT));
+				} catch (IllegalArgumentException e) {
+					throw new IllegalArgumentException(
+							"Unsupported JPostman logs/log: " + item + ". Supported values: none, debug, error.", e);
+				}
+			}
+			return current;
+		}
+	}
+
+	private static final class LogModeMarker extends Exception {
+		private static final long serialVersionUID = 1L;
+		private final LogMode mode;
+
+		private LogModeMarker(LogMode mode) {
+			this.mode = mode;
+		}
+
+		@Override
+		public synchronized Throwable fillInStackTrace() {
+			return this;
+		}
+	}
+
+	private final LogMode logs;
 	private final EnumSet<LogOutput> logOutput;
 	private final int defaultStatusCode;
 	private final Class<?> executorClass;
 	private final boolean session;
 
-	private JPostmanRuntimeOptions(boolean logs, EnumSet<LogOutput> logOutput, int defaultStatusCode,
+	private JPostmanRuntimeOptions(LogMode logs, EnumSet<LogOutput> logOutput, int defaultStatusCode,
 			Class<?> executorClass, boolean session) {
-		this.logs = logs;
+		this.logs = logs == null ? LogMode.DEBUG : logs;
 		this.logOutput = logOutput == null || logOutput.isEmpty() ? EnumSet.of(LogOutput.NONE)
 				: EnumSet.copyOf(logOutput);
 		this.defaultStatusCode = defaultStatusCode;
@@ -82,10 +144,10 @@ final class JPostmanRuntimeOptions {
 	static JPostmanRuntimeOptions from(Object testInstance) {
 		JPostmanContext annotation = findContextAnnotation(testInstance);
 		if (annotation == null) {
-			return new JPostmanRuntimeOptions(false, EnumSet.of(LogOutput.NONE), -1, null, false);
+			return new JPostmanRuntimeOptions(LogMode.DEBUG, EnumSet.of(LogOutput.NONE), -1, null, false);
 		}
 
-		boolean logs = annotation.logs();
+		String[] logs = annotation.logs();
 		String[] output = annotation.debug();
 		int defaultStatusCode = annotation.verifyStatusCode();
 		Class<?> executorClass = annotation.executor();
@@ -94,7 +156,7 @@ final class JPostmanRuntimeOptions {
 		try {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
 			String namespace = "";
-			logs = booleanValue(property(properties, "logs", namespace), logs);
+			logs = stringValues(property(properties, "logs", namespace), logs);
 			output = stringValues(property(properties, "debug", namespace),
 					stringValues(property(properties, "logOutput", namespace), output));
 			defaultStatusCode = intValue(property(properties, "defaultStatusCode", namespace), defaultStatusCode);
@@ -108,7 +170,8 @@ final class JPostmanRuntimeOptions {
 			throw new IllegalStateException("Unable to load JPostman runtime options from " + annotation.config(), e);
 		}
 
-		return new JPostmanRuntimeOptions(logs, LogOutput.from(output), defaultStatusCode, executorClass, session);
+		return new JPostmanRuntimeOptions(LogMode.from(logs), LogOutput.from(output), defaultStatusCode, executorClass,
+				session);
 	}
 
 	boolean hasDefaultExecutor() {
@@ -133,11 +196,130 @@ final class JPostmanRuntimeOptions {
 		return defaultStatusCode;
 	}
 
-	boolean log(boolean annotationLog) {
-		return annotationLog || logs;
+	boolean minimumErrorOutput() {
+		return logs == LogMode.NONE || logs == LogMode.DEBUG;
 	}
 
-	EnumSet<LogOutput> logOutput(JPostmanInfo info) {
+	boolean errorStackTrace() {
+		return logs == LogMode.ERROR;
+	}
+
+	boolean minimumErrorOutput(String localLog) {
+		LogMode mode = logMode(localLog);
+		return mode == LogMode.NONE || mode == LogMode.DEBUG;
+	}
+
+	void markFailure(Throwable error, String localLog) {
+		if (error == null) {
+			return;
+		}
+		if (findMarkedLogMode(error) != null) {
+			return;
+		}
+		error.addSuppressed(new LogModeMarker(logMode(localLog)));
+	}
+
+	boolean minimumErrorOutput(Throwable error) {
+		LogMode marked = findMarkedLogMode(error);
+		if (marked != null) {
+			return marked == LogMode.NONE || marked == LogMode.DEBUG;
+		}
+		return minimumErrorOutput();
+	}
+
+	boolean failureDiagnostics(Throwable error) {
+		if (hasDiagnosticSuppressed(error)) {
+			return true;
+		}
+		return failureDiagnostics();
+	}
+
+	private static LogMode findMarkedLogMode(Throwable error) {
+		Throwable current = error;
+		while (current != null) {
+			for (Throwable suppressed : current.getSuppressed()) {
+				if (suppressed instanceof LogModeMarker) {
+					return ((LogModeMarker) suppressed).mode;
+				}
+			}
+			current = current.getCause();
+		}
+		return null;
+	}
+
+	private static boolean hasDiagnosticSuppressed(Throwable error) {
+		Throwable current = error;
+		while (current != null) {
+			for (Throwable suppressed : current.getSuppressed()) {
+				if (suppressed instanceof LogModeMarker) {
+					continue;
+				}
+				String message = suppressed == null ? null : suppressed.getMessage();
+				if (message != null && !message.isBlank()) {
+					return true;
+				}
+			}
+			current = current.getCause();
+		}
+		return false;
+	}
+
+	boolean failureRequest() {
+		return failureRequest(null, null);
+	}
+
+	boolean failureRequest(String localLog, JPostmanInfo info) {
+		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
+		return outputs.contains(LogOutput.REQUEST) || outputs.contains(LogOutput.ALL);
+	}
+
+	boolean failureResponse() {
+		return failureResponse(null, null);
+	}
+
+	boolean failureResponse(String localLog, JPostmanInfo info) {
+		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
+		return outputs.contains(LogOutput.RESPONSE) || outputs.contains(LogOutput.ALL);
+	}
+
+	boolean failureInfo(String localLog, JPostmanInfo info) {
+		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
+		return outputs.contains(LogOutput.INFO) || outputs.contains(LogOutput.ALL);
+	}
+
+	boolean failureDiagnostics() {
+		return failureDiagnostics(null, null);
+	}
+
+	boolean failureDiagnostics(String localLog, JPostmanInfo info) {
+		return !failureDebugOutput(localLog, info).contains(LogOutput.NONE);
+	}
+
+	boolean runtimeTraceDebugInfoWarn() {
+		return true;
+	}
+
+	boolean runtimeError() {
+		return true;
+	}
+
+	private EnumSet<LogOutput> failureDebugOutput(String localLog, JPostmanInfo info) {
+		return logOutput(localLog, info);
+	}
+
+	private LogMode logMode(String localLog) {
+		return LogMode.from(localLog, logs);
+	}
+
+	EnumSet<LogOutput> logOutput(String localLog, JPostmanInfo info) {
+		LogMode mode = logMode(localLog);
+		if (mode != LogMode.DEBUG) {
+			return EnumSet.of(LogOutput.NONE);
+		}
+		return debugOutput(info);
+	}
+
+	EnumSet<LogOutput> debugOutput(JPostmanInfo info) {
 		String local = info == null ? "" : info.debug;
 		return local == null || local.isBlank() ? EnumSet.copyOf(logOutput) : LogOutput.from(local);
 	}
@@ -147,7 +329,7 @@ final class JPostmanRuntimeOptions {
 			return;
 		}
 
-		if (logOutput(info).contains(LogOutput.INFO)) {
+		if (debugOutput(info).contains(LogOutput.INFO)) {
 			printMethodHeader(testInstance, info);
 			info.print(false);
 		}

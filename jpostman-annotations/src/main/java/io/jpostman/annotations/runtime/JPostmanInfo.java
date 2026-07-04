@@ -5,6 +5,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,6 +136,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	/** True when the next body/query/header call should use add semantics. */
 	private boolean addNext;
+
+	/** Last request-value map updated by body/query/header/path/auth helpers. */
+	private Map<String, Object> lastValueTarget;
 
 	/**
 	 * Path variable values applied to the request when supported by the request
@@ -970,6 +974,32 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
+	 * Converts values in the last body/query/header/path/auth group to JSON literal
+	 * strings.
+	 *
+	 * <p>
+	 * This applies only to the most recent fluent request-value group, including
+	 * secure variants such as {@code sbody(...)}, {@code squery(...)},
+	 * {@code sheaders(...)}, {@code spath(...)}, and {@code sauth(...)}. For
+	 * collections, arrays, and maps, each nested value is converted while the
+	 * container structure is preserved.
+	 * </p>
+	 *
+	 * <pre>{@code
+	 * info.body("username", "emilys").toJson();
+	 * // body.username = "\"emilys\""
+	 * }</pre>
+	 *
+	 * @return this info object
+	 */
+	public JPostmanInfo toJson() {
+		if (lastValueTarget != null && !lastValueTarget.isEmpty()) {
+			lastValueTarget.replaceAll((key, value) -> jsonValue(value));
+		}
+		return this;
+	}
+
+	/**
 	 * Adds request body values using key/value pairs.
 	 *
 	 * <p>
@@ -981,49 +1011,49 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this info object
 	 */
 	public JPostmanInfo body(Object... values) {
-		put(target(body, bodyAdd), valuesMap(false, values));
+		put(track(target(body, bodyAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request body values using key/value pairs. */
 	public JPostmanInfo sbody(Object... values) {
-		put(target(body, bodyAdd), valuesMap(true, values));
+		put(track(target(body, bodyAdd)), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request body values from an existing map. */
 	public JPostmanInfo body(Map<String, ?> values) {
-		put(target(body, bodyAdd), valuesMap(false, values));
+		put(track(target(body, bodyAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request body values from an existing map. */
 	public JPostmanInfo sbody(Map<String, ?> values) {
-		put(target(body, bodyAdd), valuesMap(true, values));
+		put(track(target(body, bodyAdd)), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds query string values using key/value pairs. */
 	public JPostmanInfo query(Object... values) {
-		put(target(query, queryAdd), valuesMap(false, values));
+		put(track(target(query, queryAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret query string values using key/value pairs. */
 	public JPostmanInfo squery(Object... values) {
-		put(target(query, queryAdd), valuesMap(true, values));
+		put(track(target(query, queryAdd)), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds query string values from an existing map. */
 	public JPostmanInfo query(Map<String, ?> values) {
-		put(target(query, queryAdd), valuesMap(false, values));
+		put(track(target(query, queryAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret query string values from an existing map. */
 	public JPostmanInfo squery(Map<String, ?> values) {
-		put(target(query, queryAdd), valuesMap(true, values));
+		put(track(target(query, queryAdd)), valuesMap(true, values));
 		return this;
 	}
 
@@ -1045,53 +1075,53 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this {@link JPostmanInfo} instance
 	 */
 	public JPostmanInfo headers(Object... values) {
-		put(target(headers, headersAdd), valuesMap(false, values));
+		put(track(target(headers, headersAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request headers using key/value pairs. */
 	public JPostmanInfo sheaders(Object... values) {
-		put(target(headers, headersAdd), valuesMap(true, values));
+		put(track(target(headers, headersAdd)), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request header values from an existing map. */
 	public JPostmanInfo headers(Map<String, ?> values) {
-		put(target(headers, headersAdd), valuesMap(false, values));
+		put(track(target(headers, headersAdd)), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request header values from an existing map. */
 	public JPostmanInfo sheaders(Map<String, ?> values) {
-		put(target(headers, headersAdd), valuesMap(true, values));
+		put(track(target(headers, headersAdd)), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request path variable values using key/value pairs. */
 	public JPostmanInfo path(Object... values) {
 		consumeAddMode();
-		path.putAll(valuesMap(false, values));
+		put(track(path), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request path variable values using key/value pairs. */
 	public JPostmanInfo spath(Object... values) {
 		consumeAddMode();
-		path.putAll(valuesMap(true, values));
+		put(track(path), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request path variable values from an existing map. */
 	public JPostmanInfo path(Map<String, ?> values) {
 		consumeAddMode();
-		put(path, valuesMap(false, values));
+		put(track(path), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request path variable values from an existing map. */
 	public JPostmanInfo spath(Map<String, ?> values) {
 		consumeAddMode();
-		put(path, valuesMap(true, values));
+		put(track(path), valuesMap(true, values));
 		return this;
 	}
 
@@ -1131,21 +1161,21 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo auth(Object... values) {
 		consumeAddMode();
-		auth.putAll(valuesMap(false, values));
+		put(track(auth), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret authentication values using key/value pairs. */
 	public JPostmanInfo sauth(Object... values) {
 		consumeAddMode();
-		auth.putAll(valuesMap(true, values));
+		put(track(auth), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds auth-related request values from an existing map when supported. */
 	public JPostmanInfo auth(Map<String, ?> values) {
 		consumeAddMode();
-		put(auth, valuesMap(false, values));
+		put(track(auth), valuesMap(false, values));
 		return this;
 	}
 
@@ -1154,7 +1184,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo sauth(Map<String, ?> values) {
 		consumeAddMode();
-		put(auth, valuesMap(true, values));
+		put(track(auth), valuesMap(true, values));
 		return this;
 	}
 
@@ -1162,6 +1192,11 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public boolean hasRequestValues() {
 		return !body.isEmpty() || !query.isEmpty() || !headers.isEmpty() || !bodyAdd.isEmpty() || !queryAdd.isEmpty()
 				|| !headersAdd.isEmpty() || !path.isEmpty() || !auth.isEmpty();
+	}
+
+	private Map<String, Object> track(Map<String, Object> target) {
+		lastValueTarget = target;
+		return target;
 	}
 
 	private Map<String, Object> target(Map<String, Object> normal, Map<String, Object> add) {
@@ -1195,6 +1230,86 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			}
 		}
 		return result;
+	}
+
+	private static Object jsonValue(Object value) {
+		if (value instanceof SecretRuntimeValue) {
+			return serverValue(jsonValue(((SecretRuntimeValue) value).reveal()));
+		}
+		if (value instanceof Map<?, ?>) {
+			Map<String, Object> result = new LinkedHashMap<>();
+			((Map<?, ?>) value).forEach((key, item) -> {
+				if (key != null) {
+					result.put(String.valueOf(key), jsonValue(item));
+				}
+			});
+			return result;
+		}
+		if (value instanceof Collection<?>) {
+			List<Object> result = new ArrayList<>();
+			for (Object item : (Collection<?>) value) {
+				result.add(jsonValue(item));
+			}
+			return result;
+		}
+		if (value != null && value.getClass().isArray()) {
+			List<Object> result = new ArrayList<>();
+			int length = java.lang.reflect.Array.getLength(value);
+			for (int i = 0; i < length; i++) {
+				result.add(jsonValue(java.lang.reflect.Array.get(value, i)));
+			}
+			return result;
+		}
+		return jsonLiteral(value);
+	}
+
+	private static String jsonLiteral(Object value) {
+		if (value == null) {
+			return "null";
+		}
+		if (value instanceof Number || value instanceof Boolean) {
+			return String.valueOf(value);
+		}
+		return quoteJson(String.valueOf(value));
+	}
+
+	private static String quoteJson(String value) {
+		StringBuilder builder = new StringBuilder(value.length() + 2);
+		builder.append('"');
+		for (int i = 0; i < value.length(); i++) {
+			char ch = value.charAt(i);
+			switch (ch) {
+			case '\"':
+				builder.append("\\\"");
+				break;
+			case '\\':
+				builder.append("\\\\");
+				break;
+			case '\b':
+				builder.append("\\b");
+				break;
+			case '\f':
+				builder.append("\\f");
+				break;
+			case '\n':
+				builder.append("\\n");
+				break;
+			case '\r':
+				builder.append("\\r");
+				break;
+			case '\t':
+				builder.append("\\t");
+				break;
+			default:
+				if (ch < 0x20) {
+					builder.append(String.format("\\u%04x", (int) ch));
+				} else {
+					builder.append(ch);
+				}
+			}
+		}
+		builder.append('"');
+		return builder.toString();
 	}
 
 	private static Object serverValue(Object value) {

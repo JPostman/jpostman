@@ -180,18 +180,19 @@ public @interface JPostmanRequest {
 	String skipReason() default "";
 
 	/**
-	 * Local annotation log output mode for this request helper.
+	 * Local automatic JPostman failure output mode. Values are single-choice; use
+	 * one value only.
 	 *
-	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
-	 * values override the context log output mode for this request invocation.
-	 * Supported values are none, request, response, info, and all. request,
-	 * response, and info may be combined. none and all must be used alone. request,
-	 * response, and info may be combined. none and all must be used alone.
-	 * </p>
+	 * <ul>
+	 * <li>{@code none} - print only the minimum failure message and the first
+	 * useful user-code stack frame.</li>
+	 * <li>{@code debug} - print the configured debug output and use minimum failure
+	 * output when debug is {@code none}.</li>
+	 * <li>{@code error} - print the failure message and include the trace.</li>
+	 * </ul>
 	 *
-	 * @return local log output mode values, or empty to inherit from the context
+	 * @return local automatic failure output mode
 	 */
-	String[] logOutput() default {};
+	String log() default "debug";
 
 }
