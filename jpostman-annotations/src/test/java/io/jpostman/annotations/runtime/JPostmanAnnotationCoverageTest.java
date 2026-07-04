@@ -1023,14 +1023,14 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies the logOutput API defaults.
+	 * Verifies the context debug API defaults.
 	 */
 	@Test
-	public void logOutputDefaultsUseNoAutomaticOutputButResponseLoggingEnabled() throws Exception {
+	public void debugDefaultsUseNoAutomaticOutputButResponseLoggingEnabled() throws Exception {
 		assertArrayEquals(new String[] { "none" },
-				(String[]) JPostman.Context.class.getMethod("logOutput").getDefaultValue());
+				(String[]) JPostman.Context.class.getMethod("debug").getDefaultValue());
 		assertArrayEquals(new String[] { "none" },
-				(String[]) JPostmanContext.class.getMethod("logOutput").getDefaultValue());
+				(String[]) JPostmanContext.class.getMethod("debug").getDefaultValue());
 		assertEquals(true, JPostman.Response.class.getMethod("log").getDefaultValue());
 		assertEquals(true, JPostmanResponse.class.getMethod("log").getDefaultValue());
 		assertEquals(true, JPostman.Runner.class.getMethod("log").getDefaultValue());
@@ -1038,11 +1038,11 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies logOutput supports combined request/response/info modes and keeps
+	 * Verifies debug supports combined request/response/info modes and keeps
 	 * none/all exclusive.
 	 */
 	@Test
-	public void logOutputSupportsCombinedModesAndRejectsExclusiveModes() {
+	public void debugSupportsCombinedModesAndRejectsExclusiveModes() {
 		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> combined = JPostmanRuntimeOptions.LogOutput.from("info",
 				"response");
 
@@ -1137,19 +1137,28 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	@Test
 	public void tagRulesCanMatchRegexAndReadKeyValueTags() {
-		JPostmanInfo info = new JPostmanInfo(new String[] { "mouse", "product=myMouse" }, "", "authRequest", "", "",
-				"Get current auth user");
+		JPostmanInfo info = new JPostmanInfo(new String[] { "mouse", "product=myMouse", "+12" }, "", "authRequest", "",
+				"", "Get current auth user");
 		JPostman.Ref<String> selected = info.ref("");
+		JPostman.Ref<String> plainSelected = info.ref("");
+		JPostman.Ref<Boolean> caseInsensitiveMatched = info.ref(false);
+		JPostman.Ref<Boolean> plusNumberMatched = info.ref(false);
 		JPostman.Ref<Boolean> productKeyMatched = info.ref(false);
 		JPostman.Ref<Boolean> invalidRegexMatched = info.ref(false);
 
-		info.tags().contains("product=.*").then(i -> selected.set(i.tags().get("product"))).contains("product")
-				.then(i -> productKeyMatched.set(true)).contains("product=[").then(i -> invalidRegexMatched.set(true));
+		info.tags().has(".*mouse.*", "product=.*").then((i, tags) -> selected.set(tags.get("product")))
+				.any("(?i).*MOUSE.*").then(i -> caseInsensitiveMatched.set(true)).any("\\+\\d{1,2}")
+				.then(i -> plusNumberMatched.set(true)).has("mouse")
+				.then((i, tags) -> plainSelected.set(tags.get("mouse"))).has("product=.*")
+				.then(i -> productKeyMatched.set(true)).any("product=[").then(i -> invalidRegexMatched.set(true));
 
 		assertEquals("mouse", info.tags().get("mouse"));
 		assertEquals("myMouse", info.tags().get("product"));
 		assertNull(info.tags().get("keyboard"));
 		assertEquals("myMouse", selected.get());
+		assertEquals("mouse", plainSelected.get());
+		assertTrue(caseInsensitiveMatched.get());
+		assertTrue(plusNumberMatched.get());
 		assertTrue(productKeyMatched.get());
 		assertFalse(invalidRegexMatched.get());
 	}

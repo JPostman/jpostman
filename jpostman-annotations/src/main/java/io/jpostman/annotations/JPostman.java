@@ -170,16 +170,9 @@ public final class JPostman {
 		 * response, info, and all. request, response, and info may be combined. none
 		 * and all must be used alone.
 		 *
-		 * @return log output mode values
+		 * @return debug output mode values
 		 */
-		String[] logOutput() default { "none" };
-
-		/**
-		 * Annotation log message format.
-		 *
-		 * @return log format
-		 */
-		String debugFormat() default "=== {1}: {0} ===";
+		String[] debug() default { "none" };
 	}
 
 	/**
@@ -279,7 +272,7 @@ public final class JPostman {
 		boolean session() default false;
 
 		/**
-		 * Local log output override. Empty means inherit the context logOutput value.
+		 * Local log output override. Empty means inherit the context debug value.
 		 *
 		 * @return local log output mode values, or empty to use context default
 		 */
@@ -379,7 +372,7 @@ public final class JPostman {
 		String data() default "";
 
 		/**
-		 * Local log output override. Empty means inherit the context logOutput value.
+		 * Local log output override. Empty means inherit the context debug value.
 		 *
 		 * @return local log output mode values, or empty to use context default
 		 */
@@ -478,7 +471,8 @@ public final class JPostman {
 		String cache() default JPostmanResponse.NO_CACHE;
 
 		/**
-		 * Enables configured logOutput printing and diagnostic logs for this response.
+		 * Enables configured debug output printing and diagnostic logs for this
+		 * response.
 		 *
 		 * @return {@code true} to allow response logging
 		 */
@@ -506,7 +500,7 @@ public final class JPostman {
 		String[] asserts() default {};
 
 		/**
-		 * Local log output override. Empty means inherit the context logOutput value.
+		 * Local log output override. Empty means inherit the context debug value.
 		 *
 		 * @return local log output mode values, or empty to use context default
 		 */
@@ -604,7 +598,7 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Enables configured logOutput printing and diagnostic logs for this runner.
+		 * Enables configured debug output printing and diagnostic logs for this runner.
 		 *
 		 * @return {@code true} to allow runner response logging
 		 */
@@ -632,7 +626,7 @@ public final class JPostman {
 		String[] asserts() default {};
 
 		/**
-		 * Local log output override. Empty means inherit the context logOutput value.
+		 * Local log output override. Empty means inherit the context debug value.
 		 *
 		 * @return local log output mode values, or empty to use context default
 		 */

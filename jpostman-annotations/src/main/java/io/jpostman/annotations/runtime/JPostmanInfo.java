@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -304,7 +305,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 *
 	 * <pre>{@code
 	 * info.tags().has("mouse").then(i -> i.body("title", "Wireless Mouse")).any("mouse", "shoes")
-	 * 		.then(i -> i.body("discount", 15));
+	 * 		.then((i, tags) -> i.body("title", tags.get("mouse")));
 	 * }</pre>
 	 *
 	 * @return fluent tag rule builder for this info object
@@ -326,9 +327,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 
 		/**
-		 * Creates a condition that matches only when all supplied tags are present.
+		 * Creates a condition that matches only when all supplied values match the
+		 * current tag chain. Each value can be an exact tag or a regular expression.
 		 *
-		 * @param values required tags
+		 * @param values required exact tags or regular expressions
 		 * @return pending tag condition
 		 */
 		public TagCondition has(String... values) {
@@ -336,24 +338,14 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 
 		/**
-		 * Creates a condition that matches when any supplied tag is present.
+		 * Creates a condition that matches when any supplied value matches the current
+		 * tag chain. Each value can be an exact tag or a regular expression.
 		 *
-		 * @param values candidate tags
+		 * @param values candidate exact tags or regular expressions
 		 * @return pending tag condition
 		 */
 		public TagCondition any(String... values) {
 			return new TagCondition(this, hasAny(values));
-		}
-
-		/**
-		 * Creates a condition that matches when any current tag equals, contains, or
-		 * matches the supplied values as regular expressions.
-		 *
-		 * @param values exact tags, text fragments, or regular expressions
-		 * @return pending tag condition
-		 */
-		public TagCondition contains(String... values) {
-			return new TagCondition(this, containsAny(values));
 		}
 
 		/**
@@ -368,9 +360,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 
 		/**
-		 * Runs the action when no previous {@link #has(String...)},
-		 * {@link #any(String...)}, or {@link #contains(String...)} condition matched in
-		 * this rule chain.
+		 * Runs the action when no previous {@link #has(String...)} or
+		 * {@link #any(String...)} condition matched in this rule chain.
 		 *
 		 * @param action default action to run with the current {@link JPostmanInfo}
 		 * @return this tag rule builder
@@ -392,7 +383,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 				return false;
 			}
 			for (String value : expected) {
-				if (!info.hasTag(value)) {
+				if (isBlank(findRegexTag(info.tags, value))) {
 					return false;
 				}
 			}
@@ -400,12 +391,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 
 		private boolean hasAny(String... values) {
-			return info.hasTag(values);
+			return !isBlank(findRegexTag(info.tags, values));
 		}
 
-		private boolean containsAny(String... values) {
-			return !isBlank(findMatchingTag(info.tags, values));
-		}
 	}
 
 	/**
@@ -432,6 +420,23 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 				rules.matched();
 				if (action != null) {
 					action.accept(rules.info);
+				}
+			}
+			return rules;
+		}
+
+		/**
+		 * Runs the action when the condition matched and passes both the current
+		 * {@link JPostmanInfo} and its fluent tag helper.
+		 *
+		 * @param action action to run with the current info and tag rules
+		 * @return parent tag rule builder for additional chained conditions
+		 */
+		public TagRules then(BiConsumer<JPostmanInfo, TagRules> action) {
+			if (matched) {
+				rules.matched();
+				if (action != null) {
+					action.accept(rules.info, rules);
 				}
 			}
 			return rules;
@@ -495,7 +500,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 *
 	 * <p>
 	 * Blank values are ignored and keep the current inherited log output value.
-	 * Non-blank values override the class-level {@link JPostmanContext#logOutput()}
+	 * Non-blank values override the class-level {@link JPostmanContext#debug()}
 	 * setting for this invocation and its children.
 	 * </p>
 	 *
@@ -840,6 +845,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		return "";
 	}
 
+	private static String findRegexTag(String[] source, String... requested) {
+		return findMatchingTag(source, requested);
+	}
+
 	private static String findMatchingTag(String[] source, String... requested) {
 		if (source == null || requested == null) {
 			return "";
@@ -866,7 +875,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			return true;
 		}
 		try {
-			return Pattern.compile(expected).matcher(actual).find();
+			return Pattern.compile(expected).matcher(actual).matches();
 		} catch (PatternSyntaxException ignored) {
 			return false;
 		}

@@ -45,7 +45,7 @@ final class JPostmanRuntimeOptions {
 				try {
 					result.add(LogOutput.valueOf(item.toUpperCase(Locale.ROOT)));
 				} catch (IllegalArgumentException e) {
-					throw new IllegalArgumentException("Unsupported JPostman logOutput: " + item
+					throw new IllegalArgumentException("Unsupported JPostman debug: " + item
 							+ ". Supported values: none, request, response, info, all.", e);
 				}
 			}
@@ -54,11 +54,11 @@ final class JPostmanRuntimeOptions {
 		private static void validate(EnumSet<LogOutput> result, String... rawValues) {
 			if (result.size() > 1 && result.contains(NONE)) {
 				throw new IllegalArgumentException(
-						"JPostman logOutput=none must be used alone: " + Arrays.toString(rawValues));
+						"JPostman debug=none must be used alone: " + Arrays.toString(rawValues));
 			}
 			if (result.size() > 1 && result.contains(ALL)) {
 				throw new IllegalArgumentException(
-						"JPostman logOutput=all must be used alone: " + Arrays.toString(rawValues));
+						"JPostman debug=all must be used alone: " + Arrays.toString(rawValues));
 			}
 		}
 	}
@@ -86,7 +86,7 @@ final class JPostmanRuntimeOptions {
 		}
 
 		boolean logs = annotation.logs();
-		String[] output = annotation.logOutput();
+		String[] output = annotation.debug();
 		int defaultStatusCode = annotation.verifyStatusCode();
 		Class<?> executorClass = annotation.executor();
 		boolean session = annotation.session();
@@ -95,7 +95,8 @@ final class JPostmanRuntimeOptions {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
 			String namespace = "";
 			logs = booleanValue(property(properties, "logs", namespace), logs);
-			output = stringValues(property(properties, "logOutput", namespace), output);
+			output = stringValues(property(properties, "debug", namespace),
+					stringValues(property(properties, "logOutput", namespace), output));
 			defaultStatusCode = intValue(property(properties, "defaultStatusCode", namespace), defaultStatusCode);
 			executorClass = classValue(property(properties, "executor", namespace), executorClass,
 					testInstance.getClass().getClassLoader(), annotation);

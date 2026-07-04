@@ -69,7 +69,7 @@ public @interface JPostmanExecutor {
 	 * Local annotation log output mode for this executor.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#logOutput()} value. Non-empty
+	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
 	 * values override the context log output mode for this executor invocation.
 	 * Supported values are none, request, response, info, and all. request,
 	 * response, and info may be combined. none and all must be used alone. request,

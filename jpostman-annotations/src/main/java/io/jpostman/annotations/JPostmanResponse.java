@@ -129,7 +129,8 @@ public @interface JPostmanResponse {
 	String cache() default NO_CACHE;
 
 	/**
-	 * Enables configured logOutput printing and diagnostic logs for this response.
+	 * Enables configured debug output printing and diagnostic logs for this
+	 * response.
 	 *
 	 * @return {@code true} to allow response logging
 	 */
@@ -175,7 +176,7 @@ public @interface JPostmanResponse {
 	 * Local annotation log output mode for this response execution.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#logOutput()} value. Non-empty
+	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
 	 * values override the context log output mode for this response invocation.
 	 * Supported values are none, request, response, info, and all. request,
 	 * response, and info may be combined. none and all must be used alone. request,

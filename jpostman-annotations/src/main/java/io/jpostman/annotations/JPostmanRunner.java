@@ -100,7 +100,7 @@ public @interface JPostmanRunner {
 	String executor() default "";
 
 	/**
-	 * Enables configured logOutput printing and diagnostic logs for this runner.
+	 * Enables configured debug output printing and diagnostic logs for this runner.
 	 *
 	 * @return {@code true} to allow runner response logging
 	 */
@@ -146,7 +146,7 @@ public @interface JPostmanRunner {
 	 * Local annotation log output mode for this runner execution.
 	 *
 	 * <p>
-	 * Empty means inherit the {@link JPostmanContext#logOutput()} value. Non-empty
+	 * Empty means inherit the {@link JPostmanContext#debug()} value. Non-empty
 	 * values override the context log output mode for this runner invocation.
 	 * Supported values are none, request, response, info, and all. request,
 	 * response, and info may be combined. none and all must be used alone. request,

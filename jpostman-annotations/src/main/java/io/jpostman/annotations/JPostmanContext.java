@@ -181,23 +181,11 @@ public @interface JPostmanContext {
 	boolean logs() default false;
 
 	/**
-	 * Automatic annotation output mode. Supported values are none, request,
-	 * response, info, and all. Values are case-insensitive. request, response, and
-	 * info may be combined. none and all must be used alone.
+	 * Controls automatic annotation output. Supported values are none, request,
+	 * response, info, and all. request, response, and info may be combined. none
+	 * and all must be used alone.
 	 *
-	 * @return log output mode values
+	 * @return debug output mode values
 	 */
-	String[] logOutput() default { "none" };
-
-	/**
-	 * Reserved annotation output format.
-	 *
-	 * <p>
-	 * Uses {@link java.text.MessageFormat} syntax. Argument {@code {0}} is the
-	 * current method name. Argument {@code {1}} is the JPostman annotation name.
-	 * </p>
-	 *
-	 * @return debug log format
-	 */
-	String debugFormat() default "=== {1}: {0} ===";
+	String[] debug() default { "none" };
 }
