@@ -63,7 +63,12 @@ public final class JPostmanJUnitExtension
 		try {
 			setup(testInstance, extensionContext);
 			JPostmanAnnotationEngine.runJUnit(testInstance, testMethod);
-			invocation.proceed();
+			JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+			try {
+				invocation.proceed();
+			} finally {
+				JPostmanAnnotationEngine.endAssertionCleanup();
+			}
 		} catch (Throwable error) {
 			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, testMethod, error);
 			if (!(cleaned instanceof TestAbortedException)) {

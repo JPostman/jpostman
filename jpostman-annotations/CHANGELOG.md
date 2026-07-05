@@ -1,22 +1,31 @@
 # Changelog
 
+## 2.1.7
+
+### Added
+
+- Added compact `JPostman.Assert` assertion facade for framework-neutral assertions backed by the latest active JPostman test context.
+- Added `@JPostman.Asserts` and `@JPostman.AssertContext` field injection for compact assertion facade access inside test classes.
+- Added legacy `@JPostmanAssertContext` field injection for the same assertion facade support.
+- Added `JPostman.Assert.soft(boolean)` to switch the injected assertion facade into soft assertion mode.
+- Added assertion cleanup hooks for test-body assertion facade calls in TestNG and JUnit.
+- Added `@JPostman.Call` and legacy `@JPostmanCall` for one-method request execution when a test should call the request manually from inside the test body.
+- Added `JPostman.Runtime.request()` and `JPostman.Runtime.request((ctx, info) -> ...)` so a `@JPostman.Call` test can execute the annotated request and continue with framework-neutral assertions..
+
 ## 2.1.6
 
 ### Added
 
-- Added shared `JPostman.Log` debug modes: `NONE`, `REQUEST`, `RESPONSE`, `INFO`, `ERROR`, and `ALL`.
-- Added enum-based `debug` configuration for compact and legacy context annotations, plus executor, request, response, and runner annotations.
-- Added context-level `logs` failure-output modes with string values `none`, `debug`, and `error`.
-- Added configurable stack-trace cleanup properties: `stacktrace.max`, `stacktrace.filter.skip`, `stacktrace.boundary`, and `stacktrace.boundary.add`.
+- Added `JPostmanInfo.toJson()` and compact `JPostman.Info.toJson()` to convert values in the last body, query, header, path, or auth group to JSON literal strings.
 - Added fluent tag value lookup with `info.tags().get(...)`, returning the plain tag value for matching plain tags and the value part for `key=value` tags.
 - Added two-parameter tag rule callbacks with `then((info, tags) -> ...)` so callbacks can use the tag helper directly.
-- Added regular expression support to `info.tags().has(...)` and `info.tags().any(...)`, including case-insensitive patterns such as `(?i).*mouse.*` and escaped patterns such as `\\+\\d{1,2}`.
-- Added `JPostmanInfo.toJson()` and compact `JPostman.Info.toJson()` to convert values in the last body, query, header, path, or auth group to JSON literal strings.
+- Added regular expression support to `info.tags().has(...)` and `info.tags().any(...)`, including case-insensitive patterns such as `(?i).*mouse.*` and escaped patterns such as `\+\d{1,2}`.
 
 ### Changed
 
 - Renamed context automatic annotation output from `logOutput` to `debug` for compact `@JPostman.Context` and legacy `@JPostmanContext`.
-- Changed annotation debug configuration from string arrays to the shared `JPostman.Log` enum.
+- Changed context `logs` from boolean to `String[]`, defaulting to `{ "debug" }`.
+- Changed local annotation `log` from boolean to string mode, defaulting to `"debug"`.
 
 ### Removed
 

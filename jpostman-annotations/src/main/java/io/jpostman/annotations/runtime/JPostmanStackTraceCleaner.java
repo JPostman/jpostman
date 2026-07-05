@@ -17,15 +17,21 @@ import org.opentest4j.TestAbortedException;
 public final class JPostmanStackTraceCleaner {
 	private static final Set<String> DEFAULT_STACK_TRACE_FILTER = Set.of();
 	private static final String PROPERTY_STACK_TRACE_MAX = "stacktrace.max";
+	private static final String PROPERTY_STACK_TRACE_MIN = "stacktrace.min";
 	private static final String PROPERTY_STACK_TRACE_SKIP_FILTER = "stacktrace.filter.skip";
 	private static final String PROPERTY_STACK_TRACE_BOUNDARY_FILTER = "stacktrace.boundary";
 	private static final String PROPERTY_STACK_TRACE_BOUNDARY_FILTER_ADD = "stacktrace.boundary.add";
 	private static final String REFLECTION_BOUNDARY_CLASS = "jdk.internal.reflect.NativeMethodAccessorImpl";
 	private static final String REFLECTION_BOUNDARY_METHOD = "invoke0";
 	private static final String TESTNG_BOUNDARY_CLASS = "org.testng.internal.invokers.MethodInvocationHelper";
+	private static final String JUNIT_BOUNDARY_CLASS = "org.junit.jupiter.engine.execution.MethodInvocation";
+	private static final String JUNIT_BOUNDARY_METHOD = "proceed";
+	private static final String JUNIT_INTERCEPTOR_BOUNDARY_CLASS = "org.junit.jupiter.engine.execution.InvocationInterceptorChain";
 	private static final List<StackTraceBoundary> DEFAULT_STACK_TRACE_BOUNDARIES = Collections.unmodifiableList(
 			List.of(StackTraceBoundary.of(REFLECTION_BOUNDARY_CLASS + "#" + REFLECTION_BOUNDARY_METHOD),
-					StackTraceBoundary.of(TESTNG_BOUNDARY_CLASS)));
+					StackTraceBoundary.of(TESTNG_BOUNDARY_CLASS),
+					StackTraceBoundary.of(JUNIT_BOUNDARY_CLASS + "#" + JUNIT_BOUNDARY_METHOD),
+					StackTraceBoundary.of(JUNIT_INTERCEPTOR_BOUNDARY_CLASS)));
 
 	private JPostmanStackTraceCleaner() {
 	}
@@ -54,6 +60,29 @@ public final class JPostmanStackTraceCleaner {
 	 */
 	public static AssertionError cleanFailure(Class<?> testClass, Method testMethod, Throwable error,
 			boolean minimumStackTrace, boolean includeSuppressed) {
+		return cleanFailure(testClass, testMethod, error, minimumStackTrace, includeSuppressed, false);
+	}
+
+	/**
+	 * Creates a clean assertion failure for assertions executed from inside a
+	 * runtime {@code @JPostman.Call} test body. The first stack frame should point
+	 * to the actual assertion line, not the annotation line or JPostman proxy
+	 * internals.
+	 *
+	 * @param testClass         test class
+	 * @param testMethod        test method
+	 * @param error             original failure
+	 * @param minimumStackTrace true to keep only the first useful user-code frame
+	 * @param includeSuppressed true to append suppressed diagnostic messages
+	 * @return assertion error with cleaned output
+	 */
+	public static AssertionError cleanRuntimeFailure(Class<?> testClass, Method testMethod, Throwable error,
+			boolean minimumStackTrace, boolean includeSuppressed) {
+		return cleanFailure(testClass, testMethod, error, minimumStackTrace, includeSuppressed, true);
+	}
+
+	private static AssertionError cleanFailure(Class<?> testClass, Method testMethod, Throwable error,
+			boolean minimumStackTrace, boolean includeSuppressed, boolean preferActualUserFrame) {
 		Throwable root = rootCause(error);
 		StringBuilder message = new StringBuilder();
 		String rootMessage = root.getMessage();
@@ -76,7 +105,7 @@ public final class JPostmanStackTraceCleaner {
 
 		AssertionError failure = new AssertionError(message.toString());
 		failure.setStackTrace(minimumStackTrace ? minimumStack(testClass, testMethod, root)
-				: cleanStack(testClass, testMethod, root));
+				: cleanStack(testClass, testMethod, root, stackTraceProperties(testClass), preferActualUserFrame));
 		return failure;
 	}
 
@@ -196,6 +225,11 @@ public final class JPostmanStackTraceCleaner {
 
 	static StackTraceElement[] cleanStack(Class<?> testClass, Method testMethod, Throwable root,
 			Properties properties) {
+		return cleanStack(testClass, testMethod, root, properties, false);
+	}
+
+	static StackTraceElement[] cleanStack(Class<?> testClass, Method testMethod, Throwable root, Properties properties,
+			boolean preferActualUserFrame) {
 		List<StackTraceElement> result = new ArrayList<>();
 		StackTraceElement testFrame = testFrame(testClass, testMethod);
 		String testClassName = testFrame.getClassName();
@@ -203,42 +237,102 @@ public final class JPostmanStackTraceCleaner {
 		int maxStackTrace = maxStackTrace(properties);
 		Set<String> filter = stackTraceFilter(properties);
 		List<StackTraceBoundary> boundaries = stackTraceBoundaries(properties);
-		StackTraceElement firstUserFrame = firstUserFrame(root, testClassName);
 
-		// For a failure thrown directly inside the currently executing test method, add
-		// a clickable annotation/method hint first, then keep the real assertion line.
-		// For a dependency failure, do not replace the dependency line with the caller
-		// test method. The first frame must be the actual user-code failure line.
-		if (firstUserFrame == null || firstUserFrame.getMethodName().equals(testMethod.getName())) {
-			addFrame(result, testFrame, maxStackTrace);
+		Throwable stackSource = preferActualUserFrame ? runtimeStackSource(root, testClassName) : root;
+		StackTraceElement firstUserFrame = firstUserFrame(stackSource, testClassName);
+		boolean runtimeErrorTrace = preferActualUserFrame && firstUserFrame != null;
+		int minimumRuntimeFrames = runtimeErrorTrace ? minStackTrace(properties) : 0;
+		if (minimumRuntimeFrames > 0) {
+			maxStackTrace = Math.max(maxStackTrace, minimumRuntimeFrames);
 		}
 
-		for (StackTraceElement element : root.getStackTrace()) {
-			if (isStackTraceBoundary(element, boundaries)) {
+		StackTraceElement[] stackTrace = stackSource.getStackTrace();
+		int start = 0;
+		int runtimeFramesAfterUser = 0;
+
+		if (runtimeErrorTrace) {
+			addFrame(result, firstUserFrame, maxStackTrace);
+			start = indexAfter(stackTrace, firstUserFrame);
+		} else {
+			// For annotation-driven failures, add a clickable annotation/method hint first.
+			// For dependency failures, do not replace the dependency line with the caller
+			// test method. The first frame must be the actual user-code failure line.
+			if (firstUserFrame == null || firstUserFrame.getMethodName().equals(testMethod.getName())) {
+				addFrame(result, testFrame, maxStackTrace);
+			}
+		}
+
+		for (int i = start; i < stackTrace.length; i++) {
+			StackTraceElement element = stackTrace[i];
+			boolean boundary = isStackTraceBoundary(element, boundaries);
+			if (boundary && !keepRuntimeBoundaryFrame(runtimeErrorTrace, runtimeFramesAfterUser, properties)) {
 				break;
 			}
 
 			String frameClass = element.getClassName();
 
 			if (frameClass.equals(testClassName)) {
-				addFrame(result, element, maxStackTrace);
+				boolean added = addFrame(result, element, maxStackTrace);
+				if (runtimeErrorTrace && added) {
+					runtimeFramesAfterUser++;
+				}
 				if (result.size() >= maxStackTrace) {
 					break;
 				}
 				continue;
 			}
 
-			if (isFiltered(frameClass, filter)) {
+			if (!boundary && isFiltered(frameClass, filter)) {
 				continue;
 			}
 
-			addFrame(result, element, maxStackTrace);
+			boolean added = addFrame(result, element, maxStackTrace);
+			if (runtimeErrorTrace && added) {
+				runtimeFramesAfterUser++;
+			}
 			if (result.size() >= maxStackTrace) {
 				break;
 			}
 		}
 
 		return result.toArray(new StackTraceElement[0]);
+	}
+
+	private static Throwable runtimeStackSource(Throwable root, String testClassName) {
+		Throwable best = root;
+		int bestScore = runtimeStackScore(root, testClassName);
+
+		Throwable current = root == null ? null : root.getCause();
+		for (int depth = 0; current != null && current != current.getCause() && depth < 20; depth++) {
+			int score = runtimeStackScore(current, testClassName);
+			if (score > bestScore) {
+				best = current;
+				bestScore = score;
+			}
+			current = current.getCause();
+		}
+
+		return best == null ? root : best;
+	}
+
+	private static int runtimeStackScore(Throwable throwable, String testClassName) {
+		if (throwable == null || testClassName == null || testClassName.isBlank()) {
+			return 0;
+		}
+
+		StackTraceElement[] stackTrace = throwable.getStackTrace();
+		if (stackTrace == null || stackTrace.length == 0) {
+			return 0;
+		}
+
+		for (int i = 0; i < stackTrace.length; i++) {
+			StackTraceElement element = stackTrace[i];
+			if (element != null && testClassName.equals(element.getClassName())) {
+				return stackTrace.length - i;
+			}
+		}
+
+		return 0;
 	}
 
 	private static StackTraceElement firstUserFrame(Throwable root, String testClassName) {
@@ -250,11 +344,29 @@ public final class JPostmanStackTraceCleaner {
 		return null;
 	}
 
-	private static void addFrame(List<StackTraceElement> result, StackTraceElement frame, int maxStackTrace) {
+	private static int indexAfter(StackTraceElement[] stackTrace, StackTraceElement frame) {
+		if (stackTrace == null || frame == null) {
+			return 0;
+		}
+		for (int i = 0; i < stackTrace.length; i++) {
+			if (sameFrame(stackTrace[i], frame)) {
+				return i + 1;
+			}
+		}
+		return 0;
+	}
+
+	private static boolean keepRuntimeBoundaryFrame(boolean runtimeErrorTrace, int runtimeFramesAfterUser,
+			Properties properties) {
+		return runtimeErrorTrace && runtimeFramesAfterUser < minStackTrace(properties);
+	}
+
+	private static boolean addFrame(List<StackTraceElement> result, StackTraceElement frame, int maxStackTrace) {
 		if (frame == null || result.size() >= maxStackTrace || containsFrame(result, frame)) {
-			return;
+			return false;
 		}
 		result.add(frame);
+		return true;
 	}
 
 	private static boolean containsFrame(List<StackTraceElement> result, StackTraceElement frame) {
@@ -370,6 +482,20 @@ public final class JPostmanStackTraceCleaner {
 		}
 
 		return Integer.MAX_VALUE;
+	}
+
+	private static int minStackTrace(Properties properties) {
+		try {
+			String value = property(properties, PROPERTY_STACK_TRACE_MIN).trim();
+			if (!value.isBlank()) {
+				return Math.max(1, Integer.parseInt(value));
+			}
+		} catch (Exception e) {
+			// Keep the default minimum runtime trace when the property is missing or
+			// invalid.
+		}
+
+		return 1;
 	}
 
 	private static boolean isStackTraceBoundary(StackTraceElement element, List<StackTraceBoundary> boundaries) {

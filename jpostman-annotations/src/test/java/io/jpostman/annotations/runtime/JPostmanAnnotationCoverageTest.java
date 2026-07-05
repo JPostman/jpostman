@@ -1374,6 +1374,24 @@ public class JPostmanAnnotationCoverageTest {
 			assertFalse(element.getClassName().startsWith("org.testng.internal.invokers"));
 		}
 
+		AssertionError junitBoundary = new AssertionError("junit boundary");
+		junitBoundary.setStackTrace(new StackTraceElement[] {
+				new StackTraceElement(EmptyFixture.class.getName(), "plain", "EmptyFixture.java", 124),
+				new StackTraceElement("java.lang.reflect.Method", "invoke", "Method.java", 568),
+				new StackTraceElement("org.junit.platform.commons.util.ReflectionUtils", "invokeMethod",
+						"ReflectionUtils.java", 728),
+				new StackTraceElement("org.junit.jupiter.engine.execution.MethodInvocation", "proceed",
+						"MethodInvocation.java", 60),
+				new StackTraceElement(
+						"org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation", "proceed",
+						"InvocationInterceptorChain.java", 131),
+				new StackTraceElement("org.eclipse.jdt.internal.junit.runner.RemoteTestRunner", "main",
+						"RemoteTestRunner.java", 211) });
+		StackTraceElement[] cleanedJUnitBoundary = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method,
+				junitBoundary);
+		assertFalse(hasStackFrame(cleanedJUnitBoundary, "org.junit.jupiter.engine.execution.MethodInvocation"));
+		assertFalse(hasStackFrame(cleanedJUnitBoundary, "org.eclipse.jdt.internal.junit.runner.RemoteTestRunner"));
+
 		Properties noBoundaries = new Properties();
 		noBoundaries.setProperty("stacktrace.boundary", "");
 		StackTraceElement[] unbounded = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method, testNgBoundary,
@@ -1395,6 +1413,42 @@ public class JPostmanAnnotationCoverageTest {
 		StackTraceElement[] appended = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method, testNgBoundary,
 				appendedBoundary);
 		assertFalse(hasStackFrame(appended, "org.testng.internal.invokers.MethodInvocationHelper"));
+
+		AssertionError runtimeAssertion = new AssertionError("runtime assertion");
+		runtimeAssertion.setStackTrace(new StackTraceElement[] {
+				new StackTraceElement("io.jpostman.secure.JPostmanAssertionError", "wrap",
+						"JPostmanAssertionError.java", 52),
+				new StackTraceElement("io.jpostman.testng.TestNgAssertions", "statusCode", "TestNgAssertions.java",
+						200),
+				new StackTraceElement("io.jpostman.annotations.runtime.JPostmanTestProxy", "invokeTarget",
+						"JPostmanTestProxy.java", 190),
+				new StackTraceElement(EmptyFixture.class.getName(), "plain", "EmptyFixture.java", 321),
+				new StackTraceElement("jdk.internal.reflect.NativeMethodAccessorImpl", "invoke0",
+						"NativeMethodAccessorImpl.java", -2),
+				new StackTraceElement("jdk.internal.reflect.NativeMethodAccessorImpl", "invoke",
+						"NativeMethodAccessorImpl.java", 77),
+				new StackTraceElement("jdk.internal.reflect.DelegatingMethodAccessorImpl", "invoke",
+						"DelegatingMethodAccessorImpl.java", 43),
+				new StackTraceElement("java.lang.reflect.Method", "invoke", "Method.java", 568),
+				new StackTraceElement("org.junit.platform.commons.util.ReflectionUtils", "invokeMethod",
+						"ReflectionUtils.java", 728),
+				new StackTraceElement("org.junit.jupiter.engine.execution.MethodInvocation", "proceed",
+						"MethodInvocation.java", 60),
+				new StackTraceElement("org.junit.jupiter.engine.execution.InvocationInterceptorChain", "proceed",
+						"InvocationInterceptorChain.java", 64) });
+		AssertionError runtimeCleaned = JPostmanStackTraceCleaner.cleanRuntimeFailure(EmptyFixture.class, method,
+				runtimeAssertion, false, true);
+		assertEquals(EmptyFixture.class.getName(), runtimeCleaned.getStackTrace()[0].getClassName());
+		assertEquals(321, runtimeCleaned.getStackTrace()[0].getLineNumber());
+		assertFalse(hasStackFrame(runtimeCleaned.getStackTrace(), "io.jpostman.annotations.runtime.JPostmanTestProxy"));
+		assertFalse(
+				hasStackFrame(runtimeCleaned.getStackTrace(), "org.junit.jupiter.engine.execution.MethodInvocation"));
+
+		Properties minimumRuntimeFrames = new Properties();
+		minimumRuntimeFrames.setProperty("stacktrace.min", "5");
+		StackTraceElement[] runtimeMinimum = JPostmanStackTraceCleaner.cleanStack(EmptyFixture.class, method,
+				runtimeAssertion, minimumRuntimeFrames, true);
+		assertTrue(runtimeMinimum.length >= 5);
 
 		int plainSourceLine = JPostmanStackTraceCleaner.findSourceLine(EmptyFixture.class, "plain");
 		assertTrue(plainSourceLine == -1 || plainSourceLine > 0);

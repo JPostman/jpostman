@@ -11,6 +11,7 @@ import java.lang.annotation.Target;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
@@ -23,6 +24,7 @@ import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
+import io.jpostman.secure.JPostmanAssertions;
 import io.jpostman.secure.JPostmanTestContext;
 
 /**
@@ -241,6 +243,23 @@ public final class JPostman {
 		 * @return {@code true} to follow the active context
 		 */
 		boolean active() default false;
+	}
+
+	/**
+	 * Injects an assertion facade backed by the latest active JPostman test
+	 * context.
+	 */
+	@Target(FIELD)
+	@Retention(RUNTIME)
+	public @interface AssertContext {
+	}
+
+	/**
+	 * Short alias for {@link AssertContext}.
+	 */
+	@Target(FIELD)
+	@Retention(RUNTIME)
+	public @interface Asserts {
 	}
 
 	/**
@@ -551,6 +570,108 @@ public final class JPostman {
 	}
 
 	/**
+	 * Marks a test method that executes one request manually through
+	 * {@link Runtime#request()} or {@link Runtime#request(BiConsumer)}.
+	 */
+	@Target(METHOD)
+	@Retention(RUNTIME)
+	public @interface Call {
+
+		/**
+		 * Tags used by this manual call.
+		 *
+		 * @return tags
+		 */
+		String[] tags() default {};
+
+		/**
+		 * Optional annotation id used by dependsOn = "#id".
+		 *
+		 * @return unique annotation id, or empty string when not used
+		 */
+		String id() default "";
+
+		/**
+		 * Request namespace.
+		 *
+		 * @return namespace
+		 */
+		String namespace() default "";
+
+		/**
+		 * Collection folder name.
+		 *
+		 * @return folder name
+		 */
+		String folder() default "";
+
+		/**
+		 * Collection request name.
+		 *
+		 * @return request name
+		 */
+		String request() default "";
+
+		/**
+		 * Rules section name.
+		 *
+		 * @return rule name
+		 */
+		String rule() default "";
+
+		/**
+		 * Fields to keep in the context.
+		 *
+		 * @return filter fields
+		 */
+		String[] filter() default {};
+
+		/**
+		 * Dependency method names or annotation ids. Use plain values for Java method
+		 * names, or prefix ids with "#", such as dependsOn = "#login".
+		 *
+		 * @return dependency method names or "#id" references
+		 */
+		String[] dependsOn() default {};
+
+		/**
+		 * Executor id.
+		 *
+		 * @return executor id
+		 */
+		String executor() default "";
+
+		/**
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
+		 *
+		 * <ul>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * </ul>
+		 *
+		 * @return local automatic failure output mode
+		 */
+		String log() default "debug";
+
+		/**
+		 * Data section name.
+		 *
+		 * @return data section
+		 */
+		String data() default "";
+
+		/** @return {@code true} to skip this call execution */
+		boolean skip() default false;
+
+		/** @return optional skip reason shown in framework skip output */
+		String skipReason() default "";
+	}
+
+	/**
 	 * Marks a method that runs one or more collection requests.
 	 */
 	@Target(METHOD)
@@ -707,6 +828,23 @@ public final class JPostman {
 		 * @return execution info
 		 */
 		Info info();
+
+		/**
+		 * Executes the request described by {@link Call} on the current test method.
+		 *
+		 * @return framework-neutral test context for assertions
+		 */
+		Test request();
+
+		/**
+		 * Executes the request described by {@link Call} after applying an optional
+		 * request customization callback.
+		 *
+		 * @param action request customization callback receiving the framework context
+		 *               and execution info
+		 * @return framework-neutral test context for assertions
+		 */
+		Test request(BiConsumer<C, Info> action);
 
 		/**
 		 * Logs a trace message.
@@ -1146,6 +1284,21 @@ public final class JPostman {
 		 * @param includeAll {@code true} to include method chain and timestamps
 		 */
 		void print(boolean includeAll);
+	}
+
+	/**
+	 * Compact framework-neutral assertion facade backed by the latest active
+	 * JPostman test context.
+	 */
+	public interface Assert extends JPostmanAssertions<Test, Assert> {
+
+		/**
+		 * Switches this facade to soft assertion mode.
+		 *
+		 * @param log {@code true} to include assertion diagnostic logs
+		 * @return soft assertion facade
+		 */
+		Assert soft(boolean log);
 	}
 
 	/**

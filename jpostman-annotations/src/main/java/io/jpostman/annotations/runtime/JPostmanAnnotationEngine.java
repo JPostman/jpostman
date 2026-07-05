@@ -2,6 +2,7 @@ package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.Method;
 
+import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanRequest;
@@ -73,6 +74,22 @@ public final class JPostmanAnnotationEngine {
 			}
 			throw cleanFailure(testInstance, testMethod, e);
 		}
+	}
+
+	/**
+	 * Registers assertion cleanup for facade assertions executed from the user test
+	 * body. The cleanup uses the current @JPostman.Context logs setting.
+	 *
+	 * @param testInstance current test instance
+	 * @param testMethod   current test method
+	 */
+	public static void beginAssertionCleanup(Object testInstance, Method testMethod) {
+		JPostmanAssertionCleanup.register(testInstance, testMethod);
+	}
+
+	/** Clears assertion cleanup for the current test body. */
+	public static void endAssertionCleanup() {
+		JPostmanAssertionCleanup.clear();
 	}
 
 	private static Exception asException(Throwable throwable) {
@@ -160,6 +177,10 @@ public final class JPostmanAnnotationEngine {
 
 		Throwable root = JPostmanStackTraceCleaner.rootCause(error);
 		if (root instanceof AssertionError) {
+			JPostmanCall call = JPostmanAnnotations.call(testMethod);
+			if (call != null && JPostmanRuntimeCall.hasFailureSource()) {
+				return cleanRuntimeFailure(testInstance, testMethod, error, call.log());
+			}
 			return cleanFailure(testInstance, testMethod, error);
 		}
 		return cleanThrowable(testInstance, testMethod, error);
@@ -180,6 +201,92 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
+	 * Creates the same configured failure display using a local log override.
+	 *
+	 * @param testInstance test instance
+	 * @param testMethod   current test method
+	 * @param error        original failure
+	 * @param localLog     local annotation log mode
+	 * @return cleaned assertion failure
+	 */
+	public static AssertionError cleanFailure(Object testInstance, Method testMethod, Throwable error,
+			String localLog) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		options.markFailure(error, localLog);
+		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
+				options.minimumErrorOutput(localLog), options.failureDiagnostics(error));
+	}
+
+	/**
+	 * Creates a runtime-call failure display that points at the actual assertion
+	 * line inside the test body.
+	 *
+	 * @param testInstance test instance
+	 * @param testMethod   current test method
+	 * @param error        original failure
+	 * @param localLog     local annotation log mode
+	 * @return cleaned assertion failure
+	 */
+	public static AssertionError cleanRuntimeFailure(Object testInstance, Method testMethod, Throwable error,
+			String localLog) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		Throwable stackSource = JPostmanRuntimeCall.failureSource(error);
+		Throwable display = runtimeDisplayError(testMethod, error, stackSource);
+		options.markFailure(display, localLog);
+		return JPostmanStackTraceCleaner.cleanRuntimeFailure(testInstance.getClass(), testMethod, display,
+				options.minimumErrorOutput(localLog), options.failureDiagnostics(error));
+	}
+
+	private static Throwable runtimeDisplayError(Method testMethod, Throwable error, Throwable stackSource) {
+		if (error == null) {
+			return null;
+		}
+
+		String message = runtimeDisplayMessage(testMethod, error);
+		Throwable source = stackSource == null ? error : stackSource;
+		if (source == error && value(error.getMessage()).equals(message)) {
+			return error;
+		}
+
+		AssertionError display = new AssertionError(message);
+		display.setStackTrace(source.getStackTrace());
+		copySuppressed(error, display);
+		if (source != error) {
+			copySuppressed(source, display);
+		}
+		return display;
+	}
+
+	private static String runtimeDisplayMessage(Method testMethod, Throwable error) {
+		String message = value(error == null ? null : error.getMessage()).stripTrailing();
+		if (message.contains("(@JPostmanCall")) {
+			return message;
+		}
+
+		JPostmanCall call = testMethod == null ? null : JPostmanAnnotations.call(testMethod);
+		if (call == null) {
+			return message;
+		}
+
+		return JPostmanErrors.message(JPostmanErrors.info(call), message).stripTrailing();
+	}
+
+	private static void copySuppressed(Throwable source, Throwable target) {
+		if (source == null || target == null) {
+			return;
+		}
+		for (Throwable suppressed : source.getSuppressed()) {
+			if (suppressed != null) {
+				target.addSuppressed(suppressed);
+			}
+		}
+	}
+
+	private static String value(String value) {
+		return value == null ? "" : value;
+	}
+
+	/**
 	 * Creates the same configured throwable display used by JUnit for TestNG.
 	 *
 	 * @param testInstance test instance
@@ -191,6 +298,22 @@ public final class JPostmanAnnotationEngine {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
 				options.minimumErrorOutput(error));
+	}
+
+	/**
+	 * Creates the same configured throwable display using a local log override.
+	 *
+	 * @param testInstance test instance
+	 * @param testMethod   current test or configuration method
+	 * @param error        original failure
+	 * @param localLog     local annotation log mode
+	 * @return cleaned throwable
+	 */
+	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error, String localLog) {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		options.markFailure(error, localLog);
+		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
+				options.minimumErrorOutput(localLog));
 	}
 
 }

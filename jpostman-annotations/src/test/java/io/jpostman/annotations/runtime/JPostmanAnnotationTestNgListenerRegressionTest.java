@@ -75,6 +75,55 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		assertEquals(null, throwable.get());
 	}
 
+	@Test
+	public void listenerKeepsRuntimeCallErrorTraceBeyondUserFrame() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		RuntimeCallErrorTraceFixture fixture = new RuntimeCallErrorTraceFixture();
+		Method method = RuntimeCallErrorTraceFixture.class.getDeclaredMethod("newMouseProduct2");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> {
+			throwable.set(JPostmanRuntimeCall.clean(runtimeCallAssertionFailure(method)));
+			status.set(ITestResult.FAILURE);
+		}), result);
+
+		Throwable cleaned = throwable.get();
+
+		assertEquals(ITestResult.FAILURE, status.get());
+		assertNotNull(cleaned);
+		assertTrue(cleaned instanceof AssertionError);
+		assertTrue(cleaned.getMessage().contains("@JPostmanCall"), "Actual message: " + cleaned.getMessage());
+		assertTrue(cleaned.getStackTrace().length >= 2, stackTraceText(cleaned));
+		assertEquals(RuntimeCallErrorTraceFixture.class.getName(), cleaned.getStackTrace()[0].getClassName());
+		assertEquals("newMouseProduct2", cleaned.getStackTrace()[0].getMethodName());
+	}
+
+	@Test
+	public void junitFailureCleanupKeepsRuntimeCallAssertionLineAfterProxyCleanup() throws Exception {
+		RuntimeCallErrorTraceFixture fixture = new RuntimeCallErrorTraceFixture();
+		Method method = RuntimeCallErrorTraceFixture.class.getDeclaredMethod("newMouseProduct2");
+
+		try {
+			JPostmanRuntimeCall.register(fixture, TestNgContext.class, action -> null,
+					error -> JPostmanAnnotationEngine.cleanRuntimeFailure(fixture, method, error, "error"));
+
+			Throwable proxyCleaned = JPostmanRuntimeCall.clean(runtimeCallAssertionFailure(method));
+			Throwable junitCleaned = JPostmanAnnotationEngine.cleanJUnitFailure(fixture, method, proxyCleaned);
+
+			assertTrue(junitCleaned instanceof AssertionError);
+			assertTrue(junitCleaned.getMessage().contains("@JPostmanCall"),
+					"Actual message: " + junitCleaned.getMessage());
+			assertTrue(junitCleaned.getStackTrace().length >= 2, stackTraceText(junitCleaned));
+			assertEquals(RuntimeCallErrorTraceFixture.class.getName(), junitCleaned.getStackTrace()[0].getClassName());
+			assertEquals("newMouseProduct2", junitCleaned.getStackTrace()[0].getMethodName());
+			assertEquals(123, junitCleaned.getStackTrace()[0].getLineNumber());
+		} finally {
+			JPostmanRuntimeCall.clear(fixture, TestNgContext.class);
+		}
+	}
+
 	@JPostman.TestNG
 	private static final class VerificationFailureBodyFixture {
 
@@ -126,6 +175,55 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 			executorCalls++;
 			return okExecutor("{\"id\":" + executorCalls + ",\"request\":\"" + info.request + "\"}");
 		}
+	}
+
+	@JPostman.TestNG
+	private static final class RuntimeCallErrorTraceFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", logs = "debug", debug = "none")
+		private JPostman.Runtime<TestNgContext> jpostman;
+
+		@JPostman.Call(tags = { "mouse", "product=mouse" }, log = "error")
+		@org.testng.annotations.Test
+		public void newMouseProduct2() {
+			// The hook callback supplies the runtime assertion failure for this regression.
+		}
+	}
+
+	private static AssertionError runtimeCallAssertionFailure(Method testMethod) {
+		AssertionError error = new AssertionError("Status code mismatch: expected [200] but found [201]");
+		error.setStackTrace(new StackTraceElement[] {
+				new StackTraceElement("io.jpostman.secure.JPostmanAssertionError", "wrap",
+						"JPostmanAssertionError.java", 52),
+				new StackTraceElement("io.jpostman.testng.TestNgAssertions", "wrap", "TestNgAssertions.java", 430),
+				new StackTraceElement("io.jpostman.testng.TestNgAssertions", "assertWithLog", "TestNgAssertions.java",
+						418),
+				new StackTraceElement("io.jpostman.testng.TestNgAssertions", "statusCode", "TestNgAssertions.java",
+						200),
+				new StackTraceElement(testMethod.getDeclaringClass().getName(), testMethod.getName(),
+						testMethod.getDeclaringClass().getSimpleName() + ".java", 123),
+				new StackTraceElement("jdk.internal.reflect.NativeMethodAccessorImpl", "invoke0",
+						"NativeMethodAccessorImpl.java", -2),
+				new StackTraceElement("jdk.internal.reflect.NativeMethodAccessorImpl", "invoke",
+						"NativeMethodAccessorImpl.java", 77),
+				new StackTraceElement("jdk.internal.reflect.DelegatingMethodAccessorImpl", "invoke",
+						"DelegatingMethodAccessorImpl.java", 43),
+				new StackTraceElement("java.lang.reflect.Method", "invoke", "Method.java", 568),
+				new StackTraceElement("org.testng.internal.invokers.MethodInvocationHelper", "invokeMethod",
+						"MethodInvocationHelper.java", 141),
+				new StackTraceElement("org.testng.remote.RemoteTestNG", "main", "RemoteTestNG.java", 91) });
+		return error;
+	}
+
+	private static String stackTraceText(Throwable throwable) {
+		StringBuilder result = new StringBuilder("Expected at least 2 cleaned stack frames but got ")
+				.append(throwable == null ? 0 : throwable.getStackTrace().length).append(':');
+		if (throwable != null) {
+			for (StackTraceElement element : throwable.getStackTrace()) {
+				result.append(System.lineSeparator()).append("\tat ").append(element);
+			}
+		}
+		return result.toString();
 	}
 
 	private static IHookCallBack hookCallBack(Runnable body) {

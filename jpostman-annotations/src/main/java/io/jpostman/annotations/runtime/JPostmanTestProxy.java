@@ -84,6 +84,18 @@ final class JPostmanTestProxy implements InvocationHandler {
 				new Class<?>[] { JPostmanTestSoftAssertions.class }, new JPostmanAssertionProxy(target, true));
 	}
 
+	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier) {
+		return wrapAssert(null, activeContextSupplier);
+	}
+
+	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier) {
+		if (target instanceof JPostman.Assert) {
+			return (JPostman.Assert) target;
+		}
+		return (JPostman.Assert) Proxy.newProxyInstance(JPostman.Assert.class.getClassLoader(),
+				new Class<?>[] { JPostman.Assert.class }, new JPostmanAssertProxy(target, activeContextSupplier));
+	}
+
 	@Override
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		String name = method.getName();
@@ -137,6 +149,60 @@ final class JPostmanTestProxy implements InvocationHandler {
 		}
 	}
 
+	private static final class JPostmanAssertProxy implements InvocationHandler {
+
+		private final Object target;
+		private final Supplier<?> activeContextSupplier;
+
+		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier) {
+			this.target = target;
+			this.activeContextSupplier = activeContextSupplier;
+		}
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+			String name = method.getName();
+			if ("toString".equals(name) && method.getParameterCount() == 0) {
+				return String.valueOf(assertionTarget());
+			}
+			if ("hashCode".equals(name) && method.getParameterCount() == 0) {
+				Object value = assertionTarget();
+				return value == null ? 0 : value.hashCode();
+			}
+			if ("equals".equals(name) && method.getParameterCount() == 1) {
+				Object other = args == null || args.length == 0 ? null : unwrap(args[0]);
+				Object value = assertionTarget();
+				return value == other || (value != null && value.equals(other));
+			}
+			if ("soft".equals(name) && method.getParameterCount() == 1) {
+				Object soft = invokeContext("soft", args);
+				return wrapAssert(soft, activeContextSupplier);
+			}
+
+			Object value = assertionTarget();
+			Method targetMethod = findTargetMethod(value, name, args);
+			Object result = invokeTarget(targetMethod, value, args);
+			return adaptAssertReturn(proxy, method, result);
+		}
+
+		private Object assertionTarget() throws Throwable {
+			if (target != null) {
+				return target;
+			}
+			return invokeContext("asserts", null);
+		}
+
+		private Object invokeContext(String name, Object[] args) throws Throwable {
+			Object context = activeContextSupplier == null ? null : activeContextSupplier.get();
+			if (context == null) {
+				throw new IllegalStateException(
+						"No active JPostman test context is available for @JPostman.AssertContext.");
+			}
+			Method targetMethod = findTargetMethod(context, name, args);
+			return invokeTarget(targetMethod, context, args);
+		}
+	}
+
 	private static Object adaptContextReturn(Object proxy, Method method, Object result) {
 		Class<?> returnType = method.getReturnType();
 		String name = method.getName();
@@ -180,6 +246,24 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return result;
 	}
 
+	private static Object adaptAssertReturn(Object proxy, Method method, Object result) {
+		Class<?> returnType = method.getReturnType();
+
+		if (returnType == Void.TYPE) {
+			return null;
+		}
+		if (returnType == JPostman.Assert.class || returnsTypeVariable(method, "A")) {
+			return result == null ? proxy : wrapAssert(result, null);
+		}
+		if (returnType == JPostman.Test.class || returnsTypeVariable(method, "C")) {
+			return result == null ? null : wrap(result);
+		}
+		if (result != null && returnType.isInstance(result)) {
+			return result;
+		}
+		return result;
+	}
+
 	private static boolean returnsTypeVariable(Method method, String name) {
 		Type type = method.getGenericReturnType();
 		return type instanceof TypeVariable<?> && name.equals(((TypeVariable<?>) type).getName());
@@ -189,7 +273,9 @@ final class JPostmanTestProxy implements InvocationHandler {
 		try {
 			return method.invoke(target, args == null ? new Object[0] : args);
 		} catch (InvocationTargetException e) {
-			throw e.getTargetException();
+			throw JPostmanAssertionCleanup.clean(e.getTargetException());
+		} catch (RuntimeException | Error e) {
+			throw JPostmanAssertionCleanup.clean(e);
 		}
 	}
 

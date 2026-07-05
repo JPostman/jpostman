@@ -1,6 +1,7 @@
 package io.jpostman.annotations.runtime;
 
 import java.util.Arrays;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -47,6 +48,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	private final Function<String, C> contextResolver;
 	private final Supplier<C> activeContextResolver;
 	private final Supplier<JPostmanInfo> infoSupplier;
+	private final JPostmanRuntimeRequest<C> requestExecutor;
 
 	/**
 	 * Creates a runtime view.
@@ -60,7 +62,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 */
 	public JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier) {
-		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, null);
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, null, null);
 	}
 
 	/**
@@ -76,11 +78,18 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
 			Supplier<JPostmanRuntimeOptions> optionsSupplier) {
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, optionsSupplier, null);
+	}
+
+	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
+			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
+			Supplier<JPostmanRuntimeOptions> optionsSupplier, JPostmanRuntimeRequest<C> requestExecutor) {
 		this.context = context;
 		this.namespace = namespace == null ? "" : namespace;
 		this.contextResolver = contextResolver;
 		this.activeContextResolver = activeContextResolver;
 		this.infoSupplier = infoSupplier;
+		this.requestExecutor = requestExecutor;
 	}
 
 	/**
@@ -135,6 +144,31 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 */
 	public JPostmanInfo info() {
 		return infoSupplier == null ? null : infoSupplier.get();
+	}
+
+	/** {@inheritDoc} */
+	public io.jpostman.annotations.JPostman.Test request() {
+		return request(null);
+	}
+
+	/** {@inheritDoc} */
+	public io.jpostman.annotations.JPostman.Test request(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+		if (requestExecutor == null) {
+			throw new IllegalStateException("No active @JPostman.Call request executor is available.");
+		}
+		C result;
+		try {
+			result = requestExecutor.execute((ctx, info) -> {
+				if (action != null) {
+					action.accept(ctx, info);
+				}
+			});
+		} catch (RuntimeException | Error e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+		return JPostmanTestProxy.wrap(result, () -> activeContextResolver == null ? null : activeContextResolver.get());
 	}
 
 	/**

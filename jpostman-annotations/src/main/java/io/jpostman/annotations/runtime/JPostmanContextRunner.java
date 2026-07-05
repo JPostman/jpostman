@@ -478,6 +478,30 @@ final class JPostmanContextRunner<C> {
 		}
 	}
 
+	void injectAssertContexts(Object testInstance, PreparedContexts<C> contexts) throws Exception {
+		if (contexts == null) {
+			return;
+		}
+
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (!JPostmanAnnotations.hasAssertContext(field)) {
+					continue;
+				}
+				if (!io.jpostman.annotations.JPostman.Assert.class.isAssignableFrom(field.getType())) {
+					throw new IllegalStateException(
+							"@JPostman.Asserts/@JPostman.AssertContext/@JPostmanAssertContext field must be JPostman.Assert: "
+									+ field.getName());
+				}
+				field.setAccessible(true);
+				field.set(testInstance,
+						JPostmanTestProxy.wrapAssert(() -> activeContexts(testInstance, contexts).activeContext()));
+			}
+			current = current.getSuperclass();
+		}
+	}
+
 	private boolean hasResponse(C context) {
 		return context != null && framework.hasResponse(context);
 	}
@@ -544,11 +568,16 @@ final class JPostmanContextRunner<C> {
 					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext(),
 							() -> activeContexts(testInstance, contexts).activeContext()),
 					() -> activeContexts(testInstance, contexts).info(),
-					() -> JPostmanRuntimeOptions.from(testInstance));
+					() -> JPostmanRuntimeOptions.from(testInstance),
+					action -> JPostmanTestProxy.wrap(JPostmanRuntimeCall.execute(testInstance, framework.contextType(),
+							(ctx, info) -> action.accept(JPostmanTestProxy.wrap(ctx,
+									() -> activeContexts(testInstance, contexts).activeContext()), info)),
+							() -> activeContexts(testInstance, contexts).activeContext()));
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
 				() -> activeContexts(testInstance, contexts).activeContext(),
-				() -> activeContexts(testInstance, contexts).info(), () -> JPostmanRuntimeOptions.from(testInstance));
+				() -> activeContexts(testInstance, contexts).info(), () -> JPostmanRuntimeOptions.from(testInstance),
+				action -> JPostmanRuntimeCall.execute(testInstance, framework.contextType(), action));
 	}
 
 	private boolean compactTestRuntime(Field field) {

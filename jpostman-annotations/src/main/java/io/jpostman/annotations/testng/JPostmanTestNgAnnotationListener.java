@@ -125,12 +125,17 @@ public final class JPostmanTestNgAnnotationListener
 
 		Method testMethod = testResult.getMethod().getConstructorOrMethod().getMethod();
 		boolean runnerMethod = JPostmanAnnotations.runner(testMethod) != null;
+		boolean callMethod = JPostmanAnnotations.call(testMethod) != null;
 		try {
 			if (runnerMethod) {
-				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod, () -> callBack.runTestMethod(testResult));
+				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod,
+						() -> runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult));
 			} else {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
-				callBack.runTestMethod(testResult);
+				runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);
+				if (callMethod) {
+					cleanCallMethodFailure(testInstance, testMethod, testResult);
+				}
 			}
 		} catch (SkipException e) {
 			if (isJPostmanSkip(e)) {
@@ -169,11 +174,14 @@ public final class JPostmanTestNgAnnotationListener
 				return;
 			}
 
-			// Do not rewrite skipped test results caused by a failed configuration
-			// method. TestNG may reuse the same configuration throwable for those skipped
-			// results, and cleaning it with the skipped test method would make the original
-			// @BeforeClass failure point to the wrong line.
+			// Do not rewrite normal test-method results here. @JPostman.Call is the
+			// exception because assertions can happen after jpostman.request() returns,
+			// so TestNG may store the original assertion failure directly on ITestResult.
 			if (invokedMethod.isTestMethod()) {
+				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+				if (JPostmanAnnotations.call(javaMethod) != null) {
+					cleanCallMethodFailure(testInstance, javaMethod, testResult);
+				}
 				return;
 			}
 
@@ -190,16 +198,57 @@ public final class JPostmanTestNgAnnotationListener
 		}
 	}
 
+	private void cleanCallMethodFailure(Object testInstance, Method testMethod, ITestResult testResult) {
+		Throwable throwable = testResult.getThrowable();
+		if (throwable == null) {
+			return;
+		}
+
+		io.jpostman.annotations.JPostmanCall call = JPostmanAnnotations.call(testMethod);
+		String localLog = call == null ? "" : call.log();
+
+		if (throwable instanceof SkipException) {
+			if (isJPostmanSkip((SkipException) throwable)) {
+				testResult.setThrowable(null);
+			} else {
+				testResult.setThrowable(
+						JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localLog));
+			}
+			return;
+		}
+
+		Throwable root = JPostmanStackTraceCleaner.rootCause(throwable);
+		if (root instanceof AssertionError) {
+			testResult.setThrowable(
+					JPostmanAnnotationEngine.cleanRuntimeFailure(testInstance, testMethod, throwable, localLog));
+		} else {
+			testResult.setThrowable(
+					JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localLog));
+		}
+	}
+
 	private boolean isJPostmanSkip(SkipException e) {
 		String message = e == null ? "" : String.valueOf(e.getMessage());
-		return message.startsWith("JPostman request skipped.") || message.startsWith("JPostman response skipped.")
-				|| message.startsWith("JPostman runner skipped.")
+		return message.startsWith("JPostman request skipped.") || message.startsWith("JPostman call skipped.")
+				|| message.startsWith("JPostman response skipped.") || message.startsWith("JPostman runner skipped.")
 				|| message.startsWith("WARN JPostman runner found zero requests");
+	}
+
+	private void runTestBodyWithAssertionCleanup(Object testInstance, Method testMethod, IHookCallBack callBack,
+			ITestResult testResult) {
+		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+		try {
+			callBack.runTestMethod(testResult);
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
 	}
 
 	private void runTestBodyAfterAnnotationFailure(IHookCallBack callBack, ITestResult testResult, Throwable failure) {
 		try {
-			callBack.runTestMethod(testResult);
+			Object testInstance = testResult.getInstance();
+			Method testMethod = testResult.getMethod().getConstructorOrMethod().getMethod();
+			runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);
 		} catch (Throwable bodyFailure) {
 			if (bodyFailure != null && bodyFailure != failure) {
 				failure.addSuppressed(bodyFailure);
@@ -231,7 +280,8 @@ public final class JPostmanTestNgAnnotationListener
 
 		for (Method method : type.getDeclaredMethods()) {
 			if (JPostmanAnnotations.hasRequest(method) || JPostmanAnnotations.hasResponse(method)
-					|| JPostmanAnnotations.hasRunner(method) || JPostmanAnnotations.hasExecutor(method)) {
+					|| JPostmanAnnotations.hasCall(method) || JPostmanAnnotations.hasRunner(method)
+					|| JPostmanAnnotations.hasExecutor(method)) {
 				return true;
 			}
 		}
@@ -258,7 +308,8 @@ public final class JPostmanTestNgAnnotationListener
 
 			for (Method method : current.getDeclaredMethods()) {
 				if (JPostmanAnnotations.hasRequest(method) || JPostmanAnnotations.hasResponse(method)
-						|| JPostmanAnnotations.hasRunner(method) || JPostmanAnnotations.hasExecutor(method)) {
+						|| JPostmanAnnotations.hasCall(method) || JPostmanAnnotations.hasRunner(method)
+						|| JPostmanAnnotations.hasExecutor(method)) {
 					return true;
 				}
 			}

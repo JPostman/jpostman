@@ -7,6 +7,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanAssertContext;
+import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
 import io.jpostman.annotations.JPostmanReportContext;
@@ -65,6 +67,23 @@ public final class JPostmanAnnotations {
 		return reportContext(field) != null;
 	}
 
+	public static JPostmanAssertContext assertContext(Field field) {
+		JPostmanAssertContext old = field.getAnnotation(JPostmanAssertContext.class);
+		if (old != null) {
+			return old;
+		}
+		JPostman.AssertContext compact = field.getAnnotation(JPostman.AssertContext.class);
+		if (compact != null) {
+			return adapt(compact, JPostmanAssertContext.class);
+		}
+		JPostman.Asserts alias = field.getAnnotation(JPostman.Asserts.class);
+		return alias == null ? null : adapt(alias, JPostmanAssertContext.class);
+	}
+
+	public static boolean hasAssertContext(Field field) {
+		return assertContext(field) != null;
+	}
+
 	public static JPostmanExecutor executor(Method method) {
 		JPostmanExecutor old = method.getAnnotation(JPostmanExecutor.class);
 		if (old != null) {
@@ -102,6 +121,19 @@ public final class JPostmanAnnotations {
 
 	public static boolean hasResponse(Method method) {
 		return response(method) != null;
+	}
+
+	public static JPostmanCall call(Method method) {
+		JPostmanCall old = method.getAnnotation(JPostmanCall.class);
+		if (old != null) {
+			return old;
+		}
+		JPostman.Call compact = method.getAnnotation(JPostman.Call.class);
+		return compact == null ? null : adapt(compact, JPostmanCall.class);
+	}
+
+	public static boolean hasCall(Method method) {
+		return call(method) != null;
 	}
 
 	public static JPostmanRunner runner(Method method) {

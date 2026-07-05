@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
@@ -47,19 +48,20 @@ public final class JPostmanAnnotationValidator {
 	public static void validateTestClass(Class<?> testClass) {
 		List<Method> invalidHelpers = new ArrayList<>();
 		List<Method> invalidResponses = new ArrayList<>();
+		List<Method> invalidCalls = new ArrayList<>();
 		List<Method> invalidCachedResponses = new ArrayList<>();
 		List<Method> invalidCachedRequests = new ArrayList<>();
 
 		Class<?> current = testClass;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
-				collectInvalidMethod(method, invalidHelpers, invalidResponses, invalidCachedResponses,
+				collectInvalidMethod(method, invalidHelpers, invalidResponses, invalidCalls, invalidCachedResponses,
 						invalidCachedRequests);
 			}
 			current = current.getSuperclass();
 		}
 
-		throwIfInvalid(invalidHelpers, invalidResponses, invalidCachedResponses, invalidCachedRequests);
+		throwIfInvalid(invalidHelpers, invalidResponses, invalidCalls, invalidCachedResponses, invalidCachedRequests);
 	}
 
 	/**
@@ -76,15 +78,17 @@ public final class JPostmanAnnotationValidator {
 	public static void validateTestMethod(Method method) {
 		List<Method> invalidHelpers = new ArrayList<>();
 		List<Method> invalidResponses = new ArrayList<>();
+		List<Method> invalidCalls = new ArrayList<>();
 		List<Method> invalidCachedResponses = new ArrayList<>();
 		List<Method> invalidCachedRequests = new ArrayList<>();
 
-		collectInvalidMethod(method, invalidHelpers, invalidResponses, invalidCachedResponses, invalidCachedRequests);
-		throwIfInvalid(invalidHelpers, invalidResponses, invalidCachedResponses, invalidCachedRequests);
+		collectInvalidMethod(method, invalidHelpers, invalidResponses, invalidCalls, invalidCachedResponses,
+				invalidCachedRequests);
+		throwIfInvalid(invalidHelpers, invalidResponses, invalidCalls, invalidCachedResponses, invalidCachedRequests);
 	}
 
 	private static void collectInvalidMethod(Method method, List<Method> invalidHelpers, List<Method> invalidResponses,
-			List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
+			List<Method> invalidCalls, List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
 		JPostmanRequest request = JPostmanAnnotations.request(method);
 
 		if (!isTestMethod(method)) {
@@ -98,6 +102,11 @@ public final class JPostmanAnnotationValidator {
 		JPostmanResponse response = JPostmanAnnotations.response(method);
 		if (response != null && method.getParameterCount() > 0) {
 			invalidResponses.add(method);
+		}
+
+		JPostmanCall call = JPostmanAnnotations.call(method);
+		if (call != null && method.getParameterCount() > 0) {
+			invalidCalls.add(method);
 		}
 
 		if (response != null && cacheRequested(response.cache())) {
@@ -124,15 +133,16 @@ public final class JPostmanAnnotationValidator {
 	}
 
 	private static void throwIfInvalid(List<Method> invalidHelpers, List<Method> invalidResponses,
-			List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
-		if (!invalidHelpers.isEmpty() || !invalidResponses.isEmpty() || !invalidCachedResponses.isEmpty()
-				|| !invalidCachedRequests.isEmpty()) {
-			throw validationError(invalidHelpers, invalidResponses, invalidCachedResponses, invalidCachedRequests);
+			List<Method> invalidCalls, List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
+		if (!invalidHelpers.isEmpty() || !invalidResponses.isEmpty() || !invalidCalls.isEmpty()
+				|| !invalidCachedResponses.isEmpty() || !invalidCachedRequests.isEmpty()) {
+			throw validationError(invalidHelpers, invalidResponses, invalidCalls, invalidCachedResponses,
+					invalidCachedRequests);
 		}
 	}
 
 	private static AssertionError validationError(List<Method> invalidHelpers, List<Method> invalidResponses,
-			List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
+			List<Method> invalidCalls, List<Method> invalidCachedResponses, List<Method> invalidCachedRequests) {
 		StringBuilder message = new StringBuilder();
 
 		message.append("Invalid JPostman annotation usage.").append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL);
@@ -167,7 +177,22 @@ public final class JPostmanAnnotationValidator {
 			}
 		}
 
-		if (!invalidResponses.isEmpty() && (!invalidCachedResponses.isEmpty() || !invalidCachedRequests.isEmpty())) {
+		if (!invalidCalls.isEmpty()) {
+			message.append("@JPostmanCall methods annotated with @Test must not declare parameters.")
+					.append(JPostmanErrors.ENDL)
+					.append("The test framework invokes @Test methods directly and only supports its own parameter injection rules.")
+					.append(JPostmanErrors.ENDL)
+					.append("Use jpostman.request((ctx, info) -> ...) inside the test body instead.")
+					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid call methods:")
+					.append(JPostmanErrors.ENDL);
+
+			for (Method method : invalidCalls) {
+				message.append("- ").append(signature(method)).append(JPostmanErrors.ENDL);
+			}
+		}
+
+		if ((!invalidResponses.isEmpty() || !invalidCalls.isEmpty())
+				&& (!invalidCachedResponses.isEmpty() || !invalidCachedRequests.isEmpty())) {
 			message.append(JPostmanErrors.ENDL);
 		}
 
@@ -198,7 +223,8 @@ public final class JPostmanAnnotationValidator {
 		}
 
 		List<Method> invalid = Stream
-				.concat(Stream.concat(invalidHelpers.stream(), invalidResponses.stream()),
+				.concat(Stream.concat(Stream.concat(invalidHelpers.stream(), invalidResponses.stream()),
+						invalidCalls.stream()),
 						Stream.concat(invalidCachedResponses.stream(), invalidCachedRequests.stream()))
 				.distinct().collect(Collectors.toList());
 
