@@ -367,11 +367,40 @@ final class JPostmanRuntimeOptions {
 	}
 
 	EnumSet<LogOutput> logOutput(String localLog, JPostmanInfo info) {
-		LogMode mode = logMode(localLog);
+		LogMode mode = automaticLogMode(localLog);
 		if (mode != LogMode.DEBUG) {
 			return EnumSet.of(LogOutput.NONE);
 		}
-		return debugOutput(info);
+		EnumSet<LogOutput> localOutput = LogOutput.fromLogs(localLog);
+		return localOutput.contains(LogOutput.NONE) ? debugOutput(info) : localOutput;
+	}
+
+	private LogMode automaticLogMode(String localLog) {
+		if (localLog == null || localLog.isBlank()) {
+			return LogMode.DEBUG;
+		}
+		LogMode parsed = null;
+		for (String part : localLog.split(",")) {
+			String item = part == null ? "" : part.trim();
+			if (item.isEmpty()) {
+				continue;
+			}
+			if (LogMode.isMode(item)) {
+				if (parsed != null) {
+					return LogMode.from(localLog, LogMode.DEBUG);
+				}
+				parsed = LogMode.from(item, LogMode.DEBUG);
+				continue;
+			}
+			if (LogOutput.isOutput(item)) {
+				continue;
+			}
+			if (parsed != null) {
+				return LogMode.from(localLog, LogMode.DEBUG);
+			}
+			parsed = LogMode.from(item, LogMode.DEBUG);
+		}
+		return parsed == null ? LogMode.DEBUG : parsed;
 	}
 
 	EnumSet<LogOutput> debugOutput(JPostmanInfo info) {
@@ -395,11 +424,16 @@ final class JPostmanRuntimeOptions {
 	}
 
 	void debug(Object testInstance, JPostmanInfo info) {
+		debug(testInstance, info, "debug");
+	}
+
+	void debug(Object testInstance, JPostmanInfo info, String localLog) {
 		if (testInstance == null || info == null) {
 			return;
 		}
 
-		if (debugOutput(info).contains(LogOutput.INFO)) {
+		EnumSet<LogOutput> outputs = logOutput(localLog, info);
+		if (outputs.contains(LogOutput.INFO) || outputs.contains(LogOutput.ALL)) {
 			printMethodHeader(testInstance, info);
 			info.print(false);
 		}

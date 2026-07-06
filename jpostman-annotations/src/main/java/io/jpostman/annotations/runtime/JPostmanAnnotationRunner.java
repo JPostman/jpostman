@@ -130,7 +130,8 @@ public final class JPostmanAnnotationRunner<C> {
 		stack.add(testMethod.getName());
 		add(report, info);
 		info.method(testMethod.getName());
-		debug(testInstance, info);
+		debug(testInstance, info,
+				annotationLog(requestAnnotation, responseAnnotation, callAnnotation, runnerAnnotation));
 
 		if (callAnnotation != null) {
 			validateCallSkipEnabled(callAnnotation, info);
@@ -1775,8 +1776,33 @@ public final class JPostmanAnnotationRunner<C> {
 		return result.toString();
 	}
 
-	private void debug(Object testInstance, JPostmanInfo info) {
-		JPostmanRuntimeOptions.from(testInstance).debug(testInstance, info);
+	private void debug(Object testInstance, JPostmanInfo info, String annotationLog) {
+		JPostmanRuntimeOptions.from(testInstance).debug(testInstance, info, annotationLog);
+	}
+
+	private String annotationLog(JPostmanRequest requestAnnotation, JPostmanResponse responseAnnotation,
+			JPostmanCall callAnnotation, JPostmanRunner runnerAnnotation) {
+		if (requestAnnotation != null) {
+			return requestAnnotation.log();
+		}
+		if (responseAnnotation != null) {
+			return responseAnnotation.log();
+		}
+		if (callAnnotation != null) {
+			return callAnnotation.log();
+		}
+		if (runnerAnnotation != null) {
+			return runnerAnnotation.log();
+		}
+		return "debug";
+	}
+
+	private String annotationLog(Method method) {
+		if (method == null) {
+			return "debug";
+		}
+		return annotationLog(JPostmanAnnotations.request(method), JPostmanAnnotations.response(method),
+				JPostmanAnnotations.call(method), JPostmanAnnotations.runner(method));
 	}
 
 	private void logOutput(Object testInstance, C ctx, JPostmanInfo info, String annotationLog) {
@@ -2296,7 +2322,8 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private Object invokeExecutor(Object testInstance, Method method, C ctx, JPostmanInfo info) throws Exception {
-		debug(testInstance, info);
+		JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+		debug(testInstance, info, annotation == null ? "debug" : annotation.log());
 		Class<?>[] types = method.getParameterTypes();
 		if (types.length == 0) {
 			return invoke(testInstance, method);
@@ -2700,7 +2727,7 @@ public final class JPostmanAnnotationRunner<C> {
 		 * JPostmanInfo twice.
 		 */
 		if (info == null || info.ended() <= 0L) {
-			debug(testInstance, info);
+			debug(testInstance, info, annotationLog(method));
 		}
 		Class<?>[] types = method.getParameterTypes();
 		if (types.length == 0) {

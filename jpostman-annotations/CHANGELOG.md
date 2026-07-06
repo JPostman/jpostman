@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0
+
+### Changed
+
+- Changed automatic debug output so it is controlled by `debug` independently from the `logs` failure-output setting.
+- Changed automatic annotation debug handling to respect each annotation's local `log` value for requests, responses, calls, runners, and executors.
+- Changed local `log = "debug"` to explicitly inherit the context-level `debug` output, while `log = "none"` suppresses automatic debug output for that annotation.
+- Changed context `debug = "request"`, `debug = "response"`, `debug = "info"`, and `debug = "all"` to continue working when context `logs` defaults to `none`.
+
 ## 2.1.9
 
 ### Added

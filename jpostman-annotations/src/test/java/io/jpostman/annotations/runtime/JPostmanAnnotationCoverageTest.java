@@ -1133,6 +1133,57 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(options.failureResponse("debug", null));
 	}
 
+	/**
+	 * Verifies context debug still controls automatic request/response output even
+	 * when context logs defaults to none.
+	 */
+	@Test
+	public void contextDebugStillControlsAutomaticAnnotationOutputWhenLogsDefaultNone() {
+		JPostmanRuntimeOptions requestOptions = JPostmanRuntimeOptions.from(new RequestDebugOutputFixture());
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> requestOutput = requestOptions.logOutput("debug", null);
+
+		assertTrue(requestOutput.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+		assertFalse(requestOutput.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
+		assertTrue(requestOptions.logOutput("none", null).contains(JPostmanRuntimeOptions.LogOutput.NONE));
+
+		JPostmanRuntimeOptions allOptions = JPostmanRuntimeOptions.from(new AllDebugOutputFixture());
+		assertTrue(allOptions.logOutput("debug", null).contains(JPostmanRuntimeOptions.LogOutput.ALL));
+		assertTrue(allOptions.logOutput("request", null).contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+	}
+
+	/**
+	 * Verifies context debug output still respects a local annotation log=none.
+	 */
+	@Test
+	public void contextDebugInfoRespectsLocalLogNone() {
+		InfoDebugOutputFixture fixture = new InfoDebugOutputFixture();
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(fixture);
+		JPostmanInfo info = new JPostmanInfo(new String[0], "", "newProduct", "product", "Product", "Add a new product")
+				.annotation("@JPostmanRequest");
+
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> suppressed = options.logOutput("none", info);
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> inherited = options.logOutput("debug", info);
+
+		assertTrue(suppressed.contains(JPostmanRuntimeOptions.LogOutput.NONE));
+		assertFalse(suppressed.contains(JPostmanRuntimeOptions.LogOutput.INFO));
+		assertTrue(inherited.contains(JPostmanRuntimeOptions.LogOutput.INFO), inherited.toString());
+	}
+
+	static class InfoDebugOutputFixture {
+		@JPostman.Context(config = "", debug = "info")
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
+	static class RequestDebugOutputFixture {
+		@JPostman.Context(config = "", debug = "request")
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
+	static class AllDebugOutputFixture {
+		@JPostman.Context(config = "", debug = "all")
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
 	static class DefaultFailureLogsFixture {
 		@JPostman.Context(config = "")
 		JPostman.Runtime<JPostman.Test> jpostman;
