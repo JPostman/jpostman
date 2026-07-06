@@ -1014,7 +1014,7 @@ public interface JPostmanFramework<C> {
 	 * </p>
 	 *
 	 * @param info  annotation execution information used in the skip message
-	 * @param lines skip reason lines
+	 * @param lines skip message lines
 	 * @return framework-specific runtime exception
 	 */
 	default RuntimeException skipException(JPostmanInfo info, String... lines) {

@@ -430,8 +430,6 @@ public final class JPostman {
 		/** @return {@code true} to skip this request helper or runner request */
 		boolean skip() default false;
 
-		/** @return optional skip reason shown in framework skip output */
-		String skipReason() default "";
 	}
 
 	/**
@@ -565,8 +563,6 @@ public final class JPostman {
 		/** @return {@code true} to skip this response/test execution */
 		boolean skip() default false;
 
-		/** @return optional skip reason shown in framework skip output */
-		String skipReason() default "";
 	}
 
 	/**
@@ -664,11 +660,14 @@ public final class JPostman {
 		 */
 		String data() default "";
 
+		/**
+		 * @return {@code true} to run this call even when context skipAll is enabled
+		 */
+		boolean enabled() default false;
+
 		/** @return {@code true} to skip this call execution */
 		boolean skip() default false;
 
-		/** @return optional skip reason shown in framework skip output */
-		String skipReason() default "";
 	}
 
 	/**
@@ -790,6 +789,10 @@ public final class JPostman {
 		 * @return {@code true} to run this runner even when context skipAll is enabled
 		 */
 		boolean enabled() default false;
+
+		/** @return {@code true} to skip this runner/test execution */
+		boolean skip() default false;
+
 	}
 
 	/**
@@ -828,6 +831,13 @@ public final class JPostman {
 		 * @return execution info
 		 */
 		Info info();
+
+		/**
+		 * Returns fluent request-name rules for a {@link Runner} test body.
+		 *
+		 * @return runner request rules
+		 */
+		io.jpostman.annotations.runtime.JPostmanRuntime.RunnerRules<C> runner();
 
 		/**
 		 * Executes the request described by {@link Call} on the current test method.

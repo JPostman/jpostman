@@ -2,8 +2,11 @@ package io.jpostman.annotations.runtime;
 
 import java.util.Arrays;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import io.jpostman.Collection;
 import io.jpostman.Environment;
@@ -147,6 +150,11 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	}
 
 	/** {@inheritDoc} */
+	public RunnerRules<C> runner() {
+		return new RunnerRules<>(() -> ctx(), () -> info());
+	}
+
+	/** {@inheritDoc} */
 	public io.jpostman.annotations.JPostman.Test request() {
 		return request(null);
 	}
@@ -256,6 +264,234 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 
 	private Object[] rest(Object[] args) {
 		return Arrays.copyOfRange(args, 1, args.length);
+	}
+
+	/**
+	 * Fluent request-name rule builder for {@code @JPostmanRunner} test bodies.
+	 *
+	 * <p>
+	 * The builder is intended for runner test methods that are invoked after each
+	 * runner request. {@link #has(String...)} and {@link #any(String...)} match the
+	 * current request name using exact text or regular expressions.
+	 * {@link #end(Consumer)} runs only for the last executed runner request, which
+	 * makes it useful for final soft-assert verification.
+	 * </p>
+	 *
+	 * @param <C> framework context type, or {@code JPostman.Test} when using the
+	 *            compact runtime facade
+	 */
+	public static final class RunnerRules<C> {
+		private final Supplier<C> contextSupplier;
+		private final Supplier<JPostmanInfo> infoSupplier;
+		private boolean matched;
+
+		private RunnerRules(Supplier<C> contextSupplier, Supplier<JPostmanInfo> infoSupplier) {
+			this.contextSupplier = contextSupplier;
+			this.infoSupplier = infoSupplier;
+		}
+
+		/**
+		 * Creates a condition that matches only when all supplied values match the
+		 * current runner request name. Each value can be exact text or a regular
+		 * expression.
+		 *
+		 * @param values required request names or regular expressions
+		 * @return pending runner condition
+		 */
+		public RunnerCondition<C> has(String... values) {
+			return new RunnerCondition<>(this, hasAll(values));
+		}
+
+		/**
+		 * Creates a condition that matches when any supplied value matches the current
+		 * runner request name. Each value can be exact text or a regular expression.
+		 *
+		 * @param values candidate request names or regular expressions
+		 * @return pending runner condition
+		 */
+		public RunnerCondition<C> any(String... values) {
+			return new RunnerCondition<>(this, hasAny(values));
+		}
+
+		/**
+		 * Returns the current runner request name.
+		 *
+		 * @return current request name, or an empty string when no runner request is
+		 *         active
+		 */
+		public String request() {
+			JPostmanInfo info = info();
+			return info == null || info.request == null ? "" : info.request;
+		}
+
+		/**
+		 * Runs the action when no previous {@link #has(String...)} or
+		 * {@link #any(String...)} condition matched in this rule chain.
+		 *
+		 * @param action default action to run with the active context
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> otherwise(Consumer<C> action) {
+			if (!matched && action != null) {
+				action.accept(context());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action when no previous {@link #has(String...)} or
+		 * {@link #any(String...)} condition matched in this rule chain.
+		 *
+		 * @param action default action to run with the active context and info
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> otherwise(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			if (!matched && action != null) {
+				action.accept(context(), info());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action only for the last executed request in the current runner.
+		 *
+		 * @param action final action to run with the active context
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> end(Consumer<C> action) {
+			if (isLast() && action != null) {
+				action.accept(context());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action only for the last executed request in the current runner.
+		 *
+		 * @param action final action to run with the active context and info
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> end(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			if (isLast() && action != null) {
+				action.accept(context(), info());
+			}
+			return this;
+		}
+
+		private C context() {
+			return contextSupplier == null ? null : contextSupplier.get();
+		}
+
+		private JPostmanInfo info() {
+			return infoSupplier == null ? null : infoSupplier.get();
+		}
+
+		private boolean isLast() {
+			return JPostmanRuntimeRunner.isLast(info());
+		}
+
+		private void matched() {
+			this.matched = true;
+		}
+
+		private boolean hasAll(String... values) {
+			String[] expected = values(values);
+			if (expected.length == 0) {
+				return false;
+			}
+			String request = request();
+			for (String value : expected) {
+				if (!matches(request, value)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		private boolean hasAny(String... values) {
+			String request = request();
+			for (String value : values(values)) {
+				if (matches(request, value)) {
+					return true;
+				}
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * Pending runner condition returned by {@link RunnerRules#has(String...)} and
+	 * {@link RunnerRules#any(String...)}.
+	 *
+	 * @param <C> framework context type
+	 */
+	public static final class RunnerCondition<C> {
+		private final RunnerRules<C> rules;
+		private final boolean matched;
+
+		private RunnerCondition(RunnerRules<C> rules, boolean matched) {
+			this.rules = rules;
+			this.matched = matched;
+		}
+
+		/**
+		 * Runs the action when the condition matched and returns the parent builder.
+		 *
+		 * @param action action to run with the active context
+		 * @return parent runner rule builder for additional chained conditions
+		 */
+		public RunnerRules<C> then(Consumer<C> action) {
+			if (matched) {
+				rules.matched();
+				if (action != null) {
+					action.accept(rules.context());
+				}
+			}
+			return rules;
+		}
+
+		/**
+		 * Runs the action when the condition matched and passes both the active context
+		 * and current execution info.
+		 *
+		 * @param action action to run with the active context and info
+		 * @return parent runner rule builder for additional chained conditions
+		 */
+		public RunnerRules<C> then(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			if (matched) {
+				rules.matched();
+				if (action != null) {
+					action.accept(rules.context(), rules.info());
+				}
+			}
+			return rules;
+		}
+	}
+
+	private static boolean matches(String actual, String expected) {
+		String pattern = value(expected).trim();
+		if (actual == null || pattern.isBlank()) {
+			return false;
+		}
+		if (pattern.equals(actual)) {
+			return true;
+		}
+		try {
+			return Pattern.compile(pattern).matcher(actual).matches();
+		} catch (PatternSyntaxException ignored) {
+			return false;
+		}
+	}
+
+	private static String[] values(String[] values) {
+		if (values == null) {
+			return new String[0];
+		}
+		return Arrays.stream(values).filter(v -> !value(v).trim().isBlank()).map(String::trim).toArray(String[]::new);
+	}
+
+	private static String value(String value) {
+		return value == null ? "" : value;
 	}
 
 	/**

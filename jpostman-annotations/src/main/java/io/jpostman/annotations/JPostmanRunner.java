@@ -158,4 +158,12 @@ public @interface JPostmanRunner {
 	 */
 	boolean enabled() default false;
 
+	/**
+	 * Skips this runner/test execution before dependencies or request execution
+	 * run.
+	 *
+	 * @return {@code true} to skip this runner/test execution
+	 */
+	boolean skip() default false;
+
 }

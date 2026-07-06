@@ -935,36 +935,6 @@ public class JPostmanAnnotationUnitTest {
 				"Actual message: " + error.getMessage());
 	}
 
-	// @JPostmanResponse(skipReason = ...) should skip without requiring skip =
-	// true.
-	private static final class JPostmanResponseSkipReasonFixture {
-		@JPostmanContext(collection = COLLECTION)
-		private JPostman.Context jctx;
-
-		@JPostmanExecutor
-		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
-			return okExecutor("{}", 200);
-		}
-
-		@Test
-		@JPostmanResponse(request = "Login user and get tokens", skipReason = "Temporarily disabled while testing session executor")
-		public void login() {
-		}
-	}
-
-	@Test(enabled = ENABLED)
-	public void testJPostmanResponseSkipReasonFixture() throws Exception {
-		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
-		JPostmanResponseSkipReasonFixture fixture = new JPostmanResponseSkipReasonFixture();
-		Method method = JPostmanResponseSkipReasonFixture.class.getDeclaredMethod("login");
-		runner.setup(fixture);
-
-		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
-				+ "Temporarily disabled while testing session executor\n"
-				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
-	}
-
 	// @JPostmanContext(skipAll = true) should skip response tests by default.
 	private static final class JPostmanContextSkipAllFixture {
 		@JPostmanContext(collection = COLLECTION, skipAll = true)
@@ -1047,40 +1017,8 @@ public class JPostmanAnnotationUnitTest {
 		assertEquals(debug(error.getMessage()), "Invalid JPostman skip configuration.\n"
 				+ "enabled and skip cannot be defined on the same @JPostmanResponse annotation.\n"
 				+ "Use enabled = true to override @JPostmanContext(skipAll = true),\n"
-				+ "or use skip = true / skipReason to disable this response.\n"
+				+ "or use skip = true to disable this response.\n"
 				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
-	}
-
-	// enabled and skipReason cannot be used together on @JPostmanResponse.
-	private static final class JPostmanResponseEnabledAndSkipReasonFixture {
-		@JPostmanContext(collection = COLLECTION)
-		private JPostman.Context jctx;
-
-		@JPostmanExecutor
-		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
-			return okExecutor("{}", 200);
-		}
-
-		@Test
-		@JPostmanResponse(request = "Login user and get tokens", enabled = true, skipReason = "Temporarily disabled")
-		public void login() {
-		}
-	}
-
-	@Test(enabled = ENABLED)
-	public void testJPostmanResponseEnabledAndSkipReasonFixture() throws Exception {
-		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
-		JPostmanResponseEnabledAndSkipReasonFixture fixture = new JPostmanResponseEnabledAndSkipReasonFixture();
-		Method method = JPostmanResponseEnabledAndSkipReasonFixture.class.getDeclaredMethod("login");
-		runner.setup(fixture);
-
-		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "Invalid JPostman skip configuration.\n"
-				+ "enabled and skip cannot be defined on the same @JPostmanResponse annotation.\n"
-				+ "Use enabled = true to override @JPostmanContext(skipAll = true),\n"
-				+ "or use skip = true / skipReason to disable this response.\n"
-				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
-				"Actual message: " + error.getMessage());
 	}
 
 	// @JPostmanRequest(skip = true) should be allowed when used as a dependency.
@@ -1123,7 +1061,7 @@ public class JPostmanAnnotationUnitTest {
 			return okExecutor("{}", 200);
 		}
 
-		@JPostmanRequest(skipReason = "Skip setup dependency")
+		@JPostmanRequest
 		public void skippedSetup() {
 		}
 

@@ -133,10 +133,11 @@ public final class JPostmanAnnotationRunner<C> {
 		debug(testInstance, info);
 
 		if (callAnnotation != null) {
-			if (callAnnotation.skip() || !value(callAnnotation.skipReason()).trim().isBlank()) {
+			validateCallSkipEnabled(callAnnotation, info);
+			if (skipTopLevelCall(callAnnotation, info)) {
 				skipped(report, info);
+				throw JPostmanErrors.skip(framework, info, callSkipLines(callAnnotation, info));
 			}
-			validateCallSkip(callAnnotation, info);
 			registerJPostmanCallRuntime(testInstance, testMethod, prepared, callAnnotation, info);
 			return;
 		}
@@ -150,9 +151,12 @@ public final class JPostmanAnnotationRunner<C> {
 				}
 			}
 
-			if (runnerAnnotation != null && skipTopLevelRunner(runnerAnnotation, info)) {
-				skipped(report, info);
-				throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
+			if (runnerAnnotation != null) {
+				validateRunnerSkipEnabled(runnerAnnotation, info);
+				if (skipTopLevelRunner(runnerAnnotation, info)) {
+					skipped(report, info);
+					throw JPostmanErrors.skip(framework, info, runnerSkipLines(runnerAnnotation, info));
+				}
 			}
 
 			if (requestAnnotation != null) {
@@ -200,12 +204,6 @@ public final class JPostmanAnnotationRunner<C> {
 		if (requestAnnotation != null || responseAnnotation != null || runnerAnnotation != null) {
 			throw new IllegalStateException("@JPostman.Call cannot be combined with @JPostman.Request, "
 					+ "@JPostman.Response, or @JPostman.Runner on the same method: " + testMethod.getName());
-		}
-	}
-
-	private void validateCallSkip(JPostmanCall annotation, JPostmanInfo info) {
-		if (annotation.skip() || !value(annotation.skipReason()).isBlank()) {
-			throw JPostmanErrors.skip(framework, info, "JPostman call skipped.", value(annotation.skipReason()).trim());
 		}
 	}
 
@@ -642,7 +640,13 @@ public final class JPostmanAnnotationRunner<C> {
 		runnerInfo.method(dependencyMethod.getName());
 		resolver.info(runnerInfo);
 		applyData(testInstance, resolver, runnerInfo, annotation.data(), stack);
-		add(report(testInstance), runnerInfo);
+		JPostmanReport report = report(testInstance);
+		add(report, runnerInfo);
+		validateRunnerSkipEnabled(annotation, runnerInfo);
+		if (skipRunner(annotation)) {
+			skipped(report, runnerInfo);
+			throw JPostmanErrors.skip(framework, runnerInfo, runnerSkipLines(annotation, runnerInfo));
+		}
 		runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
 			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
 					runnerInfo.withTags(annotation.tags()), stack);
@@ -1028,6 +1032,62 @@ public final class JPostmanAnnotationRunner<C> {
 		// executors are accepted for @JPostmanRunner too.
 		executorCall(testInstance, resolver.context(info.namespace), info);
 
+		List<String> executableRequestNames = runnerExecutableRequestNames(testInstance, info, requestNames, includes,
+				excludes, skipped);
+
+		if (notifyAfterRequest) {
+			JPostmanRuntimeRunner.begin(executableRequestNames);
+		}
+
+		try {
+			for (int requestIndex = 0; requestIndex < executableRequestNames.size(); requestIndex++) {
+				String requestName = executableRequestNames.get(requestIndex);
+				JPostmanInfo requestInfo = info.runnerRequest(requestName).annotation("@JPostmanRunner");
+				resolver.info(requestInfo);
+				add(report, requestInfo);
+				C ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo,
+						requestName);
+				resolver.update(info.namespace, ctx);
+				framework.setCurrent(ctx);
+				applyData(testInstance, resolver, requestInfo, annotation.data(), stack);
+				ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo,
+						requestName);
+				resolver.update(info.namespace, ctx);
+				framework.setCurrent(ctx);
+
+				executed++;
+				try {
+					executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
+					notifyAfterRunnerRequest(notifyAfterRequest, requestIndex, requestName);
+				} catch (Exception | Error e) {
+					if (!annotation.soft()) {
+						throw e;
+					}
+					failures.add(locationError(requestInfo, e));
+				}
+			}
+		} finally {
+			if (notifyAfterRequest) {
+				JPostmanRuntimeRunner.clear();
+			}
+		}
+
+		if (executed == 0) {
+			if (allRunnerRequestsHandledByExplicitAnnotations(requestNames, skipped)) {
+				return;
+			}
+			throw runnerNothingExecutedError(info, requestNames, skipped);
+		}
+
+		if (!failures.isEmpty()) {
+			throw combinedRunnerError(failures);
+		}
+	}
+
+	private List<String> runnerExecutableRequestNames(Object testInstance, JPostmanInfo info, List<String> requestNames,
+			Set<String> includes, Set<String> excludes, List<String> skipped) {
+
+		List<String> executable = new ArrayList<>();
 		for (String requestName : requestNames) {
 			if (!includes.isEmpty() && !includes.contains(requestName)) {
 				skipped.add(requestName + " (not listed in include)");
@@ -1045,64 +1105,47 @@ public final class JPostmanAnnotationRunner<C> {
 				continue;
 			}
 
-			if (requestDiscovery.hasSkippedRequest(testInstance.getClass(), info.namespace, info.folder, requestName)) {
-				skipped.add(requestName + " (skipped by @JPostmanRequest)");
+			if (requestDiscovery.hasExplicitRequest(testInstance.getClass(), info.namespace, info.folder,
+					requestName)) {
+				skipped.add(requestName + " (handled by explicit @JPostmanRequest)");
 				continue;
 			}
 
-			JPostmanInfo requestInfo = info.runnerRequest(requestName).annotation("@JPostmanRunner");
-			resolver.info(requestInfo);
-			add(report, requestInfo);
-			C ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo, requestName);
-			resolver.update(info.namespace, ctx);
-			framework.setCurrent(ctx);
-			applyData(testInstance, resolver, requestInfo, annotation.data(), stack);
-			ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo, requestName);
-			resolver.update(info.namespace, ctx);
-			framework.setCurrent(ctx);
-
-			executed++;
-			try {
-				executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
-				notifyAfterRunnerRequest(notifyAfterRequest);
-			} catch (Exception | Error e) {
-				if (!annotation.soft()) {
-					throw e;
-				}
-				failures.add(locationError(requestInfo, e));
+			if (requestDiscovery.hasExplicitCall(testInstance.getClass(), info.namespace, info.folder, requestName)) {
+				skipped.add(requestName + " (handled by explicit @JPostmanCall)");
+				continue;
 			}
-		}
 
-		if (executed == 0) {
-			if (allRunnerRequestsHandledByExplicitResponses(requestNames, skipped)) {
-				return;
-			}
-			throw runnerNothingExecutedError(info, requestNames, skipped);
+			executable.add(requestName);
 		}
-
-		if (!failures.isEmpty()) {
-			throw combinedRunnerError(failures);
-		}
+		return executable;
 	}
 
-	private void notifyAfterRunnerRequest(boolean enabled) {
+	private void notifyAfterRunnerRequest(boolean enabled, int requestIndex, String requestName) {
 		if (enabled && afterRunnerRequestCallback != null) {
+			JPostmanRuntimeRunner.request(requestIndex, requestName);
 			afterRunnerRequestCallback.run();
 		}
 	}
 
-	private boolean allRunnerRequestsHandledByExplicitResponses(List<String> requestNames, List<String> skipped) {
+	private boolean allRunnerRequestsHandledByExplicitAnnotations(List<String> requestNames, List<String> skipped) {
 		if (requestNames == null || requestNames.isEmpty() || skipped == null
 				|| skipped.size() != requestNames.size()) {
 			return false;
 		}
 
 		for (String reason : skipped) {
-			if (reason == null || !reason.contains("(handled by explicit @JPostmanResponse)")) {
+			if (reason == null || !isExplicitAnnotationSkip(reason)) {
 				return false;
 			}
 		}
 		return true;
+	}
+
+	private boolean isExplicitAnnotationSkip(String reason) {
+		return reason.contains("(handled by explicit @JPostmanResponse)")
+				|| reason.contains("(handled by explicit @JPostmanRequest)")
+				|| reason.contains("(handled by explicit @JPostmanCall)");
 	}
 
 	private AssertionError runnerNothingExecutedError(JPostmanInfo info, List<String> requestNames,
@@ -1121,7 +1164,7 @@ public final class JPostmanAnnotationRunner<C> {
 		return JPostmanErrors.usage(info, "JPostman runner did not execute any requests.",
 				"The target collection location contains requests, but every request was skipped before execution.",
 				details.toString(),
-				"Fix the @JPostmanRunner include/exclude values or remove duplicate explicit @JPostmanResponse methods.");
+				"Fix the @JPostmanRunner include/exclude values or remove duplicate explicit @JPostmanResponse, @JPostmanRequest, or @JPostmanCall methods.");
 	}
 
 	private void warnNoRunnerRequests(Object testInstance, JPostmanInfo info) {
@@ -1707,7 +1750,25 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.usage(info, "Invalid JPostman skip configuration.",
 					"enabled and skip cannot be defined on the same @JPostmanResponse annotation.",
 					"Use enabled = true to override @JPostmanContext(skipAll = true),",
-					"or use skip = true / skipReason to disable this response.");
+					"or use skip = true to disable this response.");
+		}
+	}
+
+	private void validateCallSkipEnabled(JPostmanCall annotation, JPostmanInfo info) {
+		if (annotation != null && annotation.enabled() && skipCall(annotation)) {
+			throw JPostmanErrors.usage(info, "Invalid JPostman skip configuration.",
+					"enabled and skip cannot be defined on the same @JPostmanCall annotation.",
+					"Use enabled = true to override @JPostmanContext(skipAll = true),",
+					"or use skip = true to disable this call.");
+		}
+	}
+
+	private void validateRunnerSkipEnabled(JPostmanRunner annotation, JPostmanInfo info) {
+		if (annotation != null && annotation.enabled() && skipRunner(annotation)) {
+			throw JPostmanErrors.usage(info, "Invalid JPostman skip configuration.",
+					"enabled and skip cannot be defined on the same @JPostmanRunner annotation.",
+					"Use enabled = true to override @JPostmanContext(skipAll = true),",
+					"or use skip = true to disable this runner.");
 		}
 	}
 
@@ -1715,8 +1776,12 @@ public final class JPostmanAnnotationRunner<C> {
 		return skipResponse(annotation) || skipAll(info) && annotation != null && !annotation.enabled();
 	}
 
+	private boolean skipTopLevelCall(JPostmanCall annotation, JPostmanInfo info) {
+		return skipCall(annotation) || skipAll(info) && annotation != null && !annotation.enabled();
+	}
+
 	private boolean skipTopLevelRunner(JPostmanRunner annotation, JPostmanInfo info) {
-		return annotation != null && skipAll(info) && !annotation.enabled();
+		return skipRunner(annotation) || skipAll(info) && annotation != null && !annotation.enabled();
 	}
 
 	private boolean skipAll(JPostmanInfo info) {
@@ -1724,11 +1789,19 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private boolean skipResponse(JPostmanResponse annotation) {
-		return annotation != null && (annotation.skip() || !value(annotation.skipReason()).trim().isBlank());
+		return annotation != null && annotation.skip();
 	}
 
 	private boolean skipRequest(JPostmanRequest annotation) {
-		return annotation != null && (annotation.skip() || !value(annotation.skipReason()).trim().isBlank());
+		return annotation != null && annotation.skip();
+	}
+
+	private boolean skipCall(JPostmanCall annotation) {
+		return annotation != null && annotation.skip();
+	}
+
+	private boolean skipRunner(JPostmanRunner annotation) {
+		return annotation != null && annotation.skip();
 	}
 
 	private String[] responseSkipLines(JPostmanResponse annotation) {
@@ -1736,14 +1809,17 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private String[] responseSkipLines(JPostmanResponse annotation, JPostmanInfo info) {
-		String reason = annotation == null ? "" : value(annotation.skipReason()).trim();
-		if (!reason.isBlank()) {
-			return new String[] { "JPostman response skipped.", reason };
-		}
 		if (skipAll(info) && annotation != null && !annotation.enabled()) {
 			return new String[] { "JPostman response skipped.", "@JPostmanContext(skipAll = true) is enabled." };
 		}
 		return new String[] { "JPostman response skipped." };
+	}
+
+	private String[] callSkipLines(JPostmanCall annotation, JPostmanInfo info) {
+		if (skipAll(info) && annotation != null && !annotation.enabled()) {
+			return new String[] { "JPostman call skipped.", "@JPostmanContext(skipAll = true) is enabled." };
+		}
+		return new String[] { "JPostman call skipped." };
 	}
 
 	private String[] runnerSkipLines(JPostmanRunner annotation, JPostmanInfo info) {

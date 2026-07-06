@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.1.8
+
+## Added
+
+- Added fluent runner rules to `JPostman.Runtime` and `JPostmanRuntime`.
+- Added `runner()` to the compact `JPostman.Runtime<C>` API.
+- Added `end(...)` callback support for runner execution.
+- Added `enabled()` to `@JPostmanCall`.
+- Added `skip()` to `@JPostmanRunner`.
+
+## Removed
+
+- Removed `skipReason()` from all annotation APIs.
+
 ## 2.1.7
 
 ### Added

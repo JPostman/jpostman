@@ -12,6 +12,7 @@ import java.util.Set;
 
 import io.jpostman.Collection;
 import io.jpostman.Request;
+import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 
@@ -54,12 +55,12 @@ final class JPostmanRequestDiscovery {
 		return false;
 	}
 
-	boolean hasSkippedRequest(Class<?> type, String namespace, String folder, String requestName) {
+	boolean hasExplicitRequest(Class<?> type, String namespace, String folder, String requestName) {
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
 				JPostmanRequest request = JPostmanAnnotations.request(method);
-				if (request == null || !skipRequest(request)) {
+				if (request == null) {
 					continue;
 				}
 				if (same(request.namespace(), namespace) && same(request.folder(), folder)
@@ -72,9 +73,22 @@ final class JPostmanRequestDiscovery {
 		return false;
 	}
 
-	private boolean skipRequest(JPostmanRequest request) {
-		return request != null
-				&& (request.skip() || request.skipReason() != null && !request.skipReason().trim().isBlank());
+	boolean hasExplicitCall(Class<?> type, String namespace, String folder, String requestName) {
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				JPostmanCall call = JPostmanAnnotations.call(method);
+				if (call == null) {
+					continue;
+				}
+				if (same(call.namespace(), namespace) && same(call.folder(), folder)
+						&& same(call.request(), requestName)) {
+					return true;
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return false;
 	}
 
 	Set<String> normalizeNames(String[] values) {

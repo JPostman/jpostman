@@ -111,7 +111,7 @@ public class JPostmanAnnotationContextRegressionTest {
 			assertEquals("login", jpostman.ctx("").path("source"));
 		}
 
-		@JPostman.Response(tags = "shoes", dependsOn = "newProduct", skipReason = "Testing")
+		@JPostman.Response(tags = "shoes", dependsOn = "newProduct", skip = true)
 		@org.testng.annotations.Test
 		public void newShoesProduct() {
 		}

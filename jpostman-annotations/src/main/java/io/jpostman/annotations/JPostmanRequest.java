@@ -172,14 +172,6 @@ public @interface JPostmanRequest {
 	boolean skip() default false;
 
 	/**
-	 * Optional reason used when this request helper or matched runner request is
-	 * skipped.
-	 *
-	 * @return skip reason, or empty string when not provided
-	 */
-	String skipReason() default "";
-
-	/**
 	 * Local automatic JPostman failure output mode. Values are single-choice; use
 	 * one value only.
 	 *

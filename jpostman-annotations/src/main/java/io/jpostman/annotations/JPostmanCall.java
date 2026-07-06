@@ -47,9 +47,14 @@ public @interface JPostmanCall {
 	/** @return data section name */
 	String data() default "";
 
+	/**
+	 * Runs this call even when {@link JPostmanContext#skipAll()} is enabled.
+	 *
+	 * @return {@code true} to opt in while skipAll is active
+	 */
+	boolean enabled() default false;
+
 	/** @return true to skip this call */
 	boolean skip() default false;
 
-	/** @return optional skip reason shown in framework skip output */
-	String skipReason() default "";
 }

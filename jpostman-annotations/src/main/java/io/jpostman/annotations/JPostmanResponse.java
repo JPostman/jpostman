@@ -195,11 +195,4 @@ public @interface JPostmanResponse {
 	 */
 	boolean skip() default false;
 
-	/**
-	 * Optional reason used when this response/test execution is skipped.
-	 *
-	 * @return skip reason, or empty string when not provided
-	 */
-	String skipReason() default "";
-
 }

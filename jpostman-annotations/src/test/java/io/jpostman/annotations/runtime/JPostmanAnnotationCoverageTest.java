@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -1189,6 +1190,47 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies runtime runner rules match the current request name and run end only
+	 * for the last executed runner request.
+	 */
+	@Test
+	public void runtimeRunnerRulesMatchRequestNamesAndEndOnlyOnLastRequest() {
+		AtomicReference<String> request = new AtomicReference<>("Get all products");
+		TestNgContext context = TestNgContext.create();
+		JPostmanRuntime<TestNgContext> runtime = new JPostmanRuntime<>(null, "", namespace -> context, () -> context,
+				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", request.get()));
+		AtomicInteger getAllMatched = new AtomicInteger();
+		AtomicInteger searchMatched = new AtomicInteger();
+		AtomicInteger otherwiseMatched = new AtomicInteger();
+		AtomicInteger ended = new AtomicInteger();
+
+		JPostmanRuntimeRunner.begin(List.of("Get all products", "Search products"));
+		try {
+			JPostmanRuntimeRunner.request(0, "Get all products");
+			runtime.runner().has("Get all products").then(test -> {
+				assertSame(context, test);
+				getAllMatched.incrementAndGet();
+			}).any("Search.*", "Limit.*").then((test, info) -> searchMatched.incrementAndGet())
+					.otherwise(test -> otherwiseMatched.incrementAndGet()).end(test -> ended.incrementAndGet());
+
+			request.set("Search products");
+			JPostmanRuntimeRunner.request(1, "Search products");
+			runtime.runner().has("Get all products").then(test -> getAllMatched.incrementAndGet())
+					.any("Search.*", "Limit.*").then((test, info) -> {
+						assertEquals("Search products", info.attr().request);
+						searchMatched.incrementAndGet();
+					}).otherwise(test -> otherwiseMatched.incrementAndGet()).end(test -> ended.incrementAndGet());
+		} finally {
+			JPostmanRuntimeRunner.clear();
+		}
+
+		assertEquals(1, getAllMatched.get());
+		assertEquals(1, searchMatched.get());
+		assertEquals(0, otherwiseMatched.get());
+		assertEquals(1, ended.get());
+	}
+
+	/**
 	 * Verifies JPostmanInfo keeps a single tag chain and searches only
 	 * {@link JPostmanInfo#tags}.
 	 */
@@ -1964,7 +2006,7 @@ public class JPostmanAnnotationCoverageTest {
 		private String executorMethodName;
 		private String executorRequestName;
 
-		@JPostmanRequest(request = "Login user and get tokens", cache = "runnerToken")
+		@JPostmanRequest(cache = "runnerToken")
 		String runnerDependency() {
 			runnerDependencyCount++;
 			return "runner-token";
