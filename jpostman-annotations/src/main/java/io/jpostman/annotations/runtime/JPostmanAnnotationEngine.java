@@ -64,9 +64,26 @@ public final class JPostmanAnnotationEngine {
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod) throws Exception {
+		runJUnit(testInstance, testMethod, null);
+	}
+
+	/**
+	 * Runs JPostman annotation support for a JUnit test method and optionally
+	 * invokes a callback after each top-level @JPostmanRunner request completes.
+	 *
+	 * @param testInstance               JUnit test instance
+	 * @param testMethod                 current JUnit test method
+	 * @param afterRunnerRequestCallback callback invoked after each runner request,
+	 *                                   or null when no per-request callback is
+	 *                                   needed
+	 * @throws Exception when annotation execution fails
+	 */
+	public static void runJUnit(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
+			throws Exception {
 		JPostmanAnnotationValidator.validateTestMethod(testMethod);
 		try {
-			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).run(testInstance, testMethod);
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework(), afterRunnerRequestCallback).run(testInstance,
+					testMethod);
 		} catch (Throwable e) {
 			Throwable root = JPostmanStackTraceCleaner.rootCause(e);
 			if (JPostmanStackTraceCleaner.isJUnitSkip(root)) {

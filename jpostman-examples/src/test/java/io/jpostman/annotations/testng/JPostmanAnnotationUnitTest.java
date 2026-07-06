@@ -349,7 +349,7 @@ public class JPostmanAnnotationUnitTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400LogsFixture {
-		@JPostmanContext(verifyStatusCode = 200, debug = { "request",
+		@JPostmanContext(verifyStatusCode = 200, logs = { "request",
 				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 

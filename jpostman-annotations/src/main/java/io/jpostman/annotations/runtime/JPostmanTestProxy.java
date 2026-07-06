@@ -85,15 +85,15 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier) {
-		return wrapAssert(null, activeContextSupplier);
+		return wrapAssert(null, activeContextSupplier, false);
 	}
 
-	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier) {
+	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier, boolean soft) {
 		if (target instanceof JPostman.Assert) {
 			return (JPostman.Assert) target;
 		}
 		return (JPostman.Assert) Proxy.newProxyInstance(JPostman.Assert.class.getClassLoader(),
-				new Class<?>[] { JPostman.Assert.class }, new JPostmanAssertProxy(target, activeContextSupplier));
+				new Class<?>[] { JPostman.Assert.class }, new JPostmanAssertProxy(target, activeContextSupplier, soft));
 	}
 
 	@Override
@@ -116,7 +116,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		Method targetMethod = findTargetMethod(target, name, args);
 		Object result = invokeTarget(targetMethod, target, args);
-		return adaptContextReturn(proxy, method, result);
+		return adaptContextReturn(proxy, method, result, activeContextSupplier);
 	}
 
 	private static final class JPostmanAssertionProxy implements InvocationHandler {
@@ -153,10 +153,12 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		private final Object target;
 		private final Supplier<?> activeContextSupplier;
+		private final boolean soft;
 
-		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier) {
+		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier, boolean soft) {
 			this.target = target;
 			this.activeContextSupplier = activeContextSupplier;
+			this.soft = soft;
 		}
 
 		@Override
@@ -176,13 +178,49 @@ final class JPostmanTestProxy implements InvocationHandler {
 			}
 			if ("soft".equals(name) && method.getParameterCount() == 1) {
 				Object soft = invokeContext("soft", args);
-				return wrapAssert(soft, activeContextSupplier);
+				return wrapAssert(soft, activeContextSupplier, true);
+			}
+
+			if (soft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
+				AssertionError failure = JPostmanRuntimeRunner.softFailure(null);
+				if (failure != null) {
+					throw failure;
+				}
+				return adaptAssertReturn(proxy, method, null, soft);
 			}
 
 			Object value = assertionTarget();
 			Method targetMethod = findTargetMethod(value, name, args);
-			Object result = invokeTarget(targetMethod, value, args);
-			return adaptAssertReturn(proxy, method, result);
+			AssertionError localSoftFailure = soft && JPostmanRuntimeRunner.active()
+					? localSoftFailure(targetMethod, args, value)
+					: null;
+			if (localSoftFailure != null) {
+				JPostmanRuntimeRunner.recordSoftFailure(localSoftFailure);
+				return adaptAssertReturn(proxy, method, null, soft);
+			}
+
+			Object result;
+			try {
+				result = invokeTarget(targetMethod, value, args);
+			} catch (AssertionError e) {
+				if (soft && isVerifyMethod(name)) {
+					throw JPostmanRuntimeRunner.softFailure(e);
+				}
+				throw e;
+			}
+			if (soft && isVerifyMethod(name)) {
+				AssertionError failure = JPostmanRuntimeRunner.softFailure(null);
+				if (failure != null) {
+					throw failure;
+				}
+			}
+			if (soft && JPostmanRuntimeRunner.active()
+					&& shouldFailFast(targetMethod, result == null ? value : result)) {
+				recordSoftFailure(result == null ? value : result);
+			} else if (!soft && shouldFailFast(targetMethod, result == null ? value : result)) {
+				verifyNow(result == null ? value : result);
+			}
+			return adaptAssertReturn(proxy, method, result, soft);
 		}
 
 		private Object assertionTarget() throws Throwable {
@@ -203,12 +241,19 @@ final class JPostmanTestProxy implements InvocationHandler {
 		}
 	}
 
-	private static Object adaptContextReturn(Object proxy, Method method, Object result) {
+	private static Object adaptContextReturn(Object proxy, Method method, Object result,
+			Supplier<?> activeContextSupplier) {
 		Class<?> returnType = method.getReturnType();
 		String name = method.getName();
 
 		if (returnType == Void.TYPE) {
 			return null;
+		}
+		if (returnType == JPostman.Assert.class) {
+			return wrapAssert(result, activeContextSupplier, "soft".equals(name));
+		}
+		if (proxy instanceof JPostman.Test && ("asserts".equals(name) || "soft".equals(name))) {
+			return wrapAssert(result, activeContextSupplier, "soft".equals(name));
 		}
 		if ("asserts".equals(name) || returnType == JPostmanTestAssertions.class || returnsTypeVariable(method, "A")) {
 			return wrapAssertions(result);
@@ -246,14 +291,14 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return result;
 	}
 
-	private static Object adaptAssertReturn(Object proxy, Method method, Object result) {
+	private static Object adaptAssertReturn(Object proxy, Method method, Object result, boolean soft) {
 		Class<?> returnType = method.getReturnType();
 
 		if (returnType == Void.TYPE) {
 			return null;
 		}
 		if (returnType == JPostman.Assert.class || returnsTypeVariable(method, "A")) {
-			return result == null ? proxy : wrapAssert(result, null);
+			return result == null ? proxy : wrapAssert(result, null, soft);
 		}
 		if (returnType == JPostman.Test.class || returnsTypeVariable(method, "C")) {
 			return result == null ? null : wrap(result);
@@ -262,6 +307,76 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return result;
 		}
 		return result;
+	}
+
+	private static AssertionError localSoftFailure(Method method, Object[] args, Object target) {
+		if (method == null || args == null || args.length == 0) {
+			return null;
+		}
+
+		String name = method.getName();
+		if ("isTrue".equals(name) && args[0] instanceof Boolean && !((Boolean) args[0]).booleanValue()) {
+			return booleanFailure(target, args, true, false);
+		}
+		if ("isFalse".equals(name) && args[0] instanceof Boolean && ((Boolean) args[0]).booleanValue()) {
+			return booleanFailure(target, args, false, true);
+		}
+		return null;
+	}
+
+	private static AssertionError booleanFailure(Object target, Object[] args, boolean expected, boolean actual) {
+		String message = args.length > 1 && args[1] != null ? String.valueOf(args[1]).trim() : "Assertion failed";
+		String text = testNgStyle(target) ? message + " expected [" + expected + "] but found [" + actual + "]"
+				: message + " ==> expected: <" + expected + "> but was: <" + actual + ">";
+		return new AssertionError(text);
+	}
+
+	private static boolean testNgStyle(Object target) {
+		String name = target == null ? "" : target.getClass().getName().toLowerCase();
+		return name.contains("testng");
+	}
+
+	private static boolean shouldFailFast(Method method, Object result) {
+		String name = method.getName();
+		if (isVerifyMethod(name) || "context".equals(name)) {
+			return false;
+		}
+		if (returnsTypeVariable(method, "A")) {
+			return true;
+		}
+		return hasNoArgMethod(result, "verify");
+	}
+
+	private static boolean isVerifyMethod(String name) {
+		return "verify".equals(name) || "assertAll".equals(name);
+	}
+
+	private static void recordSoftFailure(Object target) throws Throwable {
+		try {
+			verifyNow(target);
+		} catch (AssertionError e) {
+			JPostmanRuntimeRunner.recordSoftFailure(e);
+		}
+	}
+
+	private static void verifyNow(Object target) throws Throwable {
+		if (target == null) {
+			return;
+		}
+		Method verify = findTargetMethod(target, "verify", null);
+		invokeTarget(verify, target, null);
+	}
+
+	private static boolean hasNoArgMethod(Object target, String name) {
+		if (target == null) {
+			return false;
+		}
+		for (Method method : target.getClass().getMethods()) {
+			if (name.equals(method.getName()) && method.getParameterCount() == 0) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean returnsTypeVariable(Method method, String name) {

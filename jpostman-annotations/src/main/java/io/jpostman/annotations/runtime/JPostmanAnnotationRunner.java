@@ -1057,13 +1057,16 @@ public final class JPostmanAnnotationRunner<C> {
 
 				executed++;
 				try {
-					executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
-					notifyAfterRunnerRequest(notifyAfterRequest, requestIndex, requestName);
+					executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack,
+							deferRunnerSoftVerification(notifyAfterRequest, annotation));
+					notifyAfterRunnerRequest(testInstance, notifyAfterRequest, requestIndex, requestName,
+							latestContext(resolver, requestInfo.namespace, ctx), annotation, requestInfo,
+							collectRunnerFrameworkAssertions(annotation));
 				} catch (Exception | Error e) {
-					if (!annotation.soft()) {
+					if (!annotation.soft() && !JPostmanRuntimeRunner.isSoftFailure(e)) {
 						throw e;
 					}
-					failures.add(locationError(requestInfo, e));
+					failures.add(locationError(testInstance, requestInfo, e));
 				}
 			}
 		} finally {
@@ -1080,7 +1083,7 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		if (!failures.isEmpty()) {
-			throw combinedRunnerError(failures);
+			throw combinedRunnerError(testInstance, failures);
 		}
 	}
 
@@ -1121,11 +1124,79 @@ public final class JPostmanAnnotationRunner<C> {
 		return executable;
 	}
 
-	private void notifyAfterRunnerRequest(boolean enabled, int requestIndex, String requestName) {
-		if (enabled && afterRunnerRequestCallback != null) {
-			JPostmanRuntimeRunner.request(requestIndex, requestName);
-			afterRunnerRequestCallback.run();
+	private boolean deferRunnerSoftVerification(boolean notifyAfterRequest, JPostmanRunner annotation) {
+		return notifyAfterRequest && afterRunnerRequestCallback != null && annotation != null && annotation.soft();
+	}
+
+	private boolean collectRunnerFrameworkAssertions(JPostmanRunner annotation) {
+		return annotation != null && annotation.soft()
+				&& (annotation.verify() != 0 || annotation.asserts() != null && annotation.asserts().length > 0);
+	}
+
+	private void notifyAfterRunnerRequest(Object testInstance, boolean enabled, int requestIndex, String requestName,
+			C ctx, JPostmanRunner annotation, JPostmanInfo info, boolean collectFrameworkAssertions) {
+		if (!enabled || afterRunnerRequestCallback == null) {
+			return;
 		}
+
+		JPostmanRuntimeRunner.request(requestIndex, requestName);
+		Throwable callbackFailure = null;
+		try {
+			afterRunnerRequestCallback.run();
+		} catch (Exception | Error e) {
+			callbackFailure = e;
+		}
+
+		AssertionError localSoftFailure = JPostmanRuntimeRunner.takeSoftFailure();
+		AssertionError callbackAssertion = callbackFailure == null ? null
+				: callbackFailure instanceof AssertionError ? (AssertionError) callbackFailure
+						: locationError(testInstance, info, callbackFailure);
+		AssertionError requestFailure = callbackAssertion != null ? callbackAssertion : localSoftFailure;
+		if (annotation != null && annotation.soft()) {
+			AssertionError frameworkFailure = collectFrameworkAssertions
+					? runnerFrameworkAssertionFailure(testInstance, ctx, info, annotation)
+					: null;
+
+			AssertionError combined = JPostmanRuntimeRunner.combineSoftFailures(requestFailure, frameworkFailure);
+			if (combined != null) {
+				throw combined;
+			}
+			return;
+		}
+
+		if (requestFailure != null) {
+			throw requestFailure;
+		}
+		if (!JPostmanRuntimeRunner.hasCollectedSoftFailure()) {
+			framework.verifyAssertions(ctx);
+		}
+	}
+
+	private AssertionError runnerFrameworkAssertionFailure(Object testInstance, C ctx, JPostmanInfo info,
+			JPostmanRunner annotation) {
+		AssertionError result = null;
+		if (annotation != null && annotation.verify() != 0) {
+			try {
+				verifyResponse(testInstance, ctx, info, annotation.verify(), false, annotation.log());
+			} catch (AssertionError e) {
+				result = e;
+			}
+		}
+		boolean hasRunnerAssertions = annotation != null && annotation.asserts() != null
+				&& annotation.asserts().length > 0;
+		if (hasRunnerAssertions) {
+			try {
+				framework.verifyAssertions(ctx);
+			} catch (AssertionError e) {
+				result = JPostmanRuntimeRunner.combineSoftFailures(result, e);
+			}
+			try {
+				framework.verifySoftAssertions(ctx);
+			} catch (AssertionError e) {
+				result = JPostmanRuntimeRunner.combineSoftFailures(result, e);
+			}
+		}
+		return result;
 	}
 
 	private boolean allRunnerRequestsHandledByExplicitAnnotations(List<String> requestNames, List<String> skipped) {
@@ -1200,7 +1271,8 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void executeRunnerResponse(Object testInstance, PreparedContexts<C> resolver, C ctx,
-			JPostmanRunner annotation, JPostmanInfo info, List<String> stack) throws Exception {
+			JPostmanRunner annotation, JPostmanInfo info, List<String> stack, boolean deferSoftVerification)
+			throws Exception {
 
 		rejectVerifyAndAsserts(annotation, info);
 
@@ -1243,7 +1315,9 @@ public final class JPostmanAnnotationRunner<C> {
 			logOutput(testInstance, ctx, info, annotation.log());
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.soft(),
 					annotation.log());
-			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
+			if (!deferSoftVerification) {
+				verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.soft(), annotation.log());
+			}
 			passed(report, info);
 		} catch (Exception | Error e) {
 			failed(report, info);
@@ -1583,10 +1657,14 @@ public final class JPostmanAnnotationRunner<C> {
 		return null;
 	}
 
-	private AssertionError locationError(JPostmanInfo info, Throwable cause) {
+	private AssertionError locationError(Object testInstance, JPostmanInfo info, Throwable cause) {
 		StringBuilder message = new StringBuilder();
 
-		String causeMessage = cause == null ? "" : value(cause.getMessage()).trim();
+		Throwable root = cause == null ? null : JPostmanStackTraceCleaner.rootCause(cause);
+		String causeMessage = JPostmanRuntimeRunner.failureMessage(root == null ? cause : root).trim();
+		if (causeMessage.isBlank()) {
+			causeMessage = root == null ? "" : value(root.getMessage()).trim();
+		}
 		if (!causeMessage.isBlank()) {
 			message.append(JPostmanErrors.ENDL).append(causeMessage);
 		}
@@ -1595,11 +1673,54 @@ public final class JPostmanAnnotationRunner<C> {
 		if (cause != null) {
 			error.initCause(cause);
 		}
+		if (root != null && root.getStackTrace() != null && root.getStackTrace().length > 0) {
+			error.setStackTrace(root.getStackTrace());
+		}
 
 		return error;
 	}
 
-	private AssertionError combinedRunnerError(List<Throwable> failures) {
+	private String failureLocation(Object testInstance, Throwable cause) {
+		if (cause == null || cause.getStackTrace() == null) {
+			return "";
+		}
+		StackTraceElement preferred = preferredTestFrame(testInstance, cause);
+		if (preferred != null) {
+			return "\tat " + preferred;
+		}
+		for (StackTraceElement element : cause.getStackTrace()) {
+			if (element == null || element.getLineNumber() < 0) {
+				continue;
+			}
+			String className = value(element.getClassName());
+			if (className.startsWith("io.jpostman.") || className.startsWith("java.") || className.startsWith("jdk.")
+					|| className.startsWith("org.junit.") || className.startsWith("org.testng.")
+					|| className.startsWith("org.eclipse.")) {
+				continue;
+			}
+			return "\tat " + element;
+		}
+		return "";
+	}
+
+	private StackTraceElement preferredTestFrame(Object testInstance, Throwable cause) {
+		if (testInstance == null || cause == null || cause.getStackTrace() == null) {
+			return null;
+		}
+		String testClassName = testInstance.getClass().getName();
+		for (StackTraceElement element : cause.getStackTrace()) {
+			if (element == null || element.getLineNumber() < 0) {
+				continue;
+			}
+			String className = value(element.getClassName());
+			if (className.equals(testClassName) || className.startsWith(testClassName + "$")) {
+				return element;
+			}
+		}
+		return null;
+	}
+
+	private AssertionError combinedRunnerError(Object testInstance, List<Throwable> failures) {
 		StringBuilder message = new StringBuilder();
 
 		message.append("JPostman runner failed for ").append(failures.size())
@@ -1609,11 +1730,23 @@ public final class JPostmanAnnotationRunner<C> {
 			String failureMessage = failure == null ? "" : value(failure.getMessage()).trim();
 
 			if (!failureMessage.isBlank()) {
-				message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append(failureMessage);
+				message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL);
+				String location = failureLocation(testInstance, failure);
+				if (!location.isBlank()) {
+					message.append(location).append(JPostmanErrors.ENDL);
+				}
+				message.append(failureMessage);
 			}
 		}
 
-		return new AssertionError(message.toString() + JPostmanErrors.ENDL);
+		AssertionError error = new AssertionError(message.toString() + JPostmanErrors.ENDL);
+		for (Throwable failure : failures) {
+			if (failure != null && failure.getStackTrace() != null && failure.getStackTrace().length > 0) {
+				error.setStackTrace(failure.getStackTrace());
+				break;
+			}
+		}
+		return error;
 	}
 
 	private boolean failureDiagnostics(Object testInstance, String annotationLog, JPostmanInfo info) {

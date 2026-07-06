@@ -350,7 +350,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400LogsFixture {
-		@JPostmanContext(verifyStatusCode = 200, debug = { "request",
+		@JPostmanContext(verifyStatusCode = 200, logs = { "request",
 				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
@@ -420,7 +420,8 @@ public class JPostmanAnnotationFunctionalTest {
 
 	// The following asserts failed
 	private static final class ExecutionFailedSoftVerifyFixture {
-		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, logs = { "request",
+				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanTestContext
@@ -446,18 +447,18 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		runner.run(fixture, method);
 		AssertionError error = expectThrows(AssertionError.class, () -> invokeTestMethod(fixture, method));
-		assertEquals(debug(error.getMessage()), "The following asserts failed:\n"
+		assertTrue(debug(error.getMessage()).contains("The following asserts failed:\n"
 				+ "	(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Get current auth user, executor=<default>)\n"
-				+ "Status code mismatch: expected [200] but found [401]\n");
-		assertFalse(error.getMessage().contains("********** SecureRequest: **********"),
+				+ "Status code mismatch: expected [200] but found [401]\n"));
+		assertTrue(error.getMessage().contains("********** SecureRequest: **********"),
 				"Actual message: " + error.getMessage());
-		assertFalse(error.getMessage().contains("**********SecureResponse: **********"),
+		assertTrue(error.getMessage().contains("**********SecureResponse: **********"),
 				"Actual message: " + error.getMessage());
 	}
 
 	// The following asserts failed
 	private static final class ExecutionFailedSoftVerifyTrueFixture {
-		@JPostmanContext(verifyStatusCode = 200, debug = { "request",
+		@JPostmanContext(verifyStatusCode = 200, logs = { "request",
 				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 

@@ -45,7 +45,7 @@ final class JPostmanRequestDiscovery {
 					continue;
 				}
 
-				if (same(response.namespace(), namespace) && same(response.folder(), folder)
+				if (sameScope(response.namespace(), namespace) && sameScope(response.folder(), folder)
 						&& same(response.request(), requestName)) {
 					return true;
 				}
@@ -63,7 +63,7 @@ final class JPostmanRequestDiscovery {
 				if (request == null) {
 					continue;
 				}
-				if (same(request.namespace(), namespace) && same(request.folder(), folder)
+				if (sameScope(request.namespace(), namespace) && sameScope(request.folder(), folder)
 						&& same(request.request(), requestName)) {
 					return true;
 				}
@@ -81,7 +81,7 @@ final class JPostmanRequestDiscovery {
 				if (call == null) {
 					continue;
 				}
-				if (same(call.namespace(), namespace) && same(call.folder(), folder)
+				if (sameScope(call.namespace(), namespace) && sameScope(call.folder(), folder)
 						&& same(call.request(), requestName)) {
 					return true;
 				}
@@ -104,9 +104,18 @@ final class JPostmanRequestDiscovery {
 		return result;
 	}
 
+	private boolean sameScope(String explicit, String active) {
+		String configured = explicit == null ? "" : explicit.trim();
+		if (configured.isBlank()) {
+			return true;
+		}
+		String current = active == null ? "" : active.trim();
+		return configured.equals(current);
+	}
+
 	private boolean same(String first, String second) {
-		String a = first == null ? "" : first;
-		String b = second == null ? "" : second;
+		String a = first == null ? "" : first.trim();
+		String b = second == null ? "" : second.trim();
 		return a.equals(b);
 	}
 

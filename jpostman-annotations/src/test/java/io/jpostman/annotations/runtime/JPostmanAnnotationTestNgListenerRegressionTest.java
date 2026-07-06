@@ -52,6 +52,27 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
+	public void listenerDoesNotRunRunnerBodyAfterRunnerStatusFailure() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		RunnerStatusFailureFixture fixture = new RunnerStatusFailureFixture();
+		Method method = RunnerStatusFailureFixture.class.getDeclaredMethod("runProducts");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(0, fixture.bodyCalls,
+				"Runner body should not run after a fail-fast runner status verification failure.");
+		assertEquals(ITestResult.FAILURE, status.get());
+		assertNotNull(throwable.get());
+		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [400] but found [200]"),
+				"Actual message: " + throwable.get().getMessage());
+		assertTrue(!throwable.get().getMessage().contains("Error1"),
+				"Runner body local assertions should not replace the status failure: " + throwable.get().getMessage());
+	}
+
+	@Test
 	public void listenerRunsTestBodyAfterSuccessfulAnnotationRunnerForDiagnostics() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		SuccessfulRunnerBodyFixture fixture = new SuccessfulRunnerBodyFixture();
@@ -174,6 +195,29 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			executorCalls++;
 			return okExecutor("{\"id\":" + executorCalls + ",\"request\":\"" + info.request + "\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RunnerStatusFailureFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json")
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int bodyCalls;
+
+		@JPostman.Runner(verify = 400, enabled = true, soft = false)
+		@org.testng.annotations.Test
+		public void runProducts() {
+			bodyCalls++;
+			JPostman.Assert asserts = jpostman.ctx().soft();
+			asserts.isTrue(false, "Error1");
+			asserts.verify();
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{\"id\":1}");
 		}
 	}
 

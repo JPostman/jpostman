@@ -454,6 +454,105 @@ public interface JPostmanFramework<C> {
 	}
 
 	/**
+	 * Verifies pending hard assertions for the supplied context.
+	 *
+	 * <p>
+	 * Runner test bodies can keep a framework-specific hard assertion object, such
+	 * as {@code JUnitAssertions<?>}, and use it inside fluent runner callbacks.
+	 * Some assertion implementations collect failures until {@code verify()} is
+	 * called. This hook lets the runner fail immediately after each request
+	 * callback without depending on the concrete assertion type.
+	 * </p>
+	 *
+	 * @param context framework context
+	 */
+	default void verifyAssertions(C context) {
+		verifyAssertionObject(assertions(context));
+	}
+
+	/**
+	 * Verifies pending soft assertions for the supplied context.
+	 *
+	 * <p>
+	 * Runner status verification uses framework soft assertions when
+	 * {@code @JPostmanRunner(soft = true)} is active. The normal
+	 * {@link #verifyAssertions(Object)} hook checks the hard assertion facade, so
+	 * runner soft aggregation needs this companion hook to flush status/assertion
+	 * failures recorded through {@code context.soft(false)} after each request.
+	 * </p>
+	 *
+	 * @param context framework context
+	 */
+	default void verifySoftAssertions(C context) {
+		verifyAssertionObject(softAssertions(context));
+	}
+
+	static void verifyAssertionObject(Object assertions) {
+		if (assertions == null) {
+			return;
+		}
+		try {
+			Method verify = assertions.getClass().getMethod("verify");
+			verify.invoke(assertions);
+		} catch (NoSuchMethodException e) {
+			return;
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getTargetException();
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			if (cause instanceof RuntimeException) {
+				throw (RuntimeException) cause;
+			}
+			throw new IllegalStateException(cause);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	static Object assertions(Object context) {
+		if (context == null) {
+			return null;
+		}
+		try {
+			Method method = context.getClass().getMethod("asserts", boolean.class);
+			return method.invoke(context, false);
+		} catch (NoSuchMethodException e) {
+			try {
+				Method method = context.getClass().getMethod("asserts");
+				return method.invoke(context);
+			} catch (NoSuchMethodException ignored) {
+				return null;
+			} catch (ReflectiveOperationException ex) {
+				throw new IllegalStateException(ex);
+			}
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	static Object softAssertions(Object context) {
+		if (context == null) {
+			return null;
+		}
+		try {
+			Method method = context.getClass().getMethod("soft", boolean.class);
+			return method.invoke(context, false);
+		} catch (NoSuchMethodException e) {
+			try {
+				Method method = context.getClass().getMethod("soft");
+				return method.invoke(context);
+			} catch (NoSuchMethodException ignored) {
+				return null;
+			} catch (ReflectiveOperationException ex) {
+				throw new IllegalStateException(ex);
+			}
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	/**
 	 * Reads a cached value from the context.
 	 *
 	 * @param context framework context

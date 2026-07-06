@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.1.9
+
+### Added
+
+- Added `logs = "request"`, `logs = "response"`, `logs = "info"`, and `logs = "all"` failure diagnostics to compact `@JPostman.Context` and legacy `@JPostmanContext`.
+- Added support for combining failure diagnostics, for example `logs = { "request", "response" }` and `logs = { "error", "response" }`.
+- Added JUnit runner request callbacks so `@JPostman.Runner` / `@JPostmanRunner` can execute the test body after each runner request, matching TestNG runner callback behavior.
+- Added framework-level hooks to flush pending hard and soft assertions from active JUnit/TestNG contexts during runner callback execution.
+- Added full JUnit and TestNG consistency coverage for runner status verification, context status defaults, hard assertions, soft assertions, `@JPostman.AssertContext`, and local `jpostman.ctx().asserts()` / `jpostman.ctx().soft()` usage.
+
+### Changed
+
+- Changed the default context failure-output mode from `logs = { "debug" }` to `logs = { "none" }` for compact and legacy context annotations.
+- Changed compact `JPostman.Assert` so the same facade supports both hard and soft framework-neutral assertion methods.
+- Changed compact `JPostman.Test` assertion types so `asserts()` and `soft()` both return the compact `JPostman.Assert` facade.
+
 ## 2.1.8
 
 ## Added

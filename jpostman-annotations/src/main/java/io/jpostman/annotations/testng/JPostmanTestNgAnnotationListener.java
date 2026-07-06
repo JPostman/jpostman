@@ -137,6 +137,25 @@ public final class JPostmanTestNgAnnotationListener
 					cleanCallMethodFailure(testInstance, testMethod, testResult);
 				}
 			}
+		} catch (TestBodyFailureException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof SkipException) {
+				if (isJPostmanSkip((SkipException) cause)) {
+					testResult.setThrowable(null);
+				} else {
+					testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, cause));
+				}
+				testResult.setStatus(ITestResult.SKIP);
+			} else {
+				if (callMethod) {
+					testResult.setThrowable(cause);
+					cleanCallMethodFailure(testInstance, testMethod, testResult);
+				} else {
+					AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, cause);
+					testResult.setThrowable(failure);
+				}
+				testResult.setStatus(ITestResult.FAILURE);
+			}
 		} catch (SkipException e) {
 			if (isJPostmanSkip(e)) {
 				testResult.setThrowable(null);
@@ -146,7 +165,16 @@ public final class JPostmanTestNgAnnotationListener
 			testResult.setStatus(ITestResult.SKIP);
 		} catch (Throwable e) {
 			AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, e);
-			runTestBodyAfterAnnotationFailure(callBack, testResult, failure);
+			/*
+			 * Non-runner annotations may fail after preparing a response; running the body
+			 * once lets diagnostic code print or inspect that prepared context. Runner
+			 * methods are different: the annotation runner owns per-request body
+			 * invocation. If the runner fails before a request callback, running the body
+			 * here can replace a runner status failure with unrelated local assertions.
+			 */
+			if (!runnerMethod) {
+				runTestBodyAfterAnnotationFailure(callBack, testResult, failure);
+			}
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
 		} finally {
@@ -239,8 +267,20 @@ public final class JPostmanTestNgAnnotationListener
 		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
 		try {
 			callBack.runTestMethod(testResult);
+			throwReportedTestFailure(testResult);
+		} catch (TestBodyFailureException e) {
+			throw e;
+		} catch (Throwable e) {
+			throw new TestBodyFailureException(e);
 		} finally {
 			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+	}
+
+	private void throwReportedTestFailure(ITestResult testResult) {
+		Throwable failure = testResult.getThrowable();
+		if (failure != null) {
+			throw new TestBodyFailureException(failure);
 		}
 	}
 
@@ -359,5 +399,13 @@ public final class JPostmanTestNgAnnotationListener
 		return new IllegalStateException(
 				throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage(),
 				throwable);
+	}
+
+	private static final class TestBodyFailureException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		private TestBodyFailureException(Throwable cause) {
+			super(cause);
+		}
 	}
 }

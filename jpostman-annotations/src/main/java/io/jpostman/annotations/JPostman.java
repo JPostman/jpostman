@@ -25,6 +25,7 @@ import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
 import io.jpostman.secure.JPostmanAssertions;
+import io.jpostman.secure.JPostmanSoftAssertions;
 import io.jpostman.secure.JPostmanTestContext;
 
 /**
@@ -161,20 +162,29 @@ public final class JPostman {
 		boolean skipAll() default false;
 
 		/**
-		 * Controls automatic JPostman failure output. Values are single-choice; use one
-		 * value only.
+		 * Controls automatic JPostman failure output. Values may combine one stack mode
+		 * with optional failure diagnostics.
 		 *
 		 * <ul>
 		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
+		 * useful user-code stack frame. This is the default.</li>
 		 * <li>{@code error} - print the failure message and include the trace.</li>
+		 * <li>{@code request} - include the prepared request when a failure
+		 * occurs.</li>
+		 * <li>{@code response} - include the received response when a failure
+		 * occurs.</li>
+		 * <li>{@code info} - include runtime annotation info when a failure
+		 * occurs.</li>
+		 * <li>{@code all} - include request, response, and info when a failure
+		 * occurs.</li>
 		 * </ul>
 		 *
-		 * @return automatic failure output mode
+		 * Examples: {@code logs = "request"}, {@code logs = { "request", "response" }},
+		 * or {@code logs = { "error", "response" }}.
+		 *
+		 * @return automatic failure output mode and diagnostics
 		 */
-		String[] logs() default { "debug" };
+		String[] logs() default { "none" };
 
 		/**
 		 * Controls automatic annotation output.
@@ -1300,7 +1310,7 @@ public final class JPostman {
 	 * Compact framework-neutral assertion facade backed by the latest active
 	 * JPostman test context.
 	 */
-	public interface Assert extends JPostmanAssertions<Test, Assert> {
+	public interface Assert extends JPostmanAssertions<Test, Assert>, JPostmanSoftAssertions<Test, Assert> {
 
 		/**
 		 * Switches this facade to soft assertion mode.
@@ -1323,6 +1333,6 @@ public final class JPostman {
 	}
 
 	/** Compact framework-neutral test context facade. */
-	public interface Test extends JPostmanTestContext<Test, JPostmanTestAssertions, JPostmanTestSoftAssertions> {
+	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
 	}
 }

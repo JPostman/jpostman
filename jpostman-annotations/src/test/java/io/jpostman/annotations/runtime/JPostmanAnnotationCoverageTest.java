@@ -19,12 +19,16 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.InvocationInterceptor.Invocation;
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import org.opentest4j.TestAbortedException;
 import org.testng.IHookCallBack;
 import org.testng.IInvokedMethod;
@@ -50,6 +54,7 @@ import io.jpostman.annotations.JPostmanTestContext;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotations;
 import io.jpostman.annotations.testng.TestNgPostmanFramework;
+import io.jpostman.junit.JPostmanJUnitExtension;
 import io.jpostman.junit.JUnitContext;
 import io.jpostman.testng.TestNgContext;
 
@@ -644,6 +649,12 @@ public class JPostmanAnnotationCoverageTest {
 
 		assertTrue(discovery.hasExplicitResponse(RunnerFixture.class, "", "", "Get current auth user"));
 		assertFalse(discovery.hasExplicitResponse(RunnerFixture.class, "", "", "Missing"));
+
+		assertTrue(discovery.hasExplicitCall(ExplicitScopeFallbackFixture.class, "product", "Product",
+				"Delete a product"));
+		assertTrue(discovery.hasExplicitResponse(ExplicitScopeFallbackFixture.class, "product", "Product",
+				"Delete a product"));
+		assertFalse(discovery.hasExplicitCall(ExplicitScopeFallbackFixture.class, "product", "Product", "Missing"));
 	}
 
 	/**
@@ -1024,13 +1035,13 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies the context debug API defaults.
+	 * Verifies the context log/debug API defaults.
 	 */
 	@Test
-	public void debugDefaultsUseNoAutomaticOutputButResponseLoggingEnabled() throws Exception {
-		assertArrayEquals(new String[] { "debug" },
+	public void logDefaultsUseMinimumFailureOutputAndNoAutomaticDebugOutput() throws Exception {
+		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostman.Context.class.getMethod("logs").getDefaultValue());
-		assertArrayEquals(new String[] { "debug" },
+		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostmanContext.class.getMethod("logs").getDefaultValue());
 		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostman.Context.class.getMethod("debug").getDefaultValue());
@@ -1062,22 +1073,69 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies logs uses one output mode only and supports failure verbosity modes.
+	 * Verifies logs supports stack modes plus request/response failure diagnostics.
 	 */
 	@Test
-	public void logsSupportSingleFailureOutputModesOnly() {
+	public void logsSupportFailureDiagnosticsAndStackModes() {
 		assertEquals(JPostmanRuntimeOptions.LogMode.NONE, JPostmanRuntimeOptions.LogMode.from("none"));
-		assertEquals(JPostmanRuntimeOptions.LogMode.ERROR, JPostmanRuntimeOptions.LogMode.from("error"));
+		assertEquals(JPostmanRuntimeOptions.LogMode.NONE, JPostmanRuntimeOptions.LogMode.from("request"));
+		assertEquals(JPostmanRuntimeOptions.LogMode.ERROR, JPostmanRuntimeOptions.LogMode.from("error", "response"));
 		assertEquals(JPostmanRuntimeOptions.LogMode.DEBUG, JPostmanRuntimeOptions.LogMode.from("debug"));
+
+		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> failureOutput = JPostmanRuntimeOptions.LogOutput
+				.fromLogs("request", "response");
+		assertTrue(failureOutput.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+		assertTrue(failureOutput.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
 
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("none"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error"));
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("request,response"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error,response"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
 
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug", "error"));
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug,error"));
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("request"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.fromLogs("request", "all"));
+	}
+
+	/**
+	 * Verifies context logs=request/response controls failure diagnostics even when
+	 * local annotation log keeps its default debug value.
+	 */
+	@Test
+	public void contextLogsRequestResponseControlsFailureDiagnostics() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new RequestResponseFailureLogsFixture());
+
+		assertTrue(options.minimumErrorOutput("debug"));
+		assertTrue(options.failureDiagnostics("debug", null));
+		assertTrue(options.failureRequest("debug", null));
+		assertTrue(options.failureResponse("debug", null));
+		assertFalse(options.failureInfo("debug", null));
+	}
+
+	static class RequestResponseFailureLogsFixture {
+		@JPostman.Context(config = "", logs = { "request", "response" })
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
+	/**
+	 * Verifies the default context logs=none does not print request/response on
+	 * failure.
+	 */
+	@Test
+	public void contextLogsDefaultNoneHasNoFailureDiagnostics() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new DefaultFailureLogsFixture());
+
+		assertTrue(options.minimumErrorOutput("debug"));
+		assertFalse(options.failureDiagnostics("debug", null));
+		assertFalse(options.failureRequest("debug", null));
+		assertFalse(options.failureResponse("debug", null));
+	}
+
+	static class DefaultFailureLogsFixture {
+		@JPostman.Context(config = "")
+		JPostman.Runtime<JPostman.Test> jpostman;
 	}
 
 	/**
@@ -1190,6 +1248,32 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies compact test contexts expose assertions through the single
+	 * JPostman.Assert facade.
+	 */
+	@Test
+	public void compactTestAssertionsCanUseJPostmanAssertFacade() {
+		TestNgContext context = TestNgContext.create();
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+		JPostmanRuntime<JPostman.Test> runtime = new JPostmanRuntime<>(null, "", namespace -> test, () -> test,
+				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", "Get all products"));
+
+		JPostman.Runtime<JPostman.Test> compactRuntime = runtime;
+
+		JPostman.Assert testAsserts = test.asserts();
+		JPostman.Assert runtimeAsserts = runtime.ctx().asserts();
+		JPostman.Assert runtimeSoft = runtime.ctx().soft();
+		JPostman.Assert compactRuntimeAsserts = compactRuntime.ctx().asserts();
+		JPostman.Assert compactRuntimeSoft = compactRuntime.ctx().soft();
+
+		assertNotNull(testAsserts);
+		assertNotNull(runtimeAsserts);
+		assertNotNull(runtimeSoft);
+		assertNotNull(compactRuntimeAsserts);
+		assertNotNull(compactRuntimeSoft);
+	}
+
+	/**
 	 * Verifies runtime runner rules match the current request name and run end only
 	 * for the last executed runner request.
 	 */
@@ -1228,6 +1312,174 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, searchMatched.get());
 		assertEquals(0, otherwiseMatched.get());
 		assertEquals(1, ended.get());
+	}
+
+	/**
+	 * Verifies compact hard assertions fail immediately inside runtime runner
+	 * callbacks. Soft assertions still collect failures until verify(), but
+	 * test.asserts() must stop the callback at the failed assertion.
+	 */
+	@Test
+	public void runtimeRunnerRulesFailImmediatelyForCompactHardAssertions() {
+		TestNgContext context = TestNgContext.create();
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+		JPostmanRuntime<JPostman.Test> runtime = new JPostmanRuntime<>(null, "", namespace -> test, () -> test,
+				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", "Get all products"));
+		JPostman.Assert asserts = runtime.ctx().asserts();
+		AtomicInteger afterFailure = new AtomicInteger();
+		AtomicInteger ended = new AtomicInteger();
+
+		JPostmanRuntimeRunner.begin(List.of("Get all products"));
+		try {
+			JPostmanRuntimeRunner.request(0, "Get all products");
+
+			AssertionError error = assertThrows(AssertionError.class,
+					() -> runtime.runner().has("Get all products").then(ctx -> {
+						asserts.isTrue(false, "Hard runner assertion failed");
+						afterFailure.incrementAndGet();
+					}).end(ctx -> ended.incrementAndGet()));
+
+			assertTrue(error.getMessage().contains("Hard runner assertion failed"));
+			assertEquals(0, afterFailure.get());
+			assertEquals(0, ended.get());
+		} finally {
+			JPostmanRuntimeRunner.clear();
+		}
+	}
+
+	/**
+	 * Verifies the JUnit runner callback path invokes the test body while the
+	 * runner request is active, so stored JUnit hard assertions fail the runner.
+	 */
+	@Test
+	public void junitRunnerCallbackFailsForStoredJUnitAssertions() throws Exception {
+		JUnitRunnerBodyFailureFixture fixture = new JUnitRunnerBodyFailureFixture();
+		Method method = JUnitRunnerBodyFailureFixture.class.getDeclaredMethod("runProducts");
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> JPostmanAnnotationEngine.runJUnit(fixture, method, () -> invokeUnchecked(fixture, method)));
+
+		assertTrue(error.getMessage().contains("JUnit hard runner assertion failed"));
+		assertEquals(1, fixture.bodyCount);
+	}
+
+	/**
+	 * Verifies the JUnit extension still calls Invocation.proceed() for runner
+	 * methods. JUnit requires this call in the interceptor chain, while JPostman
+	 * still needs to run the body after each runner request.
+	 */
+	@Test
+	public void junitRunnerExtensionCallsInvocationProceedForRunnerBody() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		JUnitRunnerSoftBodyFixture fixture = new JUnitRunnerSoftBodyFixture();
+		Method method = JUnitRunnerSoftBodyFixture.class.getDeclaredMethod("runProducts");
+		AtomicInteger proceedCalls = new AtomicInteger();
+
+		AssertionError error = assertThrows(AssertionError.class, () -> extension.interceptTestMethod(invocation(() -> {
+			proceedCalls.incrementAndGet();
+			invokeUnchecked(fixture, method);
+		}), reflectiveInvocation(method), extensionContext(fixture)));
+
+		assertTrue(error.getMessage().contains("JUnit soft runner assertion failed 1"));
+		assertTrue(error.getMessage().contains("JUnit soft runner assertion failed 2"));
+		assertTrue(error.getMessage().contains("JPostman runner failed for 2 requests."));
+		assertFalse(error.getMessage().contains("Multiple Failures"));
+		assertFalse(error.getMessage().contains("org.opentest4j.AssertionFailedError"));
+		assertFalse(error.getMessage().contains("java.lang.AssertionError:"));
+		assertEquals(1, proceedCalls.get());
+		assertEquals(2, fixture.bodyCount);
+	}
+
+	/**
+	 * Locks the JUnit runner soft-failure format: one runner failure with one
+	 * user-code location and leaf assertion message for each failed request.
+	 */
+	@Test
+	public void junitRunnerSoftTrueRuntimeSoftFormatsCollectedFailuresWithLocations() throws Exception {
+		JUnitRunnerSoftBodyFixture fixture = new JUnitRunnerSoftBodyFixture();
+		Method method = JUnitRunnerSoftBodyFixture.class.getDeclaredMethod("runProducts");
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> JPostmanAnnotationEngine.runJUnit(fixture, method, () -> invokeUnchecked(fixture, method)));
+		String message = error.getMessage();
+
+		assertTrue(message.contains("JPostman runner failed for 2 requests."));
+		assertContainsInOrder(message, "JUnit soft runner assertion failed 1", "JUnit soft runner assertion failed 2");
+		assertEquals(2, countOccurrences(message, "JUnit soft runner assertion failed"));
+		assertEquals(2, countOccurrences(message, "==> expected: <true> but was: <false>"));
+		assertFalse(message.contains("Multiple Failures"));
+		assertFalse(message.contains("org.opentest4j.AssertionFailedError"));
+		assertFalse(message.contains("java.lang.AssertionError:"));
+		assertEquals(2, fixture.bodyCount);
+	}
+
+	/**
+	 * Verifies jpostman.ctx().soft() failures are reported per request when
+	 * 
+	 * @JPostman.Runner(soft = true) aggregates TestNG callback failures.
+	 */
+	@Test
+	public void testNgRunnerSoftTrueRuntimeSoftReportsPerRequestLeafMessages() throws Exception {
+		TestNgRunnerSoftBodyFixture fixture = new TestNgRunnerSoftBodyFixture();
+		Method method = TestNgRunnerSoftBodyFixture.class.getDeclaredMethod("runProducts");
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeReflective(fixture, method)));
+
+		assertTrue(error.getMessage().contains("JPostman runner failed for 2 requests."));
+		assertTrue(error.getMessage().contains("TestNG soft runner assertion failed 1"));
+		assertTrue(error.getMessage().contains("TestNG soft runner assertion failed 2"));
+		assertFalse(error.getMessage().contains("The following asserts failed:"));
+		assertFalse(error.getMessage().contains("java.lang.AssertionError:"));
+		assertFalse(error.getMessage().contains("InvocationTargetException"));
+		assertEquals(2, fixture.bodyCount);
+	}
+
+	/**
+	 * Verifies @JPostman.AssertContext failures are flattened when
+	 * 
+	 * @JPostman.Runner(soft = true) aggregates JUnit callback failures.
+	 */
+	@Test
+	public void junitRunnerSoftTrueAssertContextReportsLeafMessages() throws Exception {
+		JUnitRunnerSoftAssertContextFixture fixture = new JUnitRunnerSoftAssertContextFixture();
+		Method method = JUnitRunnerSoftAssertContextFixture.class.getDeclaredMethod("runProducts");
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> JPostmanAnnotationEngine.runJUnit(fixture, method, () -> invokeUnchecked(fixture, method)));
+
+		assertTrue(error.getMessage().contains("JPostman runner failed for 2 requests."));
+		assertTrue(error.getMessage().contains("JUnit assert context soft runner failed 1"));
+		assertTrue(error.getMessage().contains("JUnit assert context soft runner failed 2"));
+		assertFalse(error.getMessage().contains("java.lang.AssertionError:"));
+		assertFalse(error.getMessage().contains("InvocationTargetException"));
+		assertFalse(error.getMessage().contains("The following asserts failed:"));
+		assertEquals(2, fixture.bodyCount);
+	}
+
+	/**
+	 * Verifies @JPostman.AssertContext failures are flattened when
+	 * 
+	 * @JPostman.Runner(soft = true) aggregates TestNG callback failures.
+	 */
+	@Test
+	public void testNgRunnerSoftTrueAssertContextReportsLeafMessages() throws Exception {
+		TestNgRunnerSoftAssertContextFixture fixture = new TestNgRunnerSoftAssertContextFixture();
+		Method method = TestNgRunnerSoftAssertContextFixture.class.getDeclaredMethod("runProducts");
+
+		AssertionError error = assertThrows(AssertionError.class,
+				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeReflective(fixture, method)));
+
+		String message = error.getMessage();
+		assertTrue(message.contains("JPostman runner failed for 2 requests."));
+		assertTrue(message.contains("TestNG assert context soft runner failed 1"));
+		assertTrue(message.contains("TestNG assert context soft runner failed 2"));
+		assertEquals(2, countOccurrences(message, "TestNG assert context soft runner failed"));
+		assertEquals(2, countOccurrences(message, "expected [true] but found [false]"));
+		assertFalse(message.contains("java.lang.AssertionError:"));
+		assertFalse(message.contains("InvocationTargetException"));
+		assertFalse(message.contains("The following asserts failed:"));
+		assertEquals(2, fixture.bodyCount);
 	}
 
 	/**
@@ -1572,6 +1824,18 @@ public class JPostmanAnnotationCoverageTest {
 		assertNotNull(lifecycle.base.response());
 		assertThrows(AssertionError.class, () -> TestNgContext.current());
 
+		ListenerRunnerBodyFailureFixture runnerFailure = new ListenerRunnerBodyFailureFixture();
+		Method runnerMethod = ListenerRunnerBodyFailureFixture.class.getDeclaredMethod("runner");
+		AtomicReference<Throwable> runnerThrowable = new AtomicReference<>();
+		AtomicInteger runnerStatus = new AtomicInteger(ITestResult.SUCCESS);
+
+		listener.run(hookCallBack(new AssertionError("runner body failed"), ITestResult.FAILURE),
+				testResult(runnerFailure, runnerThrowable, runnerStatus, runnerMethod));
+
+		assertEquals(ITestResult.FAILURE, runnerStatus.get());
+		assertNotNull(runnerThrowable.get());
+		assertTrue(runnerThrowable.get().getMessage().contains("runner body failed"));
+
 		InvalidHelperFixture invalid = new InvalidHelperFixture();
 		IInvokedMethod invalidMethod = invokedMethod(InvalidHelperFixture.class.getDeclaredMethod("invalidRequest"),
 				true, false);
@@ -1713,6 +1977,11 @@ public class JPostmanAnnotationCoverageTest {
 
 	private static ITestResult testResult(Object instance, AtomicReference<Throwable> throwable, int status,
 			Method javaMethod) {
+		return testResult(instance, throwable, new AtomicInteger(status), javaMethod);
+	}
+
+	private static ITestResult testResult(Object instance, AtomicReference<Throwable> throwable, AtomicInteger status,
+			Method javaMethod) {
 		return (ITestResult) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
 				new Class<?>[] { ITestResult.class }, (proxy, method, args) -> {
 					if ("getInstance".equals(method.getName())) {
@@ -1729,7 +1998,11 @@ public class JPostmanAnnotationCoverageTest {
 						return null;
 					}
 					if ("getStatus".equals(method.getName())) {
-						return status;
+						return status.get();
+					}
+					if ("setStatus".equals(method.getName())) {
+						status.set((Integer) args[0]);
+						return null;
 					}
 					return defaultValue(method.getReturnType());
 				});
@@ -1738,6 +2011,114 @@ public class JPostmanAnnotationCoverageTest {
 	private static IHookCallBack hookCallBack() {
 		return (IHookCallBack) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
 				new Class<?>[] { IHookCallBack.class }, (proxy, method, args) -> defaultValue(method.getReturnType()));
+	}
+
+	private static IHookCallBack hookCallBack(Throwable throwable, int status) {
+		return (IHookCallBack) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
+				new Class<?>[] { IHookCallBack.class }, (proxy, method, args) -> {
+					if ("runTestMethod".equals(method.getName())) {
+						ITestResult result = (ITestResult) args[0];
+						result.setThrowable(throwable);
+						result.setStatus(status);
+						return null;
+					}
+					return defaultValue(method.getReturnType());
+				});
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Invocation<Void> invocation(Runnable body) {
+		return (Invocation<Void>) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
+				new Class<?>[] { Invocation.class }, (proxy, method, args) -> {
+					if ("proceed".equals(method.getName())) {
+						body.run();
+						return null;
+					}
+					return defaultValue(method.getReturnType());
+				});
+	}
+
+	@SuppressWarnings("unchecked")
+	private static ReflectiveInvocationContext<Method> reflectiveInvocation(Method javaMethod) {
+		return (ReflectiveInvocationContext<Method>) Proxy.newProxyInstance(
+				JPostmanAnnotationCoverageTest.class.getClassLoader(),
+				new Class<?>[] { ReflectiveInvocationContext.class }, (proxy, method, args) -> {
+					if ("getExecutable".equals(method.getName())) {
+						return javaMethod;
+					}
+					if ("getArguments".equals(method.getName())) {
+						return List.of();
+					}
+					return defaultValue(method.getReturnType());
+				});
+	}
+
+	private static ExtensionContext extensionContext(Object instance) {
+		return (ExtensionContext) Proxy.newProxyInstance(JPostmanAnnotationCoverageTest.class.getClassLoader(),
+				new Class<?>[] { ExtensionContext.class }, (proxy, method, args) -> {
+					if ("getRequiredTestInstance".equals(method.getName())) {
+						return instance;
+					}
+					if ("getTestInstance".equals(method.getName())) {
+						return Optional.ofNullable(instance);
+					}
+					if ("getRequiredTestClass".equals(method.getName())) {
+						return instance.getClass();
+					}
+					if ("getTestClass".equals(method.getName())) {
+						return Optional.of(instance.getClass());
+					}
+					return defaultValue(method.getReturnType());
+				});
+	}
+
+	private static void invokeUnchecked(Object target, Method method) {
+		try {
+			method.setAccessible(true);
+			method.invoke(target);
+		} catch (InvocationTargetException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof RuntimeException) {
+				throw (RuntimeException) cause;
+			}
+			if (cause instanceof Error) {
+				throw (Error) cause;
+			}
+			throw new IllegalStateException(cause);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private static void invokeReflective(Object target, Method method) {
+		try {
+			method.setAccessible(true);
+			method.invoke(target);
+		} catch (ReflectiveOperationException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static void assertContainsInOrder(String value, String... parts) {
+		int index = 0;
+		for (String part : parts) {
+			int next = value.indexOf(part, index);
+			assertTrue(next >= 0, "Expected to find \"" + part + "\" after index " + index + " in:\n" + value);
+			index = next + part.length();
+		}
+	}
+
+	private static int countOccurrences(String value, String part) {
+		int count = 0;
+		int index = 0;
+		while (true) {
+			int next = value.indexOf(part, index);
+			if (next < 0) {
+				return count;
+			}
+			count++;
+			index = next + part.length();
+		}
 	}
 
 	private static Object defaultValue(Class<?> type) {
@@ -1994,6 +2375,16 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class ExplicitScopeFallbackFixture {
+		@JPostman.Call(request = "Delete a product")
+		void explicitDeleteCall() {
+		}
+
+		@JPostman.Response(request = "Delete a product")
+		void explicitDeleteResponse() {
+		}
+	}
+
 	private static final class RunnerFixture {
 		@JPostmanContext
 		private io.jpostman.JPostman.Context loaded;
@@ -2027,6 +2418,141 @@ public class JPostmanAnnotationCoverageTest {
 			executorMethodName = info.method;
 			executorRequestName = info.request;
 			assertEquals("runner-token", context.cache("runnerToken"));
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class JUnitRunnerBodyFailureFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<JUnitContext> jpostman;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#junitRunner", verify = 200)
+		void runProducts() {
+			bodyCount++;
+			io.jpostman.junit.JUnitAssertions<?> asserts1 = jpostman.ctx().asserts();
+			jpostman.runner().has("Login user and get tokens").then(test -> {
+				asserts1.isTrue(false, "JUnit hard runner assertion failed");
+			});
+		}
+
+		@JPostmanExecutor(id = "junitRunner")
+		ApiExecutor junitRunnerExecutor(JUnitContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class JUnitRunnerSoftBodyFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#junitRunnerSoft", verify = 200, soft = true)
+		void runProducts() {
+			bodyCount++;
+			JPostman.Assert asserts1 = jpostman.ctx().soft();
+			jpostman.runner().has("Login user and get tokens").then(test -> {
+				asserts1.isTrue(false, "JUnit soft runner assertion failed 1");
+			}).has("Get current auth user").then(test -> {
+				asserts1.isTrue(false, "JUnit soft runner assertion failed 2");
+			}).end(test -> {
+				asserts1.verify();
+			});
+		}
+
+		@JPostmanExecutor(id = "junitRunnerSoft")
+		ApiExecutor junitRunnerExecutor(JUnitContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class TestNgRunnerSoftBodyFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200, soft = true)
+		void runProducts() {
+			bodyCount++;
+			JPostman.Assert asserts1 = jpostman.ctx().soft();
+			jpostman.runner().has("Login user and get tokens").then(test -> {
+				asserts1.isTrue(false, "TestNG soft runner assertion failed 1");
+			}).has("Get current auth user").then(test -> {
+				asserts1.isTrue(false, "TestNG soft runner assertion failed 2");
+			}).end(test -> {
+				asserts1.verify();
+			});
+		}
+
+		@JPostmanExecutor(id = "testNgRunnerSoft")
+		ApiExecutor testNgRunnerExecutor(TestNgContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class JUnitRunnerSoftAssertContextFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		@io.jpostman.annotations.JPostman.AssertContext
+		private JPostman.Assert asserts;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#junitRunnerSoftAssertContext", verify = 200, soft = true)
+		void runProducts() {
+			bodyCount++;
+			jpostman.runner().has("Login user and get tokens").then(test -> {
+				asserts.isTrue(false, "JUnit assert context soft runner failed 1");
+			}).has("Get current auth user").then(test -> {
+				asserts.isTrue(false, "JUnit assert context soft runner failed 2");
+			}).end(test -> {
+				asserts.verify();
+			});
+		}
+
+		@JPostmanExecutor(id = "junitRunnerSoftAssertContext")
+		ApiExecutor junitRunnerExecutor(JUnitContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class TestNgRunnerSoftAssertContextFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		@io.jpostman.annotations.JPostman.AssertContext
+		private JPostman.Assert asserts;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#testNgRunnerSoftAssertContext", verify = 200, soft = true)
+		void runProducts() {
+			bodyCount++;
+			jpostman.runner().has("Login user and get tokens").then(test -> {
+				asserts.isTrue(false, "TestNG assert context soft runner failed 1");
+			}).has("Get current auth user").then(test -> {
+				asserts.isTrue(false, "TestNG assert context soft runner failed 2");
+			}).end(test -> {
+				asserts.verify();
+			});
+		}
+
+		@JPostmanExecutor(id = "testNgRunnerSoftAssertContext")
+		ApiExecutor testNgRunnerExecutor(TestNgContext context) {
+			assertNotNull(context.request());
 			return okExecutor("{\"id\":1}");
 		}
 	}
@@ -2351,6 +2877,25 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanExecutor(id = "listener")
 		ApiExecutor listenerExecutor(TestNgContext context) {
 			executorCount++;
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class ListenerRunnerBodyFailureFixture {
+		@JPostmanContext
+		private io.jpostman.JPostman.Context loaded;
+
+		@JPostmanTestContext
+		private TestNgContext base;
+
+		@org.testng.annotations.Test
+		@JPostmanRunner(include = { "Login user and get tokens" }, executor = "#listenerRunner", verify = 200)
+		void runner() {
+		}
+
+		@JPostmanExecutor(id = "listenerRunner")
+		ApiExecutor listenerRunnerExecutor(TestNgContext context) {
 			assertNotNull(context.request());
 			return okExecutor("{\"id\":1}");
 		}

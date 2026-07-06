@@ -1,5 +1,6 @@
 package io.jpostman.junit;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -15,6 +16,7 @@ import org.opentest4j.TestAbortedException;
 
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
+import io.jpostman.annotations.runtime.JPostmanAnnotations;
 
 /**
  * JUnit 5 bridge for JPostman annotation execution.
@@ -62,12 +64,21 @@ public final class JPostmanJUnitExtension
 
 		try {
 			setup(testInstance, extensionContext);
-			JPostmanAnnotationEngine.runJUnit(testInstance, testMethod);
-			JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
-			try {
-				invocation.proceed();
-			} finally {
-				JPostmanAnnotationEngine.endAssertionCleanup();
+			if (JPostmanAnnotations.runner(testMethod) != null) {
+				boolean[] proceeded = new boolean[1];
+				JPostmanAnnotationEngine.runJUnit(testInstance, testMethod,
+						() -> invokeTestBodyWithAssertionCleanup(invocation, testInstance, testMethod, proceeded));
+				if (!proceeded[0]) {
+					invokeTestBodyWithAssertionCleanup(invocation, testInstance, testMethod, proceeded);
+				}
+			} else {
+				JPostmanAnnotationEngine.runJUnit(testInstance, testMethod);
+				JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+				try {
+					invocation.proceed();
+				} finally {
+					JPostmanAnnotationEngine.endAssertionCleanup();
+				}
 			}
 		} catch (Throwable error) {
 			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, testMethod, error);
@@ -180,5 +191,33 @@ public final class JPostmanJUnitExtension
 
 		JPostman.JUnit compactAnnotation = testClass.getAnnotation(JPostman.JUnit.class);
 		return compactAnnotation != null && compactAnnotation.printFailures();
+	}
+
+	private void invokeTestBodyWithAssertionCleanup(Invocation<Void> invocation, Object testInstance, Method testMethod,
+			boolean[] proceeded) {
+		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+		try {
+			if (proceeded != null && proceeded.length > 0 && !proceeded[0]) {
+				proceeded[0] = true;
+				invocation.proceed();
+			} else {
+				testMethod.setAccessible(true);
+				testMethod.invoke(testInstance);
+			}
+		} catch (InvocationTargetException error) {
+			throw new TestBodyFailureException(error.getCause());
+		} catch (Throwable error) {
+			throw new TestBodyFailureException(error);
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+	}
+
+	private static final class TestBodyFailureException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		private TestBodyFailureException(Throwable cause) {
+			super(cause);
+		}
 	}
 }
