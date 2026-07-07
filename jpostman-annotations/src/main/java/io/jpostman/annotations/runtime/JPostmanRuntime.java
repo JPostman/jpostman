@@ -135,6 +135,25 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	}
 
 	/**
+	 * Alias for {@link #ctx()}.
+	 *
+	 * @return latest active framework context
+	 */
+	public C test() {
+		return ctx();
+	}
+
+	/**
+	 * Alias for {@link #ctx(String)}.
+	 *
+	 * @param namespace namespace to resolve, or blank for the default namespace
+	 * @return framework context
+	 */
+	public C test(String namespace) {
+		return ctx(namespace);
+	}
+
+	/**
 	 * Returns the current annotation execution information.
 	 *
 	 * <p>
@@ -270,11 +289,13 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * Fluent request-name rule builder for {@code @JPostmanRunner} test bodies.
 	 *
 	 * <p>
-	 * The builder is intended for runner test methods that are invoked after each
-	 * runner request. {@link #has(String...)} and {@link #any(String...)} match the
-	 * current request name using exact text or regular expressions.
-	 * {@link #end(Consumer)} runs only for the last executed runner request, which
-	 * makes it useful for final soft-assert verification.
+	 * The builder is intended for runner test methods that are invoked around each
+	 * runner request. {@link #start(Consumer)} runs once before the first runner
+	 * request, {@link #request(Consumer)} runs before every runner request,
+	 * {@link #response(Consumer)} runs after every runner response,
+	 * {@link #has(String...)} and {@link #any(String...)} match the current request
+	 * name after execution using exact text or regular expressions, and
+	 * {@link #end(Consumer)} runs only after the last executed runner request.
 	 * </p>
 	 *
 	 * @param <C> framework context type, or {@code JPostman.Test} when using the
@@ -299,6 +320,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return pending runner condition
 		 */
 		public RunnerCondition<C> has(String... values) {
+			completeBeforeBodyAtAfterRule();
 			return new RunnerCondition<>(this, hasAll(values));
 		}
 
@@ -310,6 +332,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return pending runner condition
 		 */
 		public RunnerCondition<C> any(String... values) {
+			completeBeforeBodyAtAfterRule();
 			return new RunnerCondition<>(this, hasAny(values));
 		}
 
@@ -325,6 +348,86 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		}
 
 		/**
+		 * Runs the action once before the first executed request in the current runner.
+		 *
+		 * @param action setup action to run with the active context
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> start(Consumer<C> action) {
+			if (shouldRunStart() && action != null) {
+				action.accept(context());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action once before the first executed request in the current runner.
+		 *
+		 * @param action setup action to run with the active context and info
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> start(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			if (shouldRunStart() && action != null) {
+				action.accept(context(), info());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action before each executed request in the current runner.
+		 *
+		 * @param action pre-request action to run with the active context
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> request(Consumer<C> action) {
+			if (isBefore() && action != null) {
+				action.accept(context());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action before each executed request in the current runner.
+		 *
+		 * @param action pre-request action to run with the active context and info
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> request(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			if (isBefore() && action != null) {
+				action.accept(context(), info());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action after every executed response in the current runner.
+		 *
+		 * @param action post-response action to run with the active context
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> response(Consumer<C> action) {
+			completeBeforeBodyAtAfterRule();
+			if (isAfter() && action != null) {
+				action.accept(context());
+			}
+			return this;
+		}
+
+		/**
+		 * Runs the action after every executed response in the current runner.
+		 *
+		 * @param action post-response action to run with the active context and info
+		 * @return this runner rule builder
+		 */
+		public RunnerRules<C> response(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+			completeBeforeBodyAtAfterRule();
+			if (isAfter() && action != null) {
+				action.accept(context(), info());
+			}
+			return this;
+		}
+
+		/**
 		 * Runs the action when no previous {@link #has(String...)} or
 		 * {@link #any(String...)} condition matched in this rule chain.
 		 *
@@ -332,7 +435,8 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return this runner rule builder
 		 */
 		public RunnerRules<C> otherwise(Consumer<C> action) {
-			if (!matched && action != null) {
+			completeBeforeBodyAtAfterRule();
+			if (isAfter() && !matched && action != null) {
 				action.accept(context());
 			}
 			return this;
@@ -346,7 +450,8 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return this runner rule builder
 		 */
 		public RunnerRules<C> otherwise(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
-			if (!matched && action != null) {
+			completeBeforeBodyAtAfterRule();
+			if (isAfter() && !matched && action != null) {
 				action.accept(context(), info());
 			}
 			return this;
@@ -359,8 +464,17 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return this runner rule builder
 		 */
 		public RunnerRules<C> end(Consumer<C> action) {
-			if (isLast() && action != null) {
-				action.accept(context());
+			completeBeforeBodyAtAfterRule();
+			boolean terminal = isAfter();
+			try {
+				if (terminal && isLast() && action != null) {
+					action.accept(context());
+				}
+			} finally {
+				completeAfterBodyAtTerminalRule(false);
+			}
+			if (terminal) {
+				JPostmanRuntimeRunner.stopUserBody();
 			}
 			return this;
 		}
@@ -372,10 +486,34 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		 * @return this runner rule builder
 		 */
 		public RunnerRules<C> end(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
-			if (isLast() && action != null) {
-				action.accept(context(), info());
+			completeBeforeBodyAtAfterRule();
+			boolean terminal = isAfter();
+			try {
+				if (terminal && isLast() && action != null) {
+					action.accept(context(), info());
+				}
+			} finally {
+				completeAfterBodyAtTerminalRule(false);
+			}
+			if (terminal) {
+				JPostmanRuntimeRunner.stopUserBody();
 			}
 			return this;
+		}
+
+		private void completeBeforeBodyAtAfterRule() {
+			if (isBefore()) {
+				JPostmanRuntimeRunner.stopUserBody();
+			}
+		}
+
+		private void completeAfterBodyAtTerminalRule(boolean stopBody) {
+			if (isAfter()) {
+				JPostmanRuntimeRunner.finishAfterRequest();
+				if (stopBody) {
+					JPostmanRuntimeRunner.stopUserBody();
+				}
+			}
 		}
 
 		private C context() {
@@ -386,8 +524,20 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 			return infoSupplier == null ? null : infoSupplier.get();
 		}
 
+		private boolean shouldRunStart() {
+			return JPostmanRuntimeRunner.shouldRunStart();
+		}
+
 		private boolean isLast() {
 			return JPostmanRuntimeRunner.isLast(info());
+		}
+
+		private boolean isBefore() {
+			return JPostmanRuntimeRunner.isBeforeRequest();
+		}
+
+		private boolean isAfter() {
+			return JPostmanRuntimeRunner.isAfterRequest();
 		}
 
 		private void matched() {
@@ -395,6 +545,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		}
 
 		private boolean hasAll(String... values) {
+			if (!isAfter()) {
+				return false;
+			}
 			String[] expected = values(values);
 			if (expected.length == 0) {
 				return false;
@@ -409,6 +562,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		}
 
 		private boolean hasAny(String... values) {
+			if (!isAfter()) {
+				return false;
+			}
 			String request = request();
 			for (String value : values(values)) {
 				if (matches(request, value)) {

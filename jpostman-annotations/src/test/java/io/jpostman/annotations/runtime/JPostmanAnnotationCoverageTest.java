@@ -987,8 +987,8 @@ public class JPostmanAnnotationCoverageTest {
 	public void compactInfoAttrReturnsRuntimeInfoAttributes() {
 		JPostmanInfo parent = new JPostmanInfo("filter1", "", "", "").annotation("@JPostmanResponse").id("#response");
 		parent.method("filter1");
-		JPostmanInfo child = parent.child("authRequest", "", "", "Get current auth user").annotation("@JPostmanRequest")
-				.id("#token");
+		JPostmanInfo child = parent.child("authRequest", "", "Auth", "Get current auth user")
+				.annotation("@JPostmanRequest").id("#token");
 		child.method("authRequest");
 		JPostman.Info info = child;
 
@@ -998,8 +998,12 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("authRequest", attr.method);
 		assertEquals(1, attr.methodIndex);
 		assertEquals(List.of("filter1", "authRequest"), attr.methods);
+		assertEquals("Auth", attr.folder);
 		assertEquals("Get current auth user", attr.request);
 		assertEquals("token", attr.id);
+		assertEquals("authRequest", info.method());
+		assertEquals("Auth", info.folder());
+		assertEquals("Get current auth user", info.request());
 	}
 
 	/**
@@ -1051,6 +1055,8 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("debug", JPostmanRequest.class.getMethod("log").getDefaultValue());
 		assertEquals("debug", JPostman.Response.class.getMethod("log").getDefaultValue());
 		assertEquals("debug", JPostmanResponse.class.getMethod("log").getDefaultValue());
+		assertEquals("", JPostman.Runner.class.getMethod("id").getDefaultValue());
+		assertEquals("", JPostmanRunner.class.getMethod("id").getDefaultValue());
 		assertEquals("debug", JPostman.Runner.class.getMethod("log").getDefaultValue());
 		assertEquals("debug", JPostmanRunner.class.getMethod("log").getDefaultValue());
 	}
@@ -1330,10 +1336,10 @@ public class JPostmanAnnotationCoverageTest {
 	 */
 	@Test
 	public void runtimeRunnerRulesMatchRequestNamesAndEndOnlyOnLastRequest() {
-		AtomicReference<String> request = new AtomicReference<>("Get all products");
+		AtomicReference<String> activeRequest = new AtomicReference<>("Get all products");
 		TestNgContext context = TestNgContext.create();
 		JPostmanRuntime<TestNgContext> runtime = new JPostmanRuntime<>(null, "", namespace -> context, () -> context,
-				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", request.get()));
+				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", activeRequest.get()));
 		AtomicInteger getAllMatched = new AtomicInteger();
 		AtomicInteger searchMatched = new AtomicInteger();
 		AtomicInteger otherwiseMatched = new AtomicInteger();
@@ -1348,7 +1354,7 @@ public class JPostmanAnnotationCoverageTest {
 			}).any("Search.*", "Limit.*").then((test, info) -> searchMatched.incrementAndGet())
 					.otherwise(test -> otherwiseMatched.incrementAndGet()).end(test -> ended.incrementAndGet());
 
-			request.set("Search products");
+			activeRequest.set("Search products");
 			JPostmanRuntimeRunner.request(1, "Search products");
 			runtime.runner().has("Get all products").then(test -> getAllMatched.incrementAndGet())
 					.any("Search.*", "Limit.*").then((test, info) -> {
@@ -1366,6 +1372,135 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies runner start/request callbacks run before request execution while
+	 * existing has/end callbacks stay response execution.
+	 */
+	@Test
+	public void runtimeRunnerRulesStartAndRequestRunBeforeRequests() {
+		AtomicReference<String> activeRequest = new AtomicReference<>("Get all products");
+		TestNgContext context = TestNgContext.create();
+		JPostmanRuntime<TestNgContext> runtime = new JPostmanRuntime<>(null, "", namespace -> context, () -> context,
+				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", activeRequest.get()));
+		AtomicInteger started = new AtomicInteger();
+		AtomicInteger request = new AtomicInteger();
+		AtomicInteger response = new AtomicInteger();
+		AtomicInteger responseMatched = new AtomicInteger();
+		AtomicInteger ended = new AtomicInteger();
+		List<String> order = new java.util.ArrayList<>();
+
+		JPostmanRuntimeRunner.begin(List.of("Get all products", "Search products"));
+		try {
+			JPostmanRuntimeRunner.beforeRequest(0, "Get all products");
+			runtime.runner().start(test -> {
+				started.incrementAndGet();
+				order.add("start:Get all products");
+			}).request(test -> {
+				request.incrementAndGet();
+				order.add("request:Get all products");
+			}).response(test -> {
+				response.incrementAndGet();
+				order.add("after-before-should-not-run");
+			}).has("Get all products").then(test -> responseMatched.incrementAndGet())
+					.end(test -> ended.incrementAndGet());
+
+			JPostmanRuntimeRunner.afterRequest(0, "Get all products");
+			runtime.runner().start(test -> started.incrementAndGet()).request(test -> request.incrementAndGet())
+					.response(test -> {
+						response.incrementAndGet();
+						order.add("response:Get all products");
+					}).has("Get all products").then(test -> {
+						responseMatched.incrementAndGet();
+						order.add("has:Get all products");
+					}).end(test -> ended.incrementAndGet());
+
+			activeRequest.set("Search products");
+			JPostmanRuntimeRunner.beforeRequest(1, "Search products");
+			runtime.runner().start(test -> started.incrementAndGet()).request(test -> {
+				request.incrementAndGet();
+				order.add("request:Search products");
+			}).response(test -> {
+				response.incrementAndGet();
+				order.add("after-before-should-not-run");
+			}).any("Search.*").then((test, info) -> responseMatched.incrementAndGet())
+					.end(test -> ended.incrementAndGet());
+
+			JPostmanRuntimeRunner.afterRequest(1, "Search products");
+			runtime.runner().start(test -> started.incrementAndGet()).request(test -> request.incrementAndGet())
+					.response(test -> {
+						response.incrementAndGet();
+						order.add("response:Search products");
+					}).any("Search.*").then((test, info) -> {
+						responseMatched.incrementAndGet();
+						order.add("any:Search products");
+					}).end(test -> {
+						ended.incrementAndGet();
+						order.add("end:Search products");
+					});
+		} finally {
+			JPostmanRuntimeRunner.clear();
+		}
+
+		assertEquals(1, started.get());
+		assertEquals(2, request.get());
+		assertEquals(2, response.get());
+		assertEquals(2, responseMatched.get());
+		assertEquals(1, ended.get());
+		assertEquals(List.of("start:Get all products", "request:Get all products", "response:Get all products",
+				"has:Get all products", "request:Search products", "response:Search products", "any:Search products",
+				"end:Search products"), order);
+	}
+
+	/**
+	 * Verifies annotation runner fluent before/response callbacks can stop the rest
+	 * of the user method body for that phase. This prevents raw code after the
+	 * fluent runner chain from running once during the before phase and once during
+	 * the response phase.
+	 */
+	@Test
+	public void runnerStartEachEndStopsRawBodyAfterFluentChain() throws Exception {
+		RunnerStartEachEndStopFixture fixture = new RunnerStartEachEndStopFixture();
+		Method method = RunnerStartEachEndStopFixture.class.getDeclaredMethod("runProducts");
+
+		assertDoesNotThrow(
+				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeReflective(fixture, method)));
+
+		assertEquals(4, fixture.bodyCount);
+		assertEquals(1, fixture.started);
+		assertEquals(2, fixture.request);
+		assertEquals(2, fixture.response);
+		assertEquals(1, fixture.ended);
+		assertEquals(0, fixture.rawAfterChain);
+		assertEquals(List.of("start:Login user and get tokens", "request:Login user and get tokens",
+				"response:Login user and get tokens", "request:Get current auth user", "response:Get current auth user",
+				"end:Get current auth user"), fixture.order);
+	}
+
+	/**
+	 * Verifies a launcher runner can reuse another lifecycle runner dependency with
+	 * different tags without executing its own runner collection again.
+	 */
+	@Test
+	public void runnerDependsOnIdReusesSourceBodyWithTags() throws Exception {
+		RunnerTemplateTagsFixture fixture = new RunnerTemplateTagsFixture();
+		Method method = RunnerTemplateTagsFixture.class.getDeclaredMethod("runProducts2");
+
+		assertDoesNotThrow(
+				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeReflective(fixture, method)));
+
+		assertEquals(2, fixture.aliasBody);
+		assertEquals(4, fixture.sourceBody);
+		assertEquals(1, fixture.started);
+		assertEquals(2, fixture.request);
+		assertEquals(2, fixture.response);
+		assertEquals(1, fixture.ended);
+		assertEquals(List.of("run2", "run2", "run2", "run2"), fixture.seenTags);
+		assertEquals(List.of("start:Login user and get tokens", "request:Login user and get tokens",
+				"response:Login user and get tokens", "alias:Login user and get tokens",
+				"request:Get current auth user", "response:Get current auth user", "end:Get current auth user",
+				"alias:Get current auth user"), fixture.order);
+	}
+
+	/**
 	 * Verifies compact hard assertions fail immediately inside runtime runner
 	 * callbacks. Soft assertions still collect failures until verify(), but
 	 * test.asserts() must stop the callback at the failed assertion.
@@ -1377,7 +1512,7 @@ public class JPostmanAnnotationCoverageTest {
 		JPostmanRuntime<JPostman.Test> runtime = new JPostmanRuntime<>(null, "", namespace -> test, () -> test,
 				() -> new JPostmanInfo("@JPostmanRunner", "runner", "", "", "Get all products"));
 		JPostman.Assert asserts = runtime.ctx().asserts();
-		AtomicInteger afterFailure = new AtomicInteger();
+		AtomicInteger responseFailure = new AtomicInteger();
 		AtomicInteger ended = new AtomicInteger();
 
 		JPostmanRuntimeRunner.begin(List.of("Get all products"));
@@ -1387,11 +1522,11 @@ public class JPostmanAnnotationCoverageTest {
 			AssertionError error = assertThrows(AssertionError.class,
 					() -> runtime.runner().has("Get all products").then(ctx -> {
 						asserts.isTrue(false, "Hard runner assertion failed");
-						afterFailure.incrementAndGet();
+						responseFailure.incrementAndGet();
 					}).end(ctx -> ended.incrementAndGet()));
 
 			assertTrue(error.getMessage().contains("Hard runner assertion failed"));
-			assertEquals(0, afterFailure.get());
+			assertEquals(0, responseFailure.get());
 			assertEquals(0, ended.get());
 		} finally {
 			JPostmanRuntimeRunner.clear();
@@ -1400,10 +1535,11 @@ public class JPostmanAnnotationCoverageTest {
 
 	/**
 	 * Verifies the JUnit runner callback path invokes the test body while the
-	 * runner request is active, so stored JUnit hard assertions fail the runner.
+	 * runner request is active, so stored JUnit hard assertions fail the runner
+	 * immediately and stop the remaining runner requests.
 	 */
 	@Test
-	public void junitRunnerCallbackFailsForStoredJUnitAssertions() throws Exception {
+	public void junitRunnerCallbackFailsFastForStoredJUnitAssertions() throws Exception {
 		JUnitRunnerBodyFailureFixture fixture = new JUnitRunnerBodyFailureFixture();
 		Method method = JUnitRunnerBodyFailureFixture.class.getDeclaredMethod("runProducts");
 
@@ -1484,6 +1620,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(error.getMessage().contains("java.lang.AssertionError:"));
 		assertFalse(error.getMessage().contains("InvocationTargetException"));
 		assertEquals(2, fixture.bodyCount);
+		assertEquals(1, fixture.ended);
 	}
 
 	/**
@@ -2473,6 +2610,91 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class RunnerTemplateTagsFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int aliasBody;
+		private int sourceBody;
+		private int started;
+		private int request;
+		private int response;
+		private int ended;
+		private List<String> seenTags = new java.util.ArrayList<>();
+		private List<String> order = new java.util.ArrayList<>();
+
+		@io.jpostman.annotations.JPostman.Runner(id = "testRunner", include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#runner", verify = 200, lifecycle = true)
+		void runProducts() {
+			sourceBody++;
+			seenTags.add(String.join(",", jpostman.info().attr().tags));
+			jpostman.runner().start((test, info) -> {
+				started++;
+				order.add("start:" + info.request());
+			}).request((test, info) -> {
+				request++;
+				order.add("request:" + info.request());
+			}).response((test, info) -> {
+				response++;
+				order.add("response:" + info.request());
+			}).end((test, info) -> {
+				ended++;
+				order.add("end:" + info.request());
+			});
+		}
+
+		@io.jpostman.annotations.JPostman.Runner(dependsOn = "#testRunner", tags = "run2", enabled = true)
+		void runProducts2() {
+			aliasBody++;
+			order.add("alias:" + jpostman.info().request());
+		}
+
+		@JPostmanExecutor(id = "runner")
+		ApiExecutor runnerExecutor(TestNgContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class RunnerStartEachEndStopFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int bodyCount;
+		private int started;
+		private int request;
+		private int response;
+		private int ended;
+		private int rawAfterChain;
+		private List<String> order = new java.util.ArrayList<>();
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#runner", verify = 200, lifecycle = true)
+		void runProducts() {
+			bodyCount++;
+			jpostman.runner().start((test, info) -> {
+				started++;
+				order.add("start:" + info.request());
+			}).request((test, info) -> {
+				request++;
+				order.add("request:" + info.request());
+			}).response((test, info) -> {
+				response++;
+				order.add("response:" + info.request());
+			}).end((test, info) -> {
+				ended++;
+				order.add("end:" + info.request());
+			});
+			rawAfterChain++;
+		}
+
+		@JPostmanExecutor(id = "runner")
+		ApiExecutor runnerExecutor(TestNgContext context) {
+			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
 	private static final class JUnitRunnerBodyFailureFixture {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
 		private io.jpostman.annotations.JPostman.Runtime<JUnitContext> jpostman;
@@ -2528,6 +2750,7 @@ public class JPostmanAnnotationCoverageTest {
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
 
 		private int bodyCount;
+		private int ended;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
 				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200, soft = true)
@@ -2539,6 +2762,7 @@ public class JPostmanAnnotationCoverageTest {
 			}).has("Get current auth user").then(test -> {
 				asserts1.isTrue(false, "TestNG soft runner assertion failed 2");
 			}).end(test -> {
+				ended++;
 				asserts1.verify();
 			});
 		}

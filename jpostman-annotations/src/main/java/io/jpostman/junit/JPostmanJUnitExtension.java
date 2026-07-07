@@ -68,7 +68,7 @@ public final class JPostmanJUnitExtension
 				boolean[] proceeded = new boolean[1];
 				JPostmanAnnotationEngine.runJUnit(testInstance, testMethod,
 						() -> invokeTestBodyWithAssertionCleanup(invocation, testInstance, testMethod, proceeded));
-				if (!proceeded[0]) {
+				if (!proceeded[0] && !hasRunnerDependencyLauncher(testMethod)) {
 					invokeTestBodyWithAssertionCleanup(invocation, testInstance, testMethod, proceeded);
 				}
 			} else {
@@ -89,6 +89,80 @@ public final class JPostmanJUnitExtension
 		} finally {
 			JUnitContext.clearCurrent();
 		}
+	}
+
+	private boolean hasRunnerDependencyLauncher(Method testMethod) {
+		io.jpostman.annotations.JPostmanRunner runner = JPostmanAnnotations.runner(testMethod);
+		if (!isRunnerDependencyLauncher(runner)) {
+			return false;
+		}
+		return findRunnerDependency(testMethod.getDeclaringClass(), firstDependency(runner)) != null;
+	}
+
+	private boolean isRunnerDependencyLauncher(io.jpostman.annotations.JPostmanRunner runner) {
+		return runner != null && dependencies(runner).length == 1 && isBlank(runner.namespace())
+				&& isBlank(runner.folder()) && isBlank(runner.rule()) && isBlank(runner.executor())
+				&& isBlank(runner.data()) && isEmpty(runner.include()) && isEmpty(runner.exclude())
+				&& isEmpty(runner.filter()) && isEmpty(runner.asserts()) && runner.verify() == -1 && !runner.soft()
+				&& !runner.lifecycle();
+	}
+
+	private String firstDependency(io.jpostman.annotations.JPostmanRunner runner) {
+		String[] dependencies = dependencies(runner);
+		return dependencies.length == 0 ? "" : dependencies[0];
+	}
+
+	private String[] dependencies(io.jpostman.annotations.JPostmanRunner runner) {
+		if (runner == null || runner.dependsOn() == null) {
+			return new String[0];
+		}
+		return java.util.Arrays.stream(runner.dependsOn()).filter(v -> v != null && !v.isBlank()).map(String::trim)
+				.toArray(String[]::new);
+	}
+
+	private Method findRunnerDependency(Class<?> type, String reference) {
+		String value = reference == null ? "" : reference.trim();
+		if (value.isBlank()) {
+			return null;
+		}
+		boolean idReference = value.startsWith("#");
+		String id = idReference ? value.substring(1).trim() : value;
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				io.jpostman.annotations.JPostmanRunner runner = JPostmanAnnotations.runner(method);
+				if (runner == null) {
+					continue;
+				}
+				if ((idReference && id.equals(annotationId(runner.id())))
+						|| (!idReference && value.equals(method.getName()))) {
+					return method;
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return null;
+	}
+
+	private String annotationId(String value) {
+		String id = value == null ? "" : value.trim();
+		return id.startsWith("#") ? id.substring(1).trim() : id;
+	}
+
+	private boolean isBlank(String value) {
+		return value == null || value.isBlank();
+	}
+
+	private boolean isEmpty(String[] values) {
+		if (values == null || values.length == 0) {
+			return true;
+		}
+		for (String value : values) {
+			if (!isBlank(value)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Cleans and prints failures thrown by {@code @BeforeAll}. */

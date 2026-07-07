@@ -42,6 +42,11 @@ public final class JPostmanAnnotationRunner<C> {
 	private final Runnable afterRunnerRequestCallback;
 	private final Map<String, ApiExecutor> sessionExecutors = new LinkedHashMap<>();
 
+	@FunctionalInterface
+	private interface RunnerBodyCallback<T> {
+		void run(T ctx, JPostmanInfo info) throws Exception;
+	}
+
 	/**
 	 * Creates a runner for the supplied framework bridge.
 	 *
@@ -56,8 +61,8 @@ public final class JPostmanAnnotationRunner<C> {
 	 *
 	 * @param framework                  framework bridge used to perform context
 	 *                                   operations
-	 * @param afterRunnerRequestCallback optional callback invoked after each
-	 *                                   top-level runner request completes
+	 * @param afterRunnerRequestCallback optional callback invoked before and after
+	 *                                   each top-level runner request
 	 */
 	public JPostmanAnnotationRunner(JPostmanFramework<C> framework, Runnable afterRunnerRequestCallback) {
 		this.framework = framework;
@@ -179,9 +184,16 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 
 			if (runnerAnnotation != null) {
-				runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
-						info.withTags(runnerAnnotation.tags()), stack);
-				executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true);
+				Method reusableRunner = runnerDependencyLauncherMethod(testInstance.getClass(), runnerAnnotation, info);
+				if (reusableRunner != null) {
+					runRunnerDependencyLauncher(testInstance, prepared, testMethod, reusableRunner, runnerAnnotation,
+							info, stack);
+				} else {
+					runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
+							info.withTags(runnerAnnotation.tags()), stack);
+					executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
+							runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod));
+				}
 			}
 		} catch (Exception | Error e) {
 			if (isFrameworkSkip(e)) {
@@ -194,6 +206,336 @@ public final class JPostmanAnnotationRunner<C> {
 			contextRunner.injectTestContexts(testInstance, prepared);
 			contextRunner.injectLoadedContexts(testInstance, prepared);
 			contextRunner.injectAssertContexts(testInstance, prepared);
+		}
+	}
+
+	private boolean runnerUsesBeforeRequestRules(Method testMethod) {
+		if (testMethod == null) {
+			return false;
+		}
+
+		/*
+		 * A @JPostmanRunner body is normally a post-response diagnostics callback.
+		 * Fluent runner rule bodies need one extra before-request callback:
+		 * runner().start(...) and runner().request(...) prepare the request before
+		 * execution, while runner().response(...), has(...).then(...), any(...),
+		 * otherwise(...), and end(...) run after the active runner response.
+		 *
+		 * Do not detect this by plain text like "request". User test bodies often
+		 * mention info.request or request names for diagnostics, and that would make a
+		 * plain after-only body run before the request too. Instead, inspect the target
+		 * method bytecode and require an actual call to RunnerRules/RunnerCondition.
+		 */
+		byte[] bytecode = classBytes(testMethod.getDeclaringClass());
+		if (bytecode == null || bytecode.length == 0) {
+			return false;
+		}
+
+		try {
+			return methodCallsRunnerRules(testMethod, bytecode);
+		} catch (RuntimeException ignored) {
+			String text = new String(bytecode, java.nio.charset.StandardCharsets.ISO_8859_1);
+			if (!text.contains("io/jpostman/annotations/runtime/JPostmanRuntime$RunnerRules")) {
+				return false;
+			}
+			return text.contains("start") || text.contains("response") || text.contains("has") || text.contains("any")
+					|| text.contains("otherwise") || text.contains("end") || text.contains("then");
+		}
+	}
+
+	private boolean methodCallsRunnerRules(Method target, byte[] bytes) {
+		ClassFileView classFile = ClassFileView.read(bytes);
+		String targetName = target.getName();
+		String targetDescriptor = methodDescriptor(target);
+
+		for (ClassFileMethod method : classFile.methods) {
+			if (targetName.equals(method.name) && targetDescriptor.equals(method.descriptor)
+					&& codeCallsRunnerRules(classFile, method.code)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean codeCallsRunnerRules(ClassFileView classFile, byte[] code) {
+		if (code == null || code.length == 0) {
+			return false;
+		}
+		for (int i = 0; i < code.length; i++) {
+			int opcode = code[i] & 0xff;
+			if (opcode == 0xb6 || opcode == 0xb7 || opcode == 0xb8 || opcode == 0xb9) {
+				if (i + 2 >= code.length) {
+					continue;
+				}
+				ClassFileMethodRef ref = classFile.methodRef(u2(code, i + 1));
+				if (isRunnerRuleMethod(ref)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private boolean isRunnerRuleMethod(ClassFileMethodRef ref) {
+		if (ref == null || ref.owner == null || ref.name == null) {
+			return false;
+		}
+		if ("io/jpostman/annotations/runtime/JPostmanRuntime$RunnerCondition".equals(ref.owner)) {
+			return "then".equals(ref.name);
+		}
+		if (!"io/jpostman/annotations/runtime/JPostmanRuntime$RunnerRules".equals(ref.owner)) {
+			return false;
+		}
+		if ("request".equals(ref.name)) {
+			return ref.descriptor != null && !ref.descriptor.startsWith("()");
+		}
+		return "start".equals(ref.name) || "response".equals(ref.name) || "has".equals(ref.name)
+				|| "any".equals(ref.name) || "otherwise".equals(ref.name) || "end".equals(ref.name);
+	}
+
+	private String methodDescriptor(Method method) {
+		StringBuilder descriptor = new StringBuilder("(");
+		for (Class<?> parameter : method.getParameterTypes()) {
+			descriptor.append(typeDescriptor(parameter));
+		}
+		descriptor.append(')').append(typeDescriptor(method.getReturnType()));
+		return descriptor.toString();
+	}
+
+	private String typeDescriptor(Class<?> type) {
+		if (type == void.class) {
+			return "V";
+		}
+		if (type == boolean.class) {
+			return "Z";
+		}
+		if (type == byte.class) {
+			return "B";
+		}
+		if (type == char.class) {
+			return "C";
+		}
+		if (type == short.class) {
+			return "S";
+		}
+		if (type == int.class) {
+			return "I";
+		}
+		if (type == long.class) {
+			return "J";
+		}
+		if (type == float.class) {
+			return "F";
+		}
+		if (type == double.class) {
+			return "D";
+		}
+		if (type.isArray()) {
+			return type.getName().replace('.', '/');
+		}
+		return "L" + type.getName().replace('.', '/') + ";";
+	}
+
+	private static int u1(byte[] bytes, int offset) {
+		return bytes[offset] & 0xff;
+	}
+
+	private static int u2(byte[] bytes, int offset) {
+		return ((bytes[offset] & 0xff) << 8) | (bytes[offset + 1] & 0xff);
+	}
+
+	private static int u4(byte[] bytes, int offset) {
+		return (u2(bytes, offset) << 16) | u2(bytes, offset + 2);
+	}
+
+	private static final class ClassFileView {
+		private final String[] utf8;
+		private final int[] classNameIndex;
+		private final int[] refClassIndex;
+		private final int[] refNameAndTypeIndex;
+		private final int[] nameIndex;
+		private final int[] descriptorIndex;
+		private final List<ClassFileMethod> methods;
+
+		private ClassFileView(String[] utf8, int[] classNameIndex, int[] refClassIndex, int[] refNameAndTypeIndex,
+				int[] nameIndex, int[] descriptorIndex, List<ClassFileMethod> methods) {
+			this.utf8 = utf8;
+			this.classNameIndex = classNameIndex;
+			this.refClassIndex = refClassIndex;
+			this.refNameAndTypeIndex = refNameAndTypeIndex;
+			this.nameIndex = nameIndex;
+			this.descriptorIndex = descriptorIndex;
+			this.methods = methods;
+		}
+
+		private static ClassFileView read(byte[] bytes) {
+			if (u4(bytes, 0) != 0xCAFEBABE) {
+				throw new IllegalArgumentException("Not a class file");
+			}
+			int pos = 8;
+			int count = u2(bytes, pos);
+			pos += 2;
+			String[] utf8 = new String[count];
+			int[] classNameIndex = new int[count];
+			int[] refClassIndex = new int[count];
+			int[] refNameAndTypeIndex = new int[count];
+			int[] nameIndex = new int[count];
+			int[] descriptorIndex = new int[count];
+
+			for (int i = 1; i < count; i++) {
+				int tag = u1(bytes, pos++);
+				switch (tag) {
+				case 1: {
+					int length = u2(bytes, pos);
+					pos += 2;
+					utf8[i] = new String(bytes, pos, length, java.nio.charset.StandardCharsets.UTF_8);
+					pos += length;
+					break;
+				}
+				case 7:
+					classNameIndex[i] = u2(bytes, pos);
+					pos += 2;
+					break;
+				case 9:
+				case 10:
+				case 11:
+					refClassIndex[i] = u2(bytes, pos);
+					refNameAndTypeIndex[i] = u2(bytes, pos + 2);
+					pos += 4;
+					break;
+				case 12:
+					nameIndex[i] = u2(bytes, pos);
+					descriptorIndex[i] = u2(bytes, pos + 2);
+					pos += 4;
+					break;
+				case 3:
+				case 4:
+				case 17:
+				case 18:
+					pos += 4;
+					break;
+				case 5:
+				case 6:
+					pos += 8;
+					i++;
+					break;
+				case 8:
+				case 16:
+				case 19:
+				case 20:
+					pos += 2;
+					break;
+				case 15:
+					pos += 3;
+					break;
+				default:
+					throw new IllegalArgumentException("Unsupported constant-pool tag: " + tag);
+				}
+			}
+
+			pos += 6;
+			int interfaces = u2(bytes, pos);
+			pos += 2 + interfaces * 2;
+			pos = skipMembers(bytes, pos);
+			List<ClassFileMethod> methods = readMethods(bytes, pos, utf8);
+			return new ClassFileView(utf8, classNameIndex, refClassIndex, refNameAndTypeIndex, nameIndex,
+					descriptorIndex, methods);
+		}
+
+		private static int skipMembers(byte[] bytes, int pos) {
+			int fields = u2(bytes, pos);
+			pos += 2;
+			for (int i = 0; i < fields; i++) {
+				pos += 6;
+				int attributes = u2(bytes, pos);
+				pos += 2;
+				for (int a = 0; a < attributes; a++) {
+					pos += 2;
+					int length = u4(bytes, pos);
+					pos += 4 + length;
+				}
+			}
+			return pos;
+		}
+
+		private static List<ClassFileMethod> readMethods(byte[] bytes, int pos, String[] utf8) {
+			int count = u2(bytes, pos);
+			pos += 2;
+			List<ClassFileMethod> methods = new ArrayList<>();
+			for (int i = 0; i < count; i++) {
+				pos += 2;
+				String name = utf8[u2(bytes, pos)];
+				String descriptor = utf8[u2(bytes, pos + 2)];
+				pos += 4;
+				byte[] code = null;
+				int attributes = u2(bytes, pos);
+				pos += 2;
+				for (int a = 0; a < attributes; a++) {
+					String attributeName = utf8[u2(bytes, pos)];
+					int length = u4(bytes, pos + 2);
+					pos += 6;
+					if ("Code".equals(attributeName)) {
+						int codeLength = u4(bytes, pos + 4);
+						code = Arrays.copyOfRange(bytes, pos + 8, pos + 8 + codeLength);
+					}
+					pos += length;
+				}
+				methods.add(new ClassFileMethod(name, descriptor, code));
+			}
+			return methods;
+		}
+
+		private ClassFileMethodRef methodRef(int index) {
+			if (index <= 0 || index >= refClassIndex.length) {
+				return null;
+			}
+			int ownerIndex = refClassIndex[index];
+			int nameTypeIndex = refNameAndTypeIndex[index];
+			if (ownerIndex <= 0 || nameTypeIndex <= 0) {
+				return null;
+			}
+			String owner = utf8[classNameIndex[ownerIndex]];
+			String name = utf8[nameIndex[nameTypeIndex]];
+			String descriptor = utf8[descriptorIndex[nameTypeIndex]];
+			return new ClassFileMethodRef(owner, name, descriptor);
+		}
+	}
+
+	private static final class ClassFileMethod {
+		private final String name;
+		private final String descriptor;
+		private final byte[] code;
+
+		private ClassFileMethod(String name, String descriptor, byte[] code) {
+			this.name = name;
+			this.descriptor = descriptor;
+			this.code = code;
+		}
+	}
+
+	private static final class ClassFileMethodRef {
+		private final String owner;
+		private final String name;
+		private final String descriptor;
+
+		private ClassFileMethodRef(String owner, String name, String descriptor) {
+			this.owner = owner;
+			this.name = name;
+			this.descriptor = descriptor;
+		}
+	}
+
+	private byte[] classBytes(Class<?> type) {
+		if (type == null) {
+			return null;
+		}
+		String resource = type.getName().replace('.', '/') + ".class";
+		ClassLoader loader = type.getClassLoader();
+		try (java.io.InputStream in = loader == null ? ClassLoader.getSystemResourceAsStream(resource)
+				: loader.getResourceAsStream(resource)) {
+			return in == null ? null : in.readAllBytes();
+		} catch (java.io.IOException e) {
+			return null;
 		}
 	}
 
@@ -521,7 +863,8 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		return new JPostmanInfo(runnerAnnotation.tags(), runnerAnnotation.executor(), methodName,
-				runnerAnnotation.namespace(), runnerAnnotation.folder(), "").annotation("@JPostmanRunner");
+				runnerAnnotation.namespace(), runnerAnnotation.folder(), "").annotation("@JPostmanRunner")
+				.id(annotationId(runnerAnnotation.id()));
 	}
 
 	private void runDependencies(Object testInstance, PreparedContexts<C> resolver, String[] dependencyNames,
@@ -635,8 +978,10 @@ public final class JPostmanAnnotationRunner<C> {
 	private void runRunnerDependency(Object testInstance, PreparedContexts<C> resolver, Method dependencyMethod,
 			JPostmanRunner annotation, JPostmanInfo parentInfo, List<String> stack) throws Exception {
 
-		JPostmanInfo info = parentInfo.child(dependencyMethod.getName(), new String[0], annotation.executor(), "",
-				annotation.namespace(), annotation.folder(), parentInfo.request).annotation("@JPostmanRunner");
+		JPostmanInfo info = parentInfo
+				.child(dependencyMethod.getName(), new String[0], annotation.executor(), "", annotation.namespace(),
+						annotation.folder(), parentInfo.request)
+				.annotation("@JPostmanRunner").id(annotationId(annotation.id()));
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(dependencyMethod.getName());
 		resolver.info(runnerInfo);
@@ -648,11 +993,152 @@ public final class JPostmanAnnotationRunner<C> {
 			skipped(report, runnerInfo);
 			throw JPostmanErrors.skip(framework, runnerInfo, runnerSkipLines(annotation, runnerInfo));
 		}
+		if (annotation.lifecycle()) {
+			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
+					runnerInfo.withTags(annotation.tags()), stack);
+			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, true,
+					runnerUsesBeforeRequestRules(dependencyMethod),
+					(ctx, callbackInfo) -> invokeAnnotated(testInstance, dependencyMethod, ctx, callbackInfo));
+			return;
+		}
+
 		runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
 			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
 					runnerInfo.withTags(annotation.tags()), stack);
-			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false);
+			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false);
 		});
+	}
+
+	private Method runnerDependencyLauncherMethod(Class<?> type, JPostmanRunner annotation, JPostmanInfo info) {
+		if (!isRunnerDependencyLauncher(annotation)) {
+			return null;
+		}
+
+		String reference = dependencies(annotation.dependsOn())[0];
+		Method dependencyMethod = findDependencyMethod(type, reference, info);
+		return JPostmanAnnotations.runner(dependencyMethod) == null ? null : dependencyMethod;
+	}
+
+	private boolean isRunnerDependencyLauncher(JPostmanRunner annotation) {
+		if (annotation == null || dependencies(annotation.dependsOn()).length != 1) {
+			return false;
+		}
+		return isBlank(annotation.namespace()) && isBlank(annotation.folder()) && isBlank(annotation.rule())
+				&& isBlank(annotation.executor()) && isBlank(annotation.data()) && isEmpty(annotation.include())
+				&& isEmpty(annotation.exclude()) && isEmpty(annotation.filter()) && isEmpty(annotation.asserts())
+				&& annotation.verify() == -1 && !annotation.soft();
+	}
+
+	private boolean isEmpty(String[] values) {
+		if (values == null || values.length == 0) {
+			return true;
+		}
+		for (String value : values) {
+			if (!isBlank(value)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private void runRunnerDependencyLauncher(Object testInstance, PreparedContexts<C> resolver, Method currentMethod,
+			Method reusableRunner, JPostmanRunner currentAnnotation, JPostmanInfo currentInfo, List<String> stack)
+			throws Exception {
+
+		String reference = dependencies(currentAnnotation.dependsOn())[0];
+		if (currentMethod != null && currentMethod.equals(reusableRunner)) {
+			throw JPostmanErrors.usage(currentInfo,
+					"JPostman runner cannot depend on itself as a reusable runner: " + reference,
+					"Use dependsOn to reference another @JPostmanRunner method or id.");
+		}
+
+		JPostmanRunner reusableAnnotation = JPostmanAnnotations.runner(reusableRunner);
+		String stackName = isIdReference(reference) ? reference : reusableRunner.getName();
+		if (stack.contains(stackName)) {
+			List<String> chain = new ArrayList<>(stack);
+			chain.add(stackName);
+			throw JPostmanErrors.usage(currentInfo, "Circular JPostman runner dependency detected.",
+					"Dependency chain: " + String.join(" -> ", chain),
+					"A JPostman runner cannot reuse a runner that is already running.");
+		}
+
+		stack.add(stackName);
+		try {
+			runReusableRunnerDependency(testInstance, resolver, currentMethod, reusableRunner, reusableAnnotation,
+					currentAnnotation, currentInfo.withTags(currentAnnotation.tags()), stack);
+		} finally {
+			stack.remove(stack.size() - 1);
+		}
+	}
+
+	private void runReusableRunnerDependency(Object testInstance, PreparedContexts<C> resolver, Method launcherMethod,
+			Method reusableRunner, JPostmanRunner reusableAnnotation, JPostmanRunner launcherAnnotation,
+			JPostmanInfo parentInfo, List<String> stack) throws Exception {
+
+		JPostmanInfo info = parentInfo
+				.child(reusableRunner.getName(), new String[0], reusableAnnotation.executor(), "",
+						reusableAnnotation.namespace(), reusableAnnotation.folder(), parentInfo.request)
+				.annotation("@JPostmanRunner").id(annotationId(reusableAnnotation.id()));
+		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
+		runnerInfo.method(reusableRunner.getName());
+		resolver.info(runnerInfo);
+		applyData(testInstance, resolver, runnerInfo, reusableAnnotation.data(), stack);
+		JPostmanReport report = report(testInstance);
+		add(report, runnerInfo);
+		validateRunnerSkipEnabled(reusableAnnotation, runnerInfo);
+		if (skipRunner(reusableAnnotation)) {
+			skipped(report, runnerInfo);
+			throw JPostmanErrors.skip(framework, runnerInfo, runnerSkipLines(reusableAnnotation, runnerInfo));
+		}
+
+		runDependencies(testInstance, resolver, dependencies(reusableAnnotation.dependsOn()),
+				runnerInfo.withTags(reusableAnnotation.tags()), stack);
+		executeRunner(testInstance, resolver, reusableAnnotation, runnerInfo, stack, true,
+				reusableAnnotation.lifecycle() && runnerUsesBeforeRequestRules(reusableRunner),
+				reusableRunnerBodyCallback(testInstance, reusableRunner, launcherMethod, launcherAnnotation));
+	}
+
+	private RunnerBodyCallback<C> reusableRunnerBodyCallback(Object testInstance, Method reusableRunner,
+			Method launcherMethod, JPostmanRunner launcherAnnotation) {
+		boolean launcherBefore = launcherAnnotation != null && launcherAnnotation.lifecycle()
+				&& runnerUsesBeforeRequestRules(launcherMethod);
+		return (ctx, callbackInfo) -> {
+			if (JPostmanRuntimeRunner.isBeforeRequest()) {
+				invokeAnnotated(testInstance, reusableRunner, ctx, callbackInfo);
+				if (launcherBefore) {
+					invokeAnnotated(testInstance, launcherMethod, ctx, callbackInfo);
+				}
+				return;
+			}
+
+			Throwable failure = null;
+			try {
+				invokeAnnotated(testInstance, reusableRunner, ctx, callbackInfo);
+			} catch (Exception | Error e) {
+				if (!JPostmanRuntimeRunner.isRunnerBodyComplete(e)) {
+					failure = e;
+				}
+			}
+
+			try {
+				invokeAnnotated(testInstance, launcherMethod, ctx, callbackInfo);
+			} catch (Exception | Error e) {
+				if (!JPostmanRuntimeRunner.isRunnerBodyComplete(e)) {
+					if (failure != null) {
+						failure.addSuppressed(e);
+					} else {
+						failure = e;
+					}
+				}
+			}
+
+			if (failure instanceof Exception) {
+				throw (Exception) failure;
+			}
+			if (failure instanceof Error) {
+				throw (Error) failure;
+			}
+		};
 	}
 
 	private JPostmanInfo requestDependencyInfo(JPostmanInfo parentInfo, Method dependencyMethod,
@@ -1010,7 +1496,19 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void executeRunner(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
-			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest) throws Exception {
+			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest, boolean notifyBeforeRequest)
+			throws Exception {
+		executeRunner(testInstance, resolver, annotation, info, stack, notifyAfterRequest, notifyBeforeRequest,
+				frameworkRunnerBodyCallback());
+	}
+
+	private RunnerBodyCallback<C> frameworkRunnerBodyCallback() {
+		return afterRunnerRequestCallback == null ? null : (ctx, info) -> afterRunnerRequestCallback.run();
+	}
+
+	private void executeRunner(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
+			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest, boolean notifyBeforeRequest,
+			RunnerBodyCallback<C> runnerBodyCallback) throws Exception {
 
 		validateLocalLog(annotation.log(), info);
 		JPostmanReport report = report(testInstance);
@@ -1037,7 +1535,7 @@ public final class JPostmanAnnotationRunner<C> {
 				excludes, skipped);
 
 		if (notifyAfterRequest) {
-			JPostmanRuntimeRunner.begin(executableRequestNames);
+			JPostmanRuntimeRunner.begin(executableRequestNames, annotation.lifecycle());
 		}
 
 		try {
@@ -1058,11 +1556,19 @@ public final class JPostmanAnnotationRunner<C> {
 
 				executed++;
 				try {
+					notifyBeforeRunnerRequest(testInstance, notifyBeforeRequest, requestIndex, requestName,
+							latestContext(resolver, requestInfo.namespace, ctx), annotation, requestInfo,
+							runnerBodyCallback);
+					ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo,
+							requestName);
+					resolver.update(info.namespace, ctx);
+					framework.setCurrent(ctx);
+
 					executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack,
-							deferRunnerSoftVerification(notifyAfterRequest, annotation));
+							deferRunnerSoftVerification(notifyAfterRequest, annotation, runnerBodyCallback));
 					notifyAfterRunnerRequest(testInstance, notifyAfterRequest, requestIndex, requestName,
 							latestContext(resolver, requestInfo.namespace, ctx), annotation, requestInfo,
-							collectRunnerFrameworkAssertions(annotation));
+							collectRunnerFrameworkAssertions(annotation), runnerBodyCallback);
 				} catch (Exception | Error e) {
 					if (!annotation.soft() && !JPostmanRuntimeRunner.isSoftFailure(e)) {
 						throw e;
@@ -1125,8 +1631,9 @@ public final class JPostmanAnnotationRunner<C> {
 		return executable;
 	}
 
-	private boolean deferRunnerSoftVerification(boolean notifyAfterRequest, JPostmanRunner annotation) {
-		return notifyAfterRequest && afterRunnerRequestCallback != null && annotation != null && annotation.soft();
+	private boolean deferRunnerSoftVerification(boolean notifyAfterRequest, JPostmanRunner annotation,
+			RunnerBodyCallback<C> runnerBodyCallback) {
+		return notifyAfterRequest && runnerBodyCallback != null && annotation != null && annotation.soft();
 	}
 
 	private boolean collectRunnerFrameworkAssertions(JPostmanRunner annotation) {
@@ -1134,18 +1641,44 @@ public final class JPostmanAnnotationRunner<C> {
 				&& (annotation.verify() != 0 || annotation.asserts() != null && annotation.asserts().length > 0);
 	}
 
-	private void notifyAfterRunnerRequest(Object testInstance, boolean enabled, int requestIndex, String requestName,
-			C ctx, JPostmanRunner annotation, JPostmanInfo info, boolean collectFrameworkAssertions) {
-		if (!enabled || afterRunnerRequestCallback == null) {
+	private void notifyBeforeRunnerRequest(Object testInstance, boolean enabled, int requestIndex, String requestName,
+			C ctx, JPostmanRunner annotation, JPostmanInfo info, RunnerBodyCallback<C> runnerBodyCallback) {
+		if (!enabled || runnerBodyCallback == null) {
 			return;
 		}
 
-		JPostmanRuntimeRunner.request(requestIndex, requestName);
-		Throwable callbackFailure = null;
+		JPostmanRuntimeRunner.beforeRequest(requestIndex, requestName);
+		JPostmanRuntimeRunner.beginUserBodyCallback();
 		try {
-			afterRunnerRequestCallback.run();
+			runnerBodyCallback.run(ctx, info);
 		} catch (Exception | Error e) {
-			callbackFailure = e;
+			if (!JPostmanRuntimeRunner.isRunnerBodyComplete(e)) {
+				throw e instanceof AssertionError ? (AssertionError) e : locationError(testInstance, info, e);
+			}
+		} finally {
+			JPostmanRuntimeRunner.endUserBodyCallback();
+			JPostmanRuntimeRunner.finishBeforeRequest();
+		}
+	}
+
+	private void notifyAfterRunnerRequest(Object testInstance, boolean enabled, int requestIndex, String requestName,
+			C ctx, JPostmanRunner annotation, JPostmanInfo info, boolean collectFrameworkAssertions,
+			RunnerBodyCallback<C> runnerBodyCallback) {
+		if (!enabled || runnerBodyCallback == null) {
+			return;
+		}
+
+		JPostmanRuntimeRunner.afterRequest(requestIndex, requestName);
+		Throwable callbackFailure = null;
+		JPostmanRuntimeRunner.beginUserBodyCallback();
+		try {
+			runnerBodyCallback.run(ctx, info);
+		} catch (Exception | Error e) {
+			if (!JPostmanRuntimeRunner.isRunnerBodyComplete(e)) {
+				callbackFailure = e;
+			}
+		} finally {
+			JPostmanRuntimeRunner.endUserBodyCallback();
 		}
 
 		AssertionError localSoftFailure = JPostmanRuntimeRunner.takeSoftFailure();
@@ -2022,6 +2555,7 @@ public final class JPostmanAnnotationRunner<C> {
 			for (Method method : current.getDeclaredMethods()) {
 				collectAnnotationId(ids, method, requestId(method));
 				collectAnnotationId(ids, method, responseId(method));
+				collectAnnotationId(ids, method, runnerId(method));
 				collectAnnotationId(ids, method, executorId(method));
 			}
 			current = current.getSuperclass();
@@ -2042,7 +2576,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private boolean onlyExecutorIds(List<Method> methods) {
 		for (Method method : methods) {
 			if (JPostmanAnnotations.executor(method) == null || JPostmanAnnotations.request(method) != null
-					|| JPostmanAnnotations.response(method) != null) {
+					|| JPostmanAnnotations.response(method) != null || JPostmanAnnotations.runner(method) != null) {
 				return false;
 			}
 		}
@@ -2060,7 +2594,7 @@ public final class JPostmanAnnotationRunner<C> {
 		StringBuilder message = new StringBuilder();
 		message.append("Invalid JPostman annotation usage.").append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL)
 				.append("Duplicate JPostman annotation ids found.").append(JPostmanErrors.ENDL)
-				.append("Ids must be unique across @JPostmanRequest, @JPostmanResponse, and @JPostmanExecutor.")
+				.append("Ids must be unique across @JPostmanRequest, @JPostmanResponse, @JPostmanRunner, and @JPostmanExecutor.")
 				.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Duplicate annotation ids:")
 				.append(JPostmanErrors.ENDL);
 
@@ -2086,6 +2620,9 @@ public final class JPostmanAnnotationRunner<C> {
 		if (JPostmanAnnotations.response(method) != null) {
 			return "@JPostmanResponse";
 		}
+		if (JPostmanAnnotations.runner(method) != null) {
+			return "@JPostmanRunner";
+		}
 		if (JPostmanAnnotations.executor(method) != null) {
 			return "@JPostmanExecutor";
 		}
@@ -2099,6 +2636,11 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private String responseId(Method method) {
 		JPostmanResponse annotation = JPostmanAnnotations.response(method);
+		return annotation == null ? "" : annotationId(annotation.id());
+	}
+
+	private String runnerId(Method method) {
+		JPostmanRunner annotation = JPostmanAnnotations.runner(method);
 		return annotation == null ? "" : annotationId(annotation.id());
 	}
 
@@ -2617,7 +3159,11 @@ public final class JPostmanAnnotationRunner<C> {
 			return annotationId(request.id());
 		}
 		JPostmanResponse response = JPostmanAnnotations.response(method);
-		return response == null ? "" : annotationId(response.id());
+		if (response != null) {
+			return annotationId(response.id());
+		}
+		JPostmanRunner runner = JPostmanAnnotations.runner(method);
+		return runner == null ? "" : annotationId(runner.id());
 	}
 
 	private Method findExecutorMethodByName(Class<?> type, String name) {

@@ -22,6 +22,13 @@ import java.lang.annotation.Target;
 public @interface JPostmanRunner {
 
 	/**
+	 * Optional annotation id used by dependsOn = "#id".
+	 *
+	 * @return annotation id
+	 */
+	String id() default "";
+
+	/**
 	 * Logical tags for this runner execution.
 	 *
 	 * @return runner tags, or empty array when not defined
@@ -58,6 +65,14 @@ public @interface JPostmanRunner {
 
 	/**
 	 * Dependency method names to run before this runner.
+	 *
+	 * <p>
+	 * For runner launcher methods, a single runner dependency such as
+	 * {@code dependsOn = "#testRunner"} can reuse the referenced runner body with
+	 * this annotation's tags when this runner does not define its own folder,
+	 * include/exclude, executor, rule, filter, data, asserts, verify, soft, or
+	 * lifecycle settings.
+	 * </p>
 	 *
 	 * @return dependency method names
 	 */
@@ -121,6 +136,23 @@ public @interface JPostmanRunner {
 	 * @return {@code true} to use soft assertions
 	 */
 	boolean soft() default false;
+
+	/**
+	 * Enables the new request/response runner lifecycle callback mode.
+	 *
+	 * <p>
+	 * The default {@code false} keeps the original behavior: the runner method body
+	 * is invoked only after each executed response. Set this to {@code true} when
+	 * using {@code jpostman.runner().start(...)},
+	 * {@code jpostman.runner().request(...)}, or
+	 * {@code jpostman.runner().response(...)} and when the fluent runner chain
+	 * should control the method body for the before/after phases.
+	 * </p>
+	 *
+	 * @return {@code true} to enable before-request and response lifecycle
+	 *         callbacks
+	 */
+	boolean lifecycle() default false;
 
 	/**
 	 * Optional data group or data section to apply before request execution.

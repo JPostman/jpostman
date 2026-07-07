@@ -688,6 +688,13 @@ public final class JPostman {
 	public @interface Runner {
 
 		/**
+		 * Optional annotation id used by dependsOn = "#id".
+		 *
+		 * @return annotation id
+		 */
+		String id() default "";
+
+		/**
 		 * Tags used to select this runner.
 		 *
 		 * @return tags
@@ -739,6 +746,14 @@ public final class JPostman {
 		/**
 		 * Dependency method names.
 		 *
+		 * <p>
+		 * For runner launcher methods, a single runner dependency such as
+		 * {@code dependsOn = "#testRunner"} can reuse the referenced runner body with
+		 * this annotation's tags when this runner does not define its own folder,
+		 * include/exclude, executor, rule, filter, data, asserts, verify, soft, or
+		 * lifecycle settings.
+		 * </p>
+		 *
 		 * @return dependency method names
 		 */
 		String[] dependsOn() default {};
@@ -780,6 +795,22 @@ public final class JPostman {
 		 * @return {@code true} to collect assertion failures
 		 */
 		boolean soft() default false;
+
+		/**
+		 * Enables request/response runner lifecycle callbacks.
+		 *
+		 * <p>
+		 * The default {@code false} keeps the original runner behavior: the method body
+		 * is invoked only after each executed response. Set this to {@code true} when
+		 * using {@code jpostman.runner().start(...)},
+		 * {@code jpostman.runner().request(...)}, or
+		 * {@code jpostman.runner().response(...)}.
+		 * </p>
+		 *
+		 * @return {@code true} to enable before-request and response lifecycle
+		 *         callbacks
+		 */
+		boolean lifecycle() default false;
 
 		/**
 		 * Data section name.
@@ -834,6 +865,22 @@ public final class JPostman {
 		 * @return namespace context
 		 */
 		C ctx(String namespace);
+
+		/**
+		 * Alias for {@link #ctx()}.
+		 *
+		 * @return active framework context
+		 */
+		C test();
+
+		/**
+		 * Alias for {@link #ctx(String)}. Use an empty namespace to explicitly resolve
+		 * the default context.
+		 *
+		 * @param namespace namespace to resolve
+		 * @return namespace context
+		 */
+		C test(String namespace);
 
 		/**
 		 * Returns the current execution info.
@@ -1077,6 +1124,33 @@ public final class JPostman {
 		 * @return runtime execution info
 		 */
 		JPostmanInfo attr();
+
+		/**
+		 * Returns the Java test/helper/executor method represented by this info object.
+		 *
+		 * @return current method name
+		 */
+		default String method() {
+			return attr().method;
+		}
+
+		/**
+		 * Returns the current Postman folder name.
+		 *
+		 * @return current folder name
+		 */
+		default String folder() {
+			return attr().folder;
+		}
+
+		/**
+		 * Returns the current Postman request name.
+		 *
+		 * @return current request name
+		 */
+		default String request() {
+			return attr().request;
+		}
 
 		/**
 		 * Creates an empty mutable reference that can be updated inside Java lambdas.

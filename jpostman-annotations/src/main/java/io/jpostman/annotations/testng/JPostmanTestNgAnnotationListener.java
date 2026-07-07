@@ -267,10 +267,18 @@ public final class JPostmanTestNgAnnotationListener
 		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
 		try {
 			callBack.runTestMethod(testResult);
+			if (JPostmanAnnotationEngine.isRunnerBodyComplete(testResult.getThrowable())) {
+				testResult.setThrowable(null);
+				return;
+			}
 			throwReportedTestFailure(testResult);
 		} catch (TestBodyFailureException e) {
 			throw e;
 		} catch (Throwable e) {
+			if (JPostmanAnnotationEngine.isRunnerBodyComplete(e)) {
+				testResult.setThrowable(null);
+				return;
+			}
 			throw new TestBodyFailureException(e);
 		} finally {
 			JPostmanAnnotationEngine.endAssertionCleanup();

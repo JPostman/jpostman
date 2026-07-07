@@ -19,14 +19,69 @@ final class JPostmanRuntimeRunner {
 	}
 
 	static void begin(List<String> requestNames) {
-		STATE.set(new State(requestNames));
+		begin(requestNames, true);
+	}
+
+	static void begin(List<String> requestNames, boolean lifecycleEnabled) {
+		STATE.set(new State(requestNames, lifecycleEnabled));
 	}
 
 	static void request(int index, String requestName) {
+		afterRequest(index, requestName);
+	}
+
+	static void beforeRequest(int index, String requestName) {
+		request(index, requestName, Phase.BEFORE);
+	}
+
+	static void afterRequest(int index, String requestName) {
+		request(index, requestName, Phase.AFTER);
+	}
+
+	static void beginUserBodyCallback() {
+		State state = STATE.get();
+		if (state != null) {
+			state.stopUserBodyEnabled = state.lifecycleEnabled;
+		}
+	}
+
+	static void endUserBodyCallback() {
+		State state = STATE.get();
+		if (state != null) {
+			state.stopUserBodyEnabled = false;
+		}
+	}
+
+	static void stopUserBody() {
+		State state = STATE.get();
+		if (state != null && state.lifecycleEnabled && state.stopUserBodyEnabled) {
+			throw new RunnerBodyComplete();
+		}
+	}
+
+	static boolean isRunnerBodyComplete(Throwable failure) {
+		Throwable current = failure;
+		for (int depth = 0; current != null && depth < 20; depth++) {
+			if (current instanceof RunnerBodyComplete) {
+				return true;
+			}
+			Throwable next = current instanceof InvocationTargetException
+					? ((InvocationTargetException) current).getCause()
+					: current.getCause();
+			if (next == current) {
+				break;
+			}
+			current = next;
+		}
+		return false;
+	}
+
+	private static void request(int index, String requestName, Phase phase) {
 		State state = STATE.get();
 		if (state != null) {
 			state.index = index;
 			state.requestName = requestName == null ? "" : requestName;
+			state.phase = phase == null ? Phase.AFTER : phase;
 		}
 	}
 
@@ -60,6 +115,52 @@ final class JPostmanRuntimeRunner {
 
 		String request = info == null || info.request == null ? state.requestName : info.request;
 		return !request.isBlank() && request.equals(state.requestNames.get(state.requestNames.size() - 1));
+	}
+
+	static boolean isFirst() {
+		State state = STATE.get();
+		return state == null || state.index <= 0;
+	}
+
+	static boolean shouldRunStart() {
+		State state = STATE.get();
+		if (state == null || !state.lifecycleEnabled || state.phase != Phase.BEFORE || state.startPhaseComplete) {
+			return false;
+		}
+
+		/*
+		 * Mark start as consumed when the first start(...) callback is actually
+		 * selected. This keeps runtime-only tests and direct RunnerRules usage correct
+		 * even when the caller does not go through
+		 * JPostmanAnnotationRunner.finishBeforeRequest().
+		 */
+		state.startPhaseComplete = true;
+		return true;
+	}
+
+	static void finishBeforeRequest() {
+		State state = STATE.get();
+		if (state != null && state.lifecycleEnabled && state.phase == Phase.BEFORE) {
+			state.startPhaseComplete = true;
+			state.phase = Phase.IDLE;
+		}
+	}
+
+	static void finishAfterRequest() {
+		State state = STATE.get();
+		if (state != null && state.lifecycleEnabled && state.phase == Phase.AFTER && state.stopUserBodyEnabled) {
+			state.phase = Phase.IDLE;
+		}
+	}
+
+	static boolean isBeforeRequest() {
+		State state = STATE.get();
+		return state != null && state.lifecycleEnabled && state.phase == Phase.BEFORE;
+	}
+
+	static boolean isAfterRequest() {
+		State state = STATE.get();
+		return state == null || state.phase == Phase.AFTER;
 	}
 
 	static void recordSoftFailure(AssertionError failure) {
@@ -217,6 +318,14 @@ final class JPostmanRuntimeRunner {
 		return List.of(message);
 	}
 
+	private static final class RunnerBodyComplete extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		private RunnerBodyComplete() {
+			super(null, null, false, false);
+		}
+	}
+
 	private static final class RunnerSoftAssertionError extends AssertionError {
 		private static final long serialVersionUID = 1L;
 
@@ -225,15 +334,24 @@ final class JPostmanRuntimeRunner {
 		}
 	}
 
+	private enum Phase {
+		BEFORE, AFTER, IDLE
+	}
+
 	private static final class State {
 		private final List<String> requestNames;
+		private final boolean lifecycleEnabled;
 		private final Map<Integer, AssertionError> softFailures = new LinkedHashMap<>();
 		private boolean collectedSoftFailure;
+		private boolean startPhaseComplete;
+		private boolean stopUserBodyEnabled;
 		private int index = -1;
 		private String requestName = "";
+		private Phase phase = Phase.IDLE;
 
-		private State(List<String> requestNames) {
+		private State(List<String> requestNames, boolean lifecycleEnabled) {
 			this.requestNames = requestNames == null ? List.of() : new ArrayList<>(requestNames);
+			this.lifecycleEnabled = lifecycleEnabled;
 		}
 
 		private int softFailureKey() {

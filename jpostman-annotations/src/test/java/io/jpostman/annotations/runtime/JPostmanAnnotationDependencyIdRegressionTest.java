@@ -51,6 +51,17 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@Test
+	public void runnerDependencyCanBeResolvedById() throws Exception {
+		RunnerDependencyByIdFixture fixture = new RunnerDependencyByIdFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.runnerLoginExecutions);
+		assertEquals(1, fixture.profileExecutions);
+	}
+
+	@Test
 	public void dependencyIdRequiresHashPrefix() throws Exception {
 		IdRequiresHashFixture fixture = new IdRequiresHashFixture();
 		JPostmanAnnotationEngine.setupTestNg(fixture);
@@ -87,7 +98,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@Test
-	public void annotationIdsMustBeUniqueAcrossRequestResponseAndExecutor() {
+	public void annotationIdsMustBeUniqueAcrossRequestResponseRunnerAndExecutor() {
 		DuplicateAnnotationIdFixture fixture = new DuplicateAnnotationIdFixture();
 
 		AssertionError error = assertThrows(AssertionError.class, () -> JPostmanAnnotationEngine.setupTestNg(fixture));
@@ -96,6 +107,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		assertTrue(message.contains("id=\"shared\""), "Actual message: " + message);
 		assertTrue(message.contains("@JPostmanRequest"), "Actual message: " + message);
 		assertTrue(message.contains("@JPostmanResponse"), "Actual message: " + message);
+		assertTrue(message.contains("@JPostmanRunner"), "Actual message: " + message);
 		assertTrue(message.contains("@JPostmanExecutor"), "Actual message: " + message);
 	}
 
@@ -211,6 +223,38 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@JPostman.TestNG
+	private static final class RunnerDependencyByIdFixture {
+
+		@JPostman.Context(verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int runnerLoginExecutions;
+		private int profileExecutions;
+
+		@JPostman.Runner(id = "warmup", include = "Login user and get tokens", verify = 200)
+		public void warmupRunner() {
+		}
+
+		@JPostman.Response(request = "Get current auth user", dependsOn = "#warmup", verify = 200)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			if (ctx.request().log().contains("Login user and get tokens")) {
+				runnerLoginExecutions++;
+				return okExecutor("{\"accessToken\":\"token-123\"}");
+			}
+			if (ctx.request().log().contains("Get current auth user")) {
+				profileExecutions++;
+				return okExecutor("{\"id\":1}");
+			}
+			throw new AssertionError("Unexpected request: " + ctx.request().log());
+		}
+	}
+
+	@JPostman.TestNG
 	private static final class IdRequiresHashFixture {
 
 		@JPostman.Context(verifyStatusCode = 200)
@@ -286,6 +330,10 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		@JPostman.Response(id = "shared", request = "Login user and get tokens")
 		@org.testng.annotations.Test
 		public void responseById() {
+		}
+
+		@JPostman.Runner(id = "shared", include = "Login user and get tokens")
+		public void runnerById() {
 		}
 
 		@JPostman.Executor(id = "#shared")

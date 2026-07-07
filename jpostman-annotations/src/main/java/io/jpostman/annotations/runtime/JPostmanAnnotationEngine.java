@@ -69,13 +69,13 @@ public final class JPostmanAnnotationEngine {
 
 	/**
 	 * Runs JPostman annotation support for a JUnit test method and optionally
-	 * invokes a callback after each top-level @JPostmanRunner request completes.
+	 * invokes a callback around each top-level @JPostmanRunner request.
 	 *
 	 * @param testInstance               JUnit test instance
 	 * @param testMethod                 current JUnit test method
-	 * @param afterRunnerRequestCallback callback invoked after each runner request,
-	 *                                   or null when no per-request callback is
-	 *                                   needed
+	 * @param afterRunnerRequestCallback callback invoked before and after each
+	 *                                   runner request, or null when no per-request
+	 *                                   callback is needed
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
@@ -107,6 +107,19 @@ public final class JPostmanAnnotationEngine {
 	/** Clears assertion cleanup for the current test body. */
 	public static void endAssertionCleanup() {
 		JPostmanAssertionCleanup.clear();
+	}
+
+	/**
+	 * Returns true when the supplied throwable is the internal runner body control
+	 * signal used to stop a fluent runner method after the active phase has been
+	 * handled. Framework integrations use this to avoid reporting the control
+	 * signal as a normal test failure.
+	 *
+	 * @param throwable throwable to inspect
+	 * @return true when the throwable contains the runner body completion signal
+	 */
+	public static boolean isRunnerBodyComplete(Throwable throwable) {
+		return JPostmanRuntimeRunner.isRunnerBodyComplete(throwable);
 	}
 
 	private static Exception asException(Throwable throwable) {
@@ -158,13 +171,13 @@ public final class JPostmanAnnotationEngine {
 
 	/**
 	 * Runs JPostman annotation support for a TestNG test method and optionally
-	 * invokes a callback after each top-level @JPostmanRunner request completes.
+	 * invokes a callback around each top-level @JPostmanRunner request.
 	 *
 	 * @param testInstance               TestNG test instance
 	 * @param testMethod                 current TestNG test method
-	 * @param afterRunnerRequestCallback callback invoked after each runner request,
-	 *                                   or null when no per-request callback is
-	 *                                   needed
+	 * @param afterRunnerRequestCallback callback invoked before and after each
+	 *                                   runner request, or null when no per-request
+	 *                                   callback is needed
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.1
+
+### Added
+
+- Added `id` to compact `@JPostman.Runner` and legacy `@JPostmanRunner` so runner annotations can be referenced with `dependsOn = "#id"` and included in duplicate annotation-id validation.
+- Added `lifecycle = true` runner mode for explicit request/response lifecycle callbacks while keeping the default runner behavior after-response-only for existing tests.
+- Added fluent runner lifecycle callbacks: `start(...)` runs once before the first runner request, `request(...)` runs before each runner request, and `response(...)` runs after each runner response.
+- Added compact `JPostman.Info` shortcut methods `method()`, `folder()`, and `request()` for easier access to common runtime info values.
+- Added `JPostman.Runtime.test()` and `JPostman.Runtime.test(String)` aliases for `ctx()` and `ctx(String)`.
+
 ## 2.2.0
 
 ### Changed
