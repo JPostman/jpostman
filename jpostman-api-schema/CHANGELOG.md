@@ -13,6 +13,13 @@
 - Added generated request/response examples from OpenAPI and Swagger schemas, including object properties, arrays, enums, defaults, and composed schemas.
 - Added GraphQL request examples from the generated GraphQL body and headers.
 - Added shaded CLI jar generation with classifier `cli`.
+- Added `PostmanCollectionExporter` to export normalized `ApiSpec` models as Postman Collection v2.1 JSON.
+- Added `PostmanEnvironmentExporter` to export normalized `ApiSpec` environment values as Postman Environment JSON.
+- Added `collection` / `postman-collection`, `environment` / `postman-environment`, and `postman` CLI commands.
+- Added `--model` and `--model-stdin` input support so Postman files can be generated from an edited existing `ApiSpec` model without reparsing the original schema.
+- Added `--output` support for writing `parse`, `collection`, `environment`, and `env-update` results directly to files.
+- Added Postman export naming options with `--name`, `--collection-name`, and `--environment-name`.
+- Added smoke test coverage for exporting Postman Collection and Environment JSON from parsed OpenAPI models.
 
 ### Changed
 
@@ -22,6 +29,12 @@
 - Changed raw OpenAPI example handling so `examples.*.value` can update environment values for path, query, header, and body placeholders.
 - Changed environment token formatting to normalize `{{ key }}` into `{{key}}` after environment updates.
 - Changed Maven shade configuration to merge service-loader files and reduce duplicate shaded resource warnings.
+- Changed `ApiSchemaCli` from a parse/update-only bridge into a multi-command CLI for parsing, environment updates, and Postman exports.
+- Changed Postman export workflow to support UI-edited local models as the preferred RESTAGE Studio flow.
+- Changed JSON pretty output to use a custom Jackson pretty printer so array items are written on separate lines.
+- Changed `env-update` to reuse shared model input handling and optionally write updated models through `--output`.
+- Changed CLI validation to prevent mixing source document input (`--file` / `--stdin`) with existing model input (`--model` / `--model-stdin`).
+- Changed CLI README to document source parsing, existing model export, Postman file generation, and Java exporter usage.
 
 ### Fixed
 
@@ -31,4 +44,3 @@
 - Fixed environment values being overwritten by blank or placeholder values during parser-generated environment creation.
 - Fixed duplicate shaded Swagger safe URL resolver classes by excluding the old relocated resolver artifact.
 - Fixed raw `Schema` generic warnings in OpenAPI schema example handling.
-- Fixed shaded CLI resource warnings for duplicate license files, Maven metadata, signed jar metadata, and duplicated schema resources.

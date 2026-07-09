@@ -25,6 +25,8 @@ import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParseException;
 import io.jpostman.schema.parser.ApiSpecParser;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
+import io.jpostman.schema.postman.PostmanCollectionExporter;
+import io.jpostman.schema.postman.PostmanEnvironmentExporter;
 import io.jpostman.schema.util.ApiOperationEnvScanner;
 
 class ApiSpecParserSmokeTest {
@@ -549,6 +551,53 @@ class ApiSpecParserSmokeTest {
 		request.setAdds(adds);
 
 		assertThrows(IllegalArgumentException.class, () -> new ApiSpecEnvironmentUpdater().update(spec, request));
+	}
+
+	@Test
+	void exportsPostmanCollectionAndEnvironmentFromOpenApi() {
+		String openApi = "openapi: 3.0.3\ninfo:\n  title: Export Demo API\n  version: 1.0.0\nservers:\n"
+				+ "  - url: https://dummy.com\npaths:\n  /auth/login:\n    post:\n      tags:\n"
+				+ "        - Auth\n      operationId: loginUser\n      parameters:\n"
+				+ "        - name: remember\n          in: query\n          schema:\n            type: string\n"
+				+ "          example: '{{remember}}'\n      requestBody:\n        content:\n"
+				+ "          application/json:\n            example:\n              username: '{{username}}'\n"
+				+ "              password: '{{password}}'\n";
+
+		ApiSpec spec = ApiSpecParser.parse(openApi);
+		Map<String, Object> collection = new PostmanCollectionExporter().export(spec, "Demo Collection");
+		Map<String, Object> environment = new PostmanEnvironmentExporter().export(spec, "Demo Environment");
+
+		Map<?, ?> info = asMap(collection.get("info"));
+		assertEquals("Demo Collection", info.get("name"));
+		List<?> items = asList(collection.get("item"));
+		Map<?, ?> folder = asMap(items.get(0));
+		assertEquals("Auth", folder.get("name"));
+		List<?> folderItems = asList(folder.get("item"));
+		Map<?, ?> requestItem = asMap(folderItems.get(0));
+		Map<?, ?> request = asMap(requestItem.get("request"));
+		Map<?, ?> url = asMap(request.get("url"));
+		assertEquals("{{BASE_URL}}/auth/login?remember={{remember}}", url.get("raw"));
+
+		assertEquals("Demo Environment", environment.get("name"));
+		List<?> values = asList(environment.get("values"));
+		assertTrue(values.stream().map(ApiSpecParserSmokeTest::asMap)
+				.anyMatch(item -> "BASE_URL".equals(item.get("key"))));
+		assertTrue(values.stream().map(ApiSpecParserSmokeTest::asMap)
+				.anyMatch(item -> "username".equals(item.get("key"))));
+	}
+
+	private static Map<?, ?> asMap(Object value) {
+		assertTrue(value instanceof Map<?, ?>, "Expected Map but got " + typeName(value));
+		return (Map<?, ?>) value;
+	}
+
+	private static List<?> asList(Object value) {
+		assertTrue(value instanceof List<?>, "Expected List but got " + typeName(value));
+		return (List<?>) value;
+	}
+
+	private static String typeName(Object value) {
+		return value == null ? "null" : value.getClass().getName();
 	}
 
 }
