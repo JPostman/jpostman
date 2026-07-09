@@ -17,6 +17,7 @@ import graphql.schema.idl.SchemaParser;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import io.jpostman.schema.model.ApiBody;
 import io.jpostman.schema.model.ApiBodyType;
+import io.jpostman.schema.model.ApiExample;
 import io.jpostman.schema.model.ApiFolder;
 import io.jpostman.schema.model.ApiHeader;
 import io.jpostman.schema.model.ApiOperation;
@@ -87,9 +88,23 @@ public class GraphQlImporter implements ApiSpecImporter {
 			}
 
 			operation.getHeaders().add(new ApiHeader("Content-Type", "application/json", true));
-			operation.setBody(new ApiBody(ApiBodyType.GRAPHQL, buildGraphQlBody(operationType, field)));
+			ApiBody body = new ApiBody(ApiBodyType.GRAPHQL, buildGraphQlBody(operationType, field));
+			operation.setBody(body);
+			operation.setExample(toExample(operation, body));
 			folder.getOperations().add(operation);
 		}
+	}
+
+	/**
+	 * Builds a GraphQL request example from the generated body.
+	 */
+	private ApiExample toExample(ApiOperation operation, ApiBody body) {
+		ApiExample example = new ApiExample();
+		example.setName("GraphQL Example");
+		example.setPath(operation.getPath());
+		example.getHeaders().addAll(operation.getHeaders());
+		example.setBody(body);
+		return example;
 	}
 
 	/**

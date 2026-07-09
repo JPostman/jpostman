@@ -7,11 +7,13 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>1.0.1</version>
+		<version>1.2.8</version>
 	</parent>
 
 	<artifactId>jpostman-api-schema</artifactId>
 	<packaging>jar</packaging>
+	<!-- Update jpostman.api-schema.version in parent  -->
+	<version>1.0.2</version>
 
 	<name>JPostman API Schema</name>
 	<description>Imports OpenAPI, Postman Collection, and GraphQL schema documents into a common JPostman Java API model.</description>
@@ -39,6 +41,18 @@
 			<groupId>io.swagger.parser.v3</groupId>
 			<artifactId>swagger-parser</artifactId>
 			<version>${swagger.parser.version}</version>
+			<exclusions>
+				<!--
+					The Swagger v1 parser dependency can pull the old relocated resolver:
+					io.swagger:swagger-parser-safe-url-resolver:1.x.
+					The v3 parser already brings io.swagger.parser.v3:swagger-parser-safe-url-resolver:${swagger.parser.version}.
+					Keeping both creates overlapping class warnings in the shaded CLI jar.
+				-->
+				<exclusion>
+					<groupId>io.swagger</groupId>
+					<artifactId>swagger-parser-safe-url-resolver</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>com.graphql-java</groupId>
@@ -58,10 +72,76 @@
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<useModulePath>false</useModulePath>
-				</configuration>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.3</version>
+				<executions>
+					<execution>
+						<id>shade-cli</id>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<createDependencyReducedPom>false</createDependencyReducedPom>
+							<shadedArtifactAttached>true</shadedArtifactAttached>
+							<shadedClassifierName>cli</shadedClassifierName>
+
+							<filters>
+								<filter>
+									<artifact>*:*</artifact>
+									<excludes>
+										<!-- JPMS descriptors are not useful inside the shaded CLI jar. -->
+										<exclude>module-info.class</exclude>
+										<exclude>META-INF/versions/*/module-info.class</exclude>
+
+										<!-- Signed dependency metadata is invalid after shading. -->
+										<exclude>META-INF/*.SF</exclude>
+										<exclude>META-INF/*.DSA</exclude>
+										<exclude>META-INF/*.RSA</exclude>
+
+										<!-- Duplicated dependency license/notice files. -->
+										<exclude>META-INF/LICENSE</exclude>
+										<exclude>META-INF/LICENSE.txt</exclude>
+										<exclude>META-INF/LICENSE.md</exclude>
+										<exclude>META-INF/NOTICE</exclude>
+										<exclude>META-INF/NOTICE.txt</exclude>
+										<exclude>META-INF/NOTICE.md</exclude>
+										<exclude>META-INF/DEPENDENCIES</exclude>
+										<exclude>META-INF/ASL-2.0.txt</exclude>
+										<exclude>META-INF/LGPL-3.0.txt</exclude>
+
+										<!-- Duplicated dependency Maven metadata, safe to omit from the CLI jar. -->
+										<exclude>META-INF/maven/**</exclude>
+
+										<!-- The shade plugin creates the final manifest. -->
+										<exclude>META-INF/MANIFEST.MF</exclude>
+									</excludes>
+								</filter>
+
+								<filter>
+									<artifact>com.github.java-json-tools:json-schema-validator</artifact>
+									<excludes>
+										<!-- Also provided by json-schema-core. Keep one copy in the shaded jar. -->
+										<exclude>draftv3/schema</exclude>
+										<exclude>draftv4/schema</exclude>
+									</excludes>
+								</filter>
+							</filters>
+
+							<transformers>
+								<!--
+									Do not exclude META-INF/services/**.
+									Swagger and Jackson use ServiceLoader files and they must be merged.
+								-->
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<mainClass>io.jpostman.schema.cli.ApiSchemaCli</mainClass>
+								</transformer>
+							</transformers>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

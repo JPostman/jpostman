@@ -7,14 +7,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import io.jpostman.schema.env.ApiSpecEnvironmentUpdateRequest;
+import io.jpostman.schema.env.ApiSpecEnvironmentUpdater;
 import io.jpostman.schema.model.ApiBody;
 import io.jpostman.schema.model.ApiBodyType;
 import io.jpostman.schema.model.ApiExample;
+import io.jpostman.schema.model.ApiHeader;
 import io.jpostman.schema.model.ApiOperation;
+import io.jpostman.schema.model.ApiParam;
+import io.jpostman.schema.model.ApiResponse;
 import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParseException;
 import io.jpostman.schema.parser.ApiSpecParser;
@@ -407,6 +413,142 @@ class ApiSpecParserSmokeTest {
 
 		assertTrue(exception.getUserMessage().contains("Invalid GraphQL schema"));
 		assertTrue(exception.getUserMessage().contains("Details:"));
+	}
+
+	@Test
+	void openApiUsesSummaryBeforeResponseAndRequestDescriptionsAndBuildsSchemaExamples() {
+		String openApi = "openapi: 3.0.3\ninfo:\n  title: DummyJSON API\n  version: 1.0.0\nservers:\n"
+				+ "  - url: https://dummyjson.com\npaths:\n  /auth/login:\n    post:\n"
+				+ "      tags:\n        - Auth\n      summary: Login user and get access/refresh tokens\n"
+				+ "      requestBody:\n        required: true\n        description: JSON request body\n"
+				+ "        content:\n          application/json:\n            schema:\n"
+				+ "              $ref: '#/components/schemas/AuthLoginRequest'\n      responses:\n        '200':\n"
+				+ "          description: Login response with user and tokens\n"
+				+ "          content:\n            application/json:\n              schema:\n"
+				+ "                $ref: '#/components/schemas/AuthLoginResponse'\n"
+				+ "        '400':\n          description: Error\ncomponents:\n  schemas:\n"
+				+ "    AuthLoginRequest:\n      type: object\n      properties:\n"
+				+ "        username:\n          type: string\n          example: emilys\n"
+				+ "        password:\n          type: string\n          example: emilyspass\n"
+				+ "        expiresInMins:\n          type: integer\n          example: 30\n"
+				+ "    AuthLoginResponse:\n      type: object\n      properties:\n"
+				+ "        accessToken:\n          type: string\n          example: access-token\n"
+				+ "        refreshToken:\n          type: string\n          example: refresh-token\n";
+
+		ApiSpec spec = ApiSpecParser.parse(openApi);
+		ApiOperation operation = spec.getFolders().get(0).getOperations().get(0);
+
+		assertEquals("Login user and get access/refresh tokens", operation.getDescription());
+		assertNotNull(operation.getExample());
+		assertTrue(operation.getExample().getBody().getContent().contains("emilys"));
+		assertTrue(operation.getExample().getBody().getContent().contains("\n  \"username\""));
+		assertEquals(ApiBodyType.JSON, operation.getExample().getBody().getType());
+		assertEquals(2, operation.getResponses().size());
+		ApiResponse ok = operation.getResponses().get(0);
+		assertEquals("200", ok.getCode());
+		assertEquals("Login response with user and tokens", ok.getDescription());
+		assertNotNull(ok.getExample());
+		assertTrue(ok.getExample().getContent().contains("access-token"));
+	}
+
+	@Test
+	void openApiFallsBackToResponseDescriptionBeforeRequestDescription() {
+		String openApi = "openapi: 3.0.3\ninfo:\n  title: Demo API\n  version: 1.0.0\npaths:\n"
+				+ "  /auth/login:\n    post:\n      requestBody:\n"
+				+ "        description: JSON request body\n        content:\n"
+				+ "          application/json:\n            schema:\n              type: object\n"
+				+ "      responses:\n        '200':\n          description: Login response with user and tokens\n";
+
+		ApiSpec spec = ApiSpecParser.parse(openApi);
+		ApiOperation operation = spec.getFolders().get(0).getOperations().get(0);
+
+		assertEquals("Login response with user and tokens", operation.getDescription());
+	}
+
+	@Test
+	void postmanRequestBodyIsAvailableAsExampleEvenWithoutSavedResponses() {
+		String postman = "{\n  \"info\": { \"name\": \"Demo Collection\", "
+				+ "\"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },\n"
+				+ "  \"item\": [ { \"name\": \"loginUser\", \"request\": {"
+				+ " \"description\": \"Login request description\", \"method\": \"POST\","
+				+ " \"url\": \"https://dummy.com/auth/login\", \"body\": { \"mode\": \"raw\", \"raw\": "
+				+ "\"{ \\\"username\\\": \\\"emilys\\\", \\\"password\\\": \\\"emilyspass\\\" }\" } } } ]\n}";
+
+		ApiSpec spec = ApiSpecParser.parse(postman);
+		ApiOperation operation = spec.getOperations().get(0);
+
+		assertNotNull(operation.getExample());
+		assertTrue(operation.getExample().getBody().getContent().contains("emilys"));
+		assertTrue(operation.getExample().getBody().getContent().contains("\n  \"username\""));
+		assertEquals(ApiBodyType.JSON, operation.getExample().getBody().getType());
+	}
+
+	@Test
+	void environmentUpdaterRenamesKeysAndUpdatesValuesAcrossModel() {
+		ApiSpec spec = new ApiSpec();
+		spec.getEnvs().put("product_id", 1);
+		spec.getEnvs().put("product_limit", 10);
+		spec.getEnvs().put("product_order", "asc");
+
+		ApiOperation operation = new ApiOperation();
+		operation.setFolder("Products");
+		operation.setPath("/products/{{product_id}}");
+		operation.getQueryParams().add(new ApiParam("limit", "{{ product_limit }}", false));
+		operation.getQueryParams().add(new ApiParam("order", "{{product_order}}", false));
+		operation.getHeaders().add(new ApiHeader("X-Product", "{{product_id}}", false));
+		operation.setBody(new ApiBody(ApiBodyType.JSON, "{ \"id\": \"{{product_id}}\" }"));
+
+		ApiExample example = new ApiExample();
+		example.setPath("/products/{{product_id}}");
+		example.getQueryParams().add(new ApiParam("limit", "{{product_limit}}", false));
+		operation.setExample(example);
+
+		ApiResponse response = new ApiResponse("200", "Product {{product_id}}");
+		response.setExample(new ApiBody(ApiBodyType.JSON, "{ \"id\": \"{{product_id}}\" }"));
+		operation.getResponses().add(response);
+		spec.getOperations().add(operation);
+
+		ApiSpecEnvironmentUpdateRequest request = new ApiSpecEnvironmentUpdateRequest();
+		Map<String, String> renames = new LinkedHashMap<>();
+		renames.put("product_id", "item_id");
+		request.setRenames(renames);
+		Map<String, Object> adds = new LinkedHashMap<>();
+		adds.put("product_page", 1);
+		request.setAdds(adds);
+		Map<String, Object> values = new LinkedHashMap<>();
+		values.put("item_id", 2);
+		values.put("product_limit", 25);
+		values.put("product_order", "desc");
+		request.setValues(values);
+		request.setDeletes(List.of("product_order"));
+
+		new ApiSpecEnvironmentUpdater().update(spec, request);
+
+		assertFalse(spec.getEnvs().containsKey("product_id"));
+		assertEquals(2, spec.getEnvs().get("item_id"));
+		assertEquals(25, spec.getEnvs().get("product_limit"));
+		assertEquals(1, spec.getEnvs().get("product_page"));
+		assertFalse(spec.getEnvs().containsKey("product_order"));
+		assertEquals("/products/{{item_id}}", operation.getPath());
+		assertEquals("{{product_limit}}", operation.getQueryParams().get(0).getValue());
+		assertEquals("{{product_order}}", operation.getQueryParams().get(1).getValue());
+		assertEquals("{{item_id}}", operation.getHeaders().get(0).getValue());
+		assertTrue(operation.getBody().getContent().contains("{{item_id}}"));
+		assertTrue(operation.getExample().getPath().contains("{{item_id}}"));
+		assertTrue(operation.getResponses().get(0).getExample().getContent().contains("{{item_id}}"));
+	}
+
+	@Test
+	void environmentUpdaterAddFailsWhenKeyAlreadyExists() {
+		ApiSpec spec = new ApiSpec();
+		spec.getEnvs().put("product_limit", 10);
+
+		ApiSpecEnvironmentUpdateRequest request = new ApiSpecEnvironmentUpdateRequest();
+		Map<String, Object> adds = new LinkedHashMap<>();
+		adds.put("product_limit", 25);
+		request.setAdds(adds);
+
+		assertThrows(IllegalArgumentException.class, () -> new ApiSpecEnvironmentUpdater().update(spec, request));
 	}
 
 }

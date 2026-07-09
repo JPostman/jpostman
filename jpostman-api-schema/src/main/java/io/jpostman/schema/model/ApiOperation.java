@@ -19,6 +19,7 @@ public class ApiOperation {
 	private ApiBody body;
 	private ApiAuth auth;
 	private ApiExample example;
+	private List<ApiResponse> responses = new ArrayList<>();
 	private ApiProtocol protocol = ApiProtocol.REST;
 	private String graphQlOperationType;
 	private boolean urlResolved = true;
@@ -175,6 +176,20 @@ public class ApiOperation {
 	 */
 	public void setExample(ApiExample example) {
 		this.example = example;
+	}
+
+	/**
+	 * Returns the responses.
+	 */
+	public List<ApiResponse> getResponses() {
+		return responses;
+	}
+
+	/**
+	 * Sets the responses.
+	 */
+	public void setResponses(List<ApiResponse> responses) {
+		this.responses = responses == null ? new ArrayList<>() : responses;
 	}
 
 	/**

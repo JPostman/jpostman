@@ -16,6 +16,7 @@ import io.jpostman.schema.model.ApiHeader;
 import io.jpostman.schema.model.ApiOperation;
 import io.jpostman.schema.model.ApiParam;
 import io.jpostman.schema.model.ApiProtocol;
+import io.jpostman.schema.model.ApiResponse;
 import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
 
@@ -99,7 +100,6 @@ public class PostmanImporter implements ApiSpecImporter {
 		operation.setProtocol(ApiProtocol.REST);
 		operation.setFolder(parent == null ? "Default" : parent.getName());
 		operation.setMethodName(text(item.get("name"), "request"));
-		operation.setDescription(description(request.get("description")));
 		operation.setMethod(text(request.get("method"), "GET").toUpperCase());
 		operation.setAllowedMethods(List.of(operation.getMethod()));
 		if (spec.getBaseUrl() == null) {
@@ -109,6 +109,9 @@ public class PostmanImporter implements ApiSpecImporter {
 		operation.getQueryParams().addAll(resolveQueryParams(request.get("url")));
 		operation.getHeaders().addAll(resolveHeaders(request.get("header")));
 		operation.setBody(resolveBody(request.get("body")));
+		operation.setResponses(resolveResponses(item));
+		operation.setDescription(firstNonBlank(description(item.get("description")),
+				firstResponseDescription(operation.getResponses()), description(request.get("description"))));
 		operation.setAuth(resolveAuth(request.get("auth")));
 		operation.setExample(resolveExample(item, request));
 
@@ -171,7 +174,9 @@ public class PostmanImporter implements ApiSpecImporter {
 			return null;
 		}
 		if ("raw".equals(mode)) {
-			return new ApiBody(ApiBodyType.JSON, text(bodyNode.get("raw"), null));
+			String raw = text(bodyNode.get("raw"), null);
+			ApiBodyType type = resolveBodyType(null, raw);
+			return new ApiBody(type, formatBodyContent(type, raw));
 		}
 		if ("formdata".equals(mode)) {
 			return new ApiBody(ApiBodyType.FORM_DATA,
@@ -243,26 +248,64 @@ public class PostmanImporter implements ApiSpecImporter {
 	 */
 	private ApiExample resolveExample(JsonNode item, JsonNode request) {
 		JsonNode responses = item == null ? null : item.get("response");
-		if (responses == null || !responses.isArray() || responses.size() == 0) {
+		if (responses != null && responses.isArray() && responses.size() > 0) {
+			JsonNode response = responses.get(0);
+			JsonNode originalRequest = response.get("originalRequest");
+			if (originalRequest != null && !originalRequest.isNull()) {
+				ApiExample example = requestExample(originalRequest, text(response.get("name"), "Postman Example"));
+				if (example != null) {
+					return example;
+				}
+			}
+		}
+		return requestExample(request, "Postman Request Example");
+	}
+
+	/**
+	 * Builds a Postman request example from request data.
+	 */
+	private ApiExample requestExample(JsonNode request, String name) {
+		if (request == null || request.isNull()) {
 			return null;
 		}
-
-		JsonNode response = responses.get(0);
-		JsonNode originalRequest = response.get("originalRequest");
-		if (originalRequest == null || originalRequest.isNull()) {
-			return null;
-		}
-
 		ApiExample example = new ApiExample();
-		example.setName(text(response.get("name"), "Postman Example"));
-		example.setPath(resolvePath(originalRequest.get("url")));
-		example.getQueryParams().addAll(resolveQueryParams(originalRequest.get("url")));
-		example.getHeaders().addAll(resolveHeaders(originalRequest.get("header")));
-		example.setBody(resolveBody(originalRequest.get("body")));
+		example.setName(name);
+		example.setPath(resolvePath(request.get("url")));
+		example.getQueryParams().addAll(resolveQueryParams(request.get("url")));
+		example.getHeaders().addAll(resolveHeaders(request.get("header")));
+		example.setBody(resolveBody(request.get("body")));
 
 		boolean hasExamples = example.getPath() != null || !example.getQueryParams().isEmpty()
 				|| !example.getHeaders().isEmpty() || example.getBody() != null;
 		return hasExamples ? example : null;
+	}
+
+	/**
+	 * Resolves Postman response examples and descriptions.
+	 */
+	private List<ApiResponse> resolveResponses(JsonNode item) {
+		java.util.ArrayList<ApiResponse> result = new java.util.ArrayList<>();
+		JsonNode responses = item == null ? null : item.get("response");
+		if (responses == null || !responses.isArray()) {
+			return result;
+		}
+		for (JsonNode node : responses) {
+			ApiResponse response = new ApiResponse();
+			response.setCode(text(node.get("code"), null));
+			response.setDescription(firstNonBlank(description(node.get("description")), text(node.get("name"), null),
+					text(node.get("status"), null)));
+			response.setContentType(contentType(node.get("header")));
+			String bodyText = text(node.get("body"), null);
+			if (bodyText != null) {
+				ApiBodyType type = resolveBodyType(response.getContentType(), bodyText);
+				ApiBody body = new ApiBody(type, formatBodyContent(type, bodyText));
+				body.setDescription(response.getDescription());
+				response.setBody(body);
+				response.setExample(body);
+			}
+			result.add(response);
+		}
+		return result;
 	}
 
 	/**
@@ -370,6 +413,96 @@ public class PostmanImporter implements ApiSpecImporter {
 			return node.asText();
 		}
 		return text(node.get("content"), null);
+	}
+
+	/**
+	 * Resolves the response body type.
+	 */
+	private ApiBodyType resolveBodyType(String contentType, String content) {
+		String value = firstNonBlank(contentType, content);
+		if (value != null && value.toLowerCase().contains("json")) {
+			return ApiBodyType.JSON;
+		}
+		String trimmed = content == null ? "" : content.trim();
+		if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+			return ApiBodyType.JSON;
+		}
+		return ApiBodyType.RAW;
+	}
+
+	/**
+	 * Formats body content based on the normalized body type.
+	 */
+	private String formatBodyContent(ApiBodyType type, String content) {
+		if (type == ApiBodyType.JSON) {
+			return prettyJsonString(content);
+		}
+		return content;
+	}
+
+	/**
+	 * Pretty prints JSON object/array strings, leaving non-JSON text untouched.
+	 */
+	private String prettyJsonString(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+			return value;
+		}
+		try {
+			Object json = mapper.readValue(trimmed, Object.class);
+			return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(json);
+		} catch (Exception e) {
+			return value;
+		}
+	}
+
+	/**
+	 * Finds the content type header value.
+	 */
+	private String contentType(JsonNode headerNode) {
+		if (headerNode != null && headerNode.isArray()) {
+			for (JsonNode item : headerNode) {
+				String key = text(item.get("key"), null);
+				if ("Content-Type".equalsIgnoreCase(key)) {
+					return text(item.get("value"), null);
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the first response description.
+	 */
+	private String firstResponseDescription(List<ApiResponse> responses) {
+		if (responses == null) {
+			return null;
+		}
+		for (ApiResponse response : responses) {
+			String description = response == null ? null : response.getDescription();
+			if (description != null && !description.isBlank()) {
+				return description;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the first non-blank string.
+	 */
+	private String firstNonBlank(String... values) {
+		if (values == null) {
+			return null;
+		}
+		for (String value : values) {
+			if (value != null && !value.isBlank()) {
+				return value;
+			}
+		}
+		return null;
 	}
 
 	/**
