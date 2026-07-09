@@ -29,6 +29,7 @@
 		<module>jpostman-kubernetes</module>
 		<module>jpostman-vault</module>
 		<module>jpostman-api-schema</module>
+		<module>jpostman-codegen</module>
 		<module>jpostman-examples</module>
 	</modules>
 
@@ -65,6 +66,7 @@
 		<jpostman.version>1.2.8</jpostman.version>
 		<jpostman.annotations.version>2.2.1</jpostman.annotations.version>
 		<jpostman.api-schema.version>1.0.2</jpostman.api-schema.version>
+		<jpostman.codegen.version>1.0.1</jpostman.codegen.version>
 
 		<java.version>11</java.version>
 		<maven.compiler.release>${java.version}</maven.compiler.release>
@@ -165,6 +167,11 @@
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-api-schema</artifactId>
 				<version>${jpostman.api-schema.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>${project.groupId}</groupId>
+				<artifactId>jpostman-codegen</artifactId>
+				<version>${jpostman.codegen.version}</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>io.github.jpostman</groupId>
+		<artifactId>jpostman-parent</artifactId>
+		<version>1.2.8</version>
+	</parent>
+
+	<artifactId>jpostman-codegen</artifactId>
+	<packaging>jar</packaging>
+	<!-- Update jpostman.codegen.version in parent  -->
+	<version>1.0.0</version>
+
+    <name>JPostman Codegen</name>
+    <description>CLI and builder utilities for generating JPostman annotation source snippets.</description>
+    <url>https://github.com/JPostman/jpostman/tree/main/jpostman-codegen</url>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>io.jpostman.codegen.cli.JPostmanCodegenCli</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
