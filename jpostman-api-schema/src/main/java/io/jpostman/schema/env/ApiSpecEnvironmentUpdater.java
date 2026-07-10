@@ -91,8 +91,7 @@ public class ApiSpecEnvironmentUpdater {
 	}
 
 	/**
-	 * Adds one new environment value. Token usages do not need to change for an
-	 * add.
+	 * Adds one new environment value. Token usages do not need to change for an add.
 	 */
 	public ApiSpec addValue(ApiSpec spec, String key, Object value) {
 		if (spec == null || key == null) {
@@ -303,8 +302,7 @@ public class ApiSpecEnvironmentUpdater {
 		Map<String, Object> envs = spec.getEnvs();
 		Map<String, Object> normalized = new LinkedHashMap<>();
 		for (Map.Entry<String, Object> entry : envs.entrySet()) {
-			normalized.put(entry.getKey(),
-					replaceTokensInObject(entry.getValue(), NORMALIZE_ONLY_KEY, NORMALIZE_ONLY_KEY));
+			normalized.put(entry.getKey(), replaceTokensInObject(entry.getValue(), NORMALIZE_ONLY_KEY, NORMALIZE_ONLY_KEY));
 		}
 		spec.setEnvs(normalized);
 

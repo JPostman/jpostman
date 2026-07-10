@@ -9,6 +9,7 @@ import java.util.List;
  */
 public class ApiOperation {
 	private String folder;
+	private String name;
 	private String methodName;
 	private String description;
 	private String method;
@@ -36,6 +37,20 @@ public class ApiOperation {
 	 */
 	public void setFolder(String folder) {
 		this.folder = folder;
+	}
+
+	/**
+	 * Returns the display name.
+	 */
+	public String getName() {
+		return name;
+	}
+
+	/**
+	 * Sets the display name.
+	 */
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	/**

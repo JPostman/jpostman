@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.util.DefaultIndenter;
 import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.jpostman.schema.env.ApiSpecEnvironmentUpdateRequest;
@@ -25,7 +26,8 @@ import io.jpostman.schema.postman.PostmanEnvironmentExporter;
  */
 public final class ApiSchemaCli {
 	private static final ObjectMapper MAPPER = new ObjectMapper()
-			.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+			.setSerializationInclusion(JsonInclude.Include.NON_NULL)
+			.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
 	private ApiSchemaCli() {
 	}
@@ -35,29 +37,7 @@ public final class ApiSchemaCli {
 	 */
 	public static void main(String[] args) {
 		try {
-			String command = args.length == 0 ? "parse" : args[0];
-			switch (command) {
-			case "env-update":
-				runEnvUpdate(EnvUpdateArgs.parse(args, 1));
-				break;
-			case "collection":
-			case "postman-collection":
-				runCollection(SpecOutputArgs.parse(args, 1, true));
-				break;
-			case "environment":
-			case "postman-environment":
-				runEnvironment(SpecOutputArgs.parse(args, 1, true));
-				break;
-			case "postman":
-				runPostman(PostmanArgs.parse(args, 1));
-				break;
-			case "parse":
-				runParse(SpecOutputArgs.parse(args, 1, false));
-				break;
-			default:
-				runParse(SpecOutputArgs.parse(args, 0, false));
-				break;
-			}
+			execute(args);
 		} catch (ApiSpecParseException e) {
 			System.err.println(e.getUserMessage());
 			System.exit(2);
@@ -66,6 +46,35 @@ public final class ApiSchemaCli {
 					: e.getMessage();
 			System.err.println(message);
 			System.exit(1);
+		}
+	}
+
+	/**
+	 * Executes the CLI command. Exposed for unit tests and embedded callers.
+	 */
+	static void execute(String[] args) throws Exception {
+		String command = args.length == 0 ? "parse" : args[0];
+		switch (command) {
+		case "env-update":
+			runEnvUpdate(EnvUpdateArgs.parse(args, 1));
+			break;
+		case "collection":
+		case "postman-collection":
+			runCollection(SpecOutputArgs.parse(args, 1, true));
+			break;
+		case "environment":
+		case "postman-environment":
+			runEnvironment(SpecOutputArgs.parse(args, 1, true));
+			break;
+		case "postman":
+			runPostman(PostmanArgs.parse(args, 1));
+			break;
+		case "parse":
+			runParse(SpecOutputArgs.parse(args, 1, false));
+			break;
+		default:
+			runParse(SpecOutputArgs.parse(args, 0, false));
+			break;
 		}
 	}
 
@@ -90,15 +99,14 @@ public final class ApiSchemaCli {
 		ApiSpec spec = loadSpec(cli);
 		Object collection = new PostmanCollectionExporter().export(spec, cli.collectionName);
 		Object environment = new PostmanEnvironmentExporter().export(spec, cli.environmentName);
-		if ((cli.collectionOutput == null || cli.collectionOutput.isBlank())
-				&& (cli.environmentOutput == null || cli.environmentOutput.isBlank())) {
+		if (isBlank(cli.collectionOutput) && isBlank(cli.environmentOutput)) {
 			throw new IllegalArgumentException(
 					"Use postman --collection-output <path> and/or --environment-output <path>");
 		}
-		if (cli.collectionOutput != null && !cli.collectionOutput.isBlank()) {
+		if (!isBlank(cli.collectionOutput)) {
 			writeJson(collection, cli.pretty, cli.collectionOutput);
 		}
-		if (cli.environmentOutput != null && !cli.environmentOutput.isBlank()) {
+		if (!isBlank(cli.environmentOutput)) {
 			writeJson(environment, cli.pretty, cli.environmentOutput);
 		}
 	}
@@ -142,7 +150,7 @@ public final class ApiSchemaCli {
 	}
 
 	private static void writeJson(Object value, boolean pretty, String output) throws Exception {
-		if (output == null || output.isBlank()) {
+		if (isBlank(output)) {
 			if (pretty) {
 				MAPPER.writer(newPrettyPrinter()).writeValue(System.out, value);
 			} else {
@@ -324,7 +332,7 @@ public final class ApiSchemaCli {
 			if (!result.modelStdin && isBlank(result.modelFile)) {
 				throw new IllegalArgumentException("Use env-update --model <api-spec.json> or --model-stdin");
 			}
-			if (result.updatesFile == null || result.updatesFile.isBlank()) {
+			if (isBlank(result.updatesFile)) {
 				throw new IllegalArgumentException("Use env-update --updates <env-updates.json>");
 			}
 			if (result.stdin || !isBlank(result.file)) {

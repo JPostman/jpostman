@@ -44,16 +44,14 @@ import io.swagger.v3.parser.core.models.ParseOptions;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
 
 /**
- * Imports OpenAPI 3.x and Swagger 2.0 documents into the common JPostman API
- * schema model.
+ * Imports OpenAPI 3.x and Swagger 2.0 documents into the common JPostman API schema model.
  */
 public class OpenApiImporter implements ApiSpecImporter {
 	private final ObjectMapper mapper = new ObjectMapper();
 	private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
 	/**
-	 * Parses the supplied document content and returns a normalized API
-	 * specification.
+	 * Parses the supplied document content and returns a normalized API specification.
 	 */
 	@Override
 	public ApiSpec importSpec(String content, ApiSpecParserOptions options) {
@@ -180,6 +178,8 @@ public class OpenApiImporter implements ApiSpecImporter {
 		target.setProtocol(ApiProtocol.REST);
 		target.setMethod(method);
 		target.setAllowedMethods(List.of(method));
+		String summary = stringValue(operation.get("summary"), null);
+		target.setName(firstNonBlank(summary, stringValue(operation.get("operationId"), null), method + " " + path));
 		target.setMethodName(
 				firstNonBlank(stringValue(operation.get("operationId"), null), toMethodName(method, path)));
 
@@ -202,9 +202,8 @@ public class OpenApiImporter implements ApiSpecImporter {
 		}
 
 		target.setResponses(toSwagger2Responses(root, operation));
-		target.setDescription(resolveOperationDescription(stringValue(operation.get("summary"), null),
-				stringValue(operation.get("description"), null), firstResponseDescription(target.getResponses()),
-				bodyDescription(target.getBody())));
+		target.setDescription(resolveOperationDescription(stringValue(operation.get("description"), null),
+				firstResponseDescription(target.getResponses()), bodyDescription(target.getBody())));
 		target.setAuth(toSwagger2Auth(root, operation));
 		if (target.getBody() != null) {
 			ApiExample example = new ApiExample();
@@ -272,8 +271,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 			Map<String, Object> schema = resolveRawSchema(root, asMap(source.get("schema")));
 			Object value = firstObject(source.get("example"), rawSchemaExample(root, schema));
 			if (value != null) {
-				ApiBody body = new ApiBody(
-						value instanceof Map || value instanceof List ? ApiBodyType.JSON : ApiBodyType.RAW,
+				ApiBody body = new ApiBody(value instanceof Map || value instanceof List ? ApiBodyType.JSON : ApiBodyType.RAW,
 						stringify(value));
 				body.setDescription(response.getDescription());
 				response.setBody(body);
@@ -449,12 +447,11 @@ public class OpenApiImporter implements ApiSpecImporter {
 		return first != null ? first : second;
 	}
 
+
 	/**
-	 * Applies OpenAPI path parameter placeholders and records example/default
-	 * values.
+	 * Applies OpenAPI path parameter placeholders and records example/default values.
 	 */
-	private String applyOpenApiPathParameterEnv(ApiSpec spec, String path, String envPrefix,
-			List<Parameter> parameters) {
+	private String applyOpenApiPathParameterEnv(ApiSpec spec, String path, String envPrefix, List<Parameter> parameters) {
 		String result = path;
 		if (parameters == null || parameters.isEmpty()) {
 			return result;
@@ -477,8 +474,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 	}
 
 	/**
-	 * Applies Swagger 2 path parameter placeholders and records example/default
-	 * values.
+	 * Applies Swagger 2 path parameter placeholders and records example/default values.
 	 */
 	private String applySwagger2PathParameterEnv(ApiSpec spec, String path, String envPrefix, List<Object> parameters) {
 		String result = path;
@@ -571,8 +567,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 	}
 
 	/**
-	 * Returns a default value from schema type/enum when no explicit example
-	 * exists.
+	 * Returns a default value from schema type/enum when no explicit example exists.
 	 */
 	private Object defaultValueFromSchema(Schema<?> schema) {
 		if (schema == null) {
@@ -704,8 +699,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 	}
 
 	/**
-	 * Returns whether a path already contains a placeholder for this parameter
-	 * name.
+	 * Returns whether a path already contains a placeholder for this parameter name.
 	 */
 	private boolean containsEnvTokenForName(String path, String name) {
 		if (path == null || name == null) {
@@ -751,11 +745,9 @@ public class OpenApiImporter implements ApiSpecImporter {
 	}
 
 	/**
-	 * Applies raw open api operation examples to the environment map or operation
-	 * model.
+	 * Applies raw open api operation examples to the environment map or operation model.
 	 */
-	private void applyRawOpenApiOperationExamples(ApiSpec spec, Map<String, Object> root, String path, String method,
-			Object operationNode) {
+	private void applyRawOpenApiOperationExamples(ApiSpec spec, Map<String, Object> root, String path, String method, Object operationNode) {
 		Map<String, Object> operationNodeMap = asMap(operationNode);
 		if (operationNodeMap.isEmpty()) {
 			return;
@@ -843,8 +835,9 @@ public class OpenApiImporter implements ApiSpecImporter {
 		}
 
 		applyRawOpenApiResponses(root, operation, operationNodeMap);
-		operation.setDescription(resolveOperationDescription(stringValue(operationNodeMap.get("summary"), null),
-				stringValue(operationNodeMap.get("description"), null),
+		operation.setName(firstNonBlank(stringValue(operationNodeMap.get("summary"), null), operation.getName(),
+				operation.getMethod() + " " + path));
+		operation.setDescription(resolveOperationDescription(stringValue(operationNodeMap.get("description"), null),
 				firstResponseDescription(operation.getResponses()), bodyDescription(operation.getBody())));
 
 		if (!hasRealExample && example.getQueryParams().isEmpty() && example.getHeaders().isEmpty()
@@ -931,9 +924,10 @@ public class OpenApiImporter implements ApiSpecImporter {
 		return null;
 	}
 
+
+
 	/**
-	 * Matches raw OpenAPI paths like /products/{id} to normalized paths like
-	 * /products/{{product_id}}.
+	 * Matches raw OpenAPI paths like /products/{id} to normalized paths like /products/{{product_id}}.
 	 */
 	private boolean pathTemplatesMatch(String left, String right) {
 		if (left == null || right == null) {
@@ -1143,6 +1137,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 		target.setProtocol(ApiProtocol.REST);
 		target.setMethod(method);
 		target.setAllowedMethods(List.of(method));
+		target.setName(firstNonBlank(operation.getSummary(), operation.getOperationId(), method + " " + path));
 		target.setMethodName(firstNonBlank(operation.getOperationId(), toMethodName(method, path)));
 
 		String folderName = operation.getTags() == null || operation.getTags().isEmpty() ? "Default"
@@ -1163,7 +1158,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 
 		target.setBody(toBody(operation.getRequestBody()));
 		target.setResponses(toResponses(operation.getResponses()));
-		target.setDescription(resolveOperationDescription(operation.getSummary(), operation.getDescription(),
+		target.setDescription(resolveOperationDescription(operation.getDescription(),
 				firstResponseDescription(target.getResponses()), bodyDescription(target.getBody())));
 		target.setAuth(toAuth(openAPI, operation));
 		target.setExample(toExample(operation, spec.getBaseUrl(), target.getPath(), envPrefix));
@@ -1416,10 +1411,9 @@ public class OpenApiImporter implements ApiSpecImporter {
 			}
 		}
 	}
-
+	
 	/**
-	 * Returns schema properties without exposing Swagger Parser's raw Schema type
-	 * in this class.
+	 * Returns schema properties without exposing Swagger Parser's raw Schema type in this class.
 	 */
 	@SuppressWarnings("unchecked")
 	private Map<String, Schema<?>> schemaProperties(Schema<?> schema) {
@@ -1498,9 +1492,9 @@ public class OpenApiImporter implements ApiSpecImporter {
 	/**
 	 * Resolves operation description using UI-friendly precedence.
 	 */
-	private String resolveOperationDescription(String summary, String description, String responseDescription,
+	private String resolveOperationDescription(String description, String responseDescription,
 			String requestDescription) {
-		return firstNonBlank(summary, description, responseDescription, requestDescription);
+		return firstNonBlank(description, responseDescription, requestDescription);
 	}
 
 	/**
@@ -1558,8 +1552,7 @@ public class OpenApiImporter implements ApiSpecImporter {
 	}
 
 	/**
-	 * Converts a value into a pretty string representation used by the schema
-	 * model.
+	 * Converts a value into a pretty string representation used by the schema model.
 	 */
 	private String stringify(Object value) {
 		if (value == null) {

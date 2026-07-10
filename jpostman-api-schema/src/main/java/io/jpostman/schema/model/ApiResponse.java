@@ -1,8 +1,8 @@
 package io.jpostman.schema.model;
 
 /**
- * Represents one normalized API response parsed from OpenAPI, Swagger, Postman,
- * or GraphQL metadata.
+ * Represents one normalized API response parsed from OpenAPI, Swagger,
+ * Postman, or GraphQL metadata.
  */
 public class ApiResponse {
 	private String code;

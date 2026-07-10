@@ -10,6 +10,10 @@ import java.util.Objects;
  */
 public final class JPostmanMethodSpec {
 
+    /** Current version of the code-generation model contract. */
+    public static final String CURRENT_VERSION = "1.0.0";
+
+    private final String version;
     private final JPostmanAnnotationType type;
     private final String methodName;
     private final String id;
@@ -34,6 +38,7 @@ public final class JPostmanMethodSpec {
     private final Boolean skip;
 
     private JPostmanMethodSpec(Builder builder) {
+        this.version = CURRENT_VERSION;
         this.type = Objects.requireNonNull(builder.type, "type");
         this.methodName = requireMethodName(builder.methodName);
         this.id = trimToNull(builder.id);
@@ -56,6 +61,13 @@ public final class JPostmanMethodSpec {
         this.asserts = copy(builder.asserts);
         this.enabled = builder.enabled;
         this.skip = builder.skip;
+    }
+
+    /**
+     * Returns the code-generation model version.
+     */
+    public String getVersion() {
+        return version;
     }
 
     public JPostmanAnnotationType getType() {

@@ -69,6 +69,7 @@ public class GraphQlImporter implements ApiSpecImporter {
 			ApiOperation operation = new ApiOperation();
 			operation.setProtocol(ApiProtocol.GRAPHQL);
 			operation.setFolder(folderName);
+			operation.setName(field.getName());
 			operation.setMethodName(field.getName());
 			operation.setDescription(description(field.getDescription()));
 			operation.setGraphQlOperationType(operationType);

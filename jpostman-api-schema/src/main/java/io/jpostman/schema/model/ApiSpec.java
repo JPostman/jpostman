@@ -5,14 +5,35 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+
 /** Common API document model used by JPostman importers. */
+@JsonPropertyOrder({ "version", "name", "baseUrl", "overrideUrl", "folders", "operations", "envs" })
 public class ApiSpec {
+	public static final String CURRENT_VERSION = "1.0.0";
+
+	private String version = CURRENT_VERSION;
 	private String name;
 	private String baseUrl;
 	private boolean overrideUrl;
 	private List<ApiFolder> folders = new ArrayList<>();
 	private List<ApiOperation> operations = new ArrayList<>();
 	private Map<String, Object> envs = new LinkedHashMap<>();
+
+	/**
+	 * Returns the API model contract version.
+	 */
+	public String getVersion() {
+		return version;
+	}
+
+	/**
+	 * Sets the API model contract version. Missing or blank versions use the
+	 * current model version for backward compatibility.
+	 */
+	public void setVersion(String version) {
+		this.version = version == null || version.isBlank() ? CURRENT_VERSION : version;
+	}
 
 	/**
 	 * Returns the name.

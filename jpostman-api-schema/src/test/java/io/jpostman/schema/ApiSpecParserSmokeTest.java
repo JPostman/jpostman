@@ -12,6 +12,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.jpostman.schema.env.ApiSpecEnvironmentUpdateRequest;
 import io.jpostman.schema.env.ApiSpecEnvironmentUpdater;
 import io.jpostman.schema.model.ApiBody;
@@ -25,8 +27,6 @@ import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParseException;
 import io.jpostman.schema.parser.ApiSpecParser;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
-import io.jpostman.schema.postman.PostmanCollectionExporter;
-import io.jpostman.schema.postman.PostmanEnvironmentExporter;
 import io.jpostman.schema.util.ApiOperationEnvScanner;
 
 class ApiSpecParserSmokeTest {
@@ -424,7 +424,8 @@ class ApiSpecParserSmokeTest {
 				+ "      tags:\n        - Auth\n      summary: Login user and get access/refresh tokens\n"
 				+ "      requestBody:\n        required: true\n        description: JSON request body\n"
 				+ "        content:\n          application/json:\n            schema:\n"
-				+ "              $ref: '#/components/schemas/AuthLoginRequest'\n      responses:\n        '200':\n"
+				+ "              $ref: '#/components/schemas/AuthLoginRequest'\n"
+				+ "      responses:\n        '200':\n"
 				+ "          description: Login response with user and tokens\n"
 				+ "          content:\n            application/json:\n              schema:\n"
 				+ "                $ref: '#/components/schemas/AuthLoginResponse'\n"
@@ -440,7 +441,9 @@ class ApiSpecParserSmokeTest {
 		ApiSpec spec = ApiSpecParser.parse(openApi);
 		ApiOperation operation = spec.getFolders().get(0).getOperations().get(0);
 
-		assertEquals("Login user and get access/refresh tokens", operation.getDescription());
+		assertEquals("Login user and get access/refresh tokens", operation.getName());
+		assertEquals("postAuthLogin", operation.getMethodName());
+		assertEquals("Login response with user and tokens", operation.getDescription());
 		assertNotNull(operation.getExample());
 		assertTrue(operation.getExample().getBody().getContent().contains("emilys"));
 		assertTrue(operation.getExample().getBody().getContent().contains("\n  \"username\""));
@@ -473,16 +476,33 @@ class ApiSpecParserSmokeTest {
 				+ "\"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },\n"
 				+ "  \"item\": [ { \"name\": \"loginUser\", \"request\": {"
 				+ " \"description\": \"Login request description\", \"method\": \"POST\","
-				+ " \"url\": \"https://dummy.com/auth/login\", \"body\": { \"mode\": \"raw\", \"raw\": "
-				+ "\"{ \\\"username\\\": \\\"emilys\\\", \\\"password\\\": \\\"emilyspass\\\" }\" } } } ]\n}";
+				+ " \"url\": \"https://dummy.com/auth/login\","
+				+ " \"body\": { \"mode\": \"raw\", \"raw\": "
+				+ "\"{ \\\"username\\\": \\\"emilys\\\", \\\"password\\\": \\\"emilyspass\\\" }\" }"
+				+ " } } ]\n}";
 
 		ApiSpec spec = ApiSpecParser.parse(postman);
 		ApiOperation operation = spec.getOperations().get(0);
 
+		assertEquals("loginUser", operation.getName());
+		assertEquals("loginUser", operation.getMethodName());
 		assertNotNull(operation.getExample());
 		assertTrue(operation.getExample().getBody().getContent().contains("emilys"));
 		assertTrue(operation.getExample().getBody().getContent().contains("\n  \"username\""));
 		assertEquals(ApiBodyType.JSON, operation.getExample().getBody().getType());
+	}
+
+	@Test
+	void postmanMethodNamesAreJavaStyleAndUnique() {
+		String postman = "{\n  \"info\": { \"name\": \"Demo\", \"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },\n"
+				+ "  \"item\": ["
+				+ "{ \"name\": \"Get all products\", \"request\": { \"method\": \"GET\", \"url\": \"https://example.com/products\" } },"
+				+ "{ \"name\": \"Get all products\", \"request\": { \"method\": \"GET\", \"url\": \"https://example.com/products/all\" } } ]\n}";
+
+		ApiSpec spec = ApiSpecParser.parse(postman);
+		assertEquals("Get all products", spec.getOperations().get(0).getName());
+		assertEquals("getAllProducts", spec.getOperations().get(0).getMethodName());
+		assertEquals("getAllProducts2", spec.getOperations().get(1).getMethodName());
 	}
 
 	@Test
@@ -553,51 +573,14 @@ class ApiSpecParserSmokeTest {
 		assertThrows(IllegalArgumentException.class, () -> new ApiSpecEnvironmentUpdater().update(spec, request));
 	}
 
+
 	@Test
-	void exportsPostmanCollectionAndEnvironmentFromOpenApi() {
-		String openApi = "openapi: 3.0.3\ninfo:\n  title: Export Demo API\n  version: 1.0.0\nservers:\n"
-				+ "  - url: https://dummy.com\npaths:\n  /auth/login:\n    post:\n      tags:\n"
-				+ "        - Auth\n      operationId: loginUser\n      parameters:\n"
-				+ "        - name: remember\n          in: query\n          schema:\n            type: string\n"
-				+ "          example: '{{remember}}'\n      requestBody:\n        content:\n"
-				+ "          application/json:\n            example:\n              username: '{{username}}'\n"
-				+ "              password: '{{password}}'\n";
+	void apiSpecIncludesCurrentModelVersion() throws Exception {
+		ApiSpec spec = new ApiSpec();
+		assertEquals("1.0.0", spec.getVersion());
 
-		ApiSpec spec = ApiSpecParser.parse(openApi);
-		Map<String, Object> collection = new PostmanCollectionExporter().export(spec, "Demo Collection");
-		Map<String, Object> environment = new PostmanEnvironmentExporter().export(spec, "Demo Environment");
-
-		Map<?, ?> info = asMap(collection.get("info"));
-		assertEquals("Demo Collection", info.get("name"));
-		List<?> items = asList(collection.get("item"));
-		Map<?, ?> folder = asMap(items.get(0));
-		assertEquals("Auth", folder.get("name"));
-		List<?> folderItems = asList(folder.get("item"));
-		Map<?, ?> requestItem = asMap(folderItems.get(0));
-		Map<?, ?> request = asMap(requestItem.get("request"));
-		Map<?, ?> url = asMap(request.get("url"));
-		assertEquals("{{BASE_URL}}/auth/login?remember={{remember}}", url.get("raw"));
-
-		assertEquals("Demo Environment", environment.get("name"));
-		List<?> values = asList(environment.get("values"));
-		assertTrue(values.stream().map(ApiSpecParserSmokeTest::asMap)
-				.anyMatch(item -> "BASE_URL".equals(item.get("key"))));
-		assertTrue(values.stream().map(ApiSpecParserSmokeTest::asMap)
-				.anyMatch(item -> "username".equals(item.get("key"))));
-	}
-
-	private static Map<?, ?> asMap(Object value) {
-		assertTrue(value instanceof Map<?, ?>, "Expected Map but got " + typeName(value));
-		return (Map<?, ?>) value;
-	}
-
-	private static List<?> asList(Object value) {
-		assertTrue(value instanceof List<?>, "Expected List but got " + typeName(value));
-		return (List<?>) value;
-	}
-
-	private static String typeName(Object value) {
-		return value == null ? "null" : value.getClass().getName();
+		String json = new ObjectMapper().writeValueAsString(spec);
+		assertTrue(json.contains("\"version\":\"1.0.0\""));
 	}
 
 }

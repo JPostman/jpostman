@@ -13,7 +13,7 @@
 	<artifactId>jpostman-api-schema</artifactId>
 	<packaging>jar</packaging>
 	<!-- Update jpostman.api-schema.version in parent  -->
-	<version>1.0.2</version>
+	<version>1.0.3</version>
 
 	<name>JPostman API Schema</name>
 	<description>Imports OpenAPI, Postman Collection, and GraphQL schema documents into a common JPostman Java API model.</description>

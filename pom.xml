@@ -65,7 +65,7 @@
 	<properties>
 		<jpostman.version>1.2.8</jpostman.version>
 		<jpostman.annotations.version>2.2.1</jpostman.annotations.version>
-		<jpostman.api-schema.version>1.0.2</jpostman.api-schema.version>
+		<jpostman.api-schema.version>1.0.3</jpostman.api-schema.version>
 		<jpostman.codegen.version>1.0.1</jpostman.codegen.version>
 
 		<java.version>11</java.version>

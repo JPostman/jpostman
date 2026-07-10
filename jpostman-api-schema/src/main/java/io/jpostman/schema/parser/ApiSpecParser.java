@@ -4,6 +4,7 @@ import io.jpostman.schema.importer.GraphQlImporter;
 import io.jpostman.schema.importer.OpenApiImporter;
 import io.jpostman.schema.importer.PostmanImporter;
 import io.jpostman.schema.model.ApiSpec;
+import io.jpostman.schema.util.ApiMethodNameAllocator;
 import io.jpostman.schema.util.ApiSpecEnvScanner;
 import io.jpostman.schema.util.BaseUrlOverride;
 
@@ -60,6 +61,7 @@ public final class ApiSpecParser {
 		}
 
 		BaseUrlOverride.apply(spec);
+		ApiMethodNameAllocator.apply(spec);
 		ApiSpecEnvScanner.scan(spec);
 		return spec;
 	}

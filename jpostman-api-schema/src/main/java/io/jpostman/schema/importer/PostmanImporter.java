@@ -99,6 +99,7 @@ public class PostmanImporter implements ApiSpecImporter {
 		ApiOperation operation = new ApiOperation();
 		operation.setProtocol(ApiProtocol.REST);
 		operation.setFolder(parent == null ? "Default" : parent.getName());
+		operation.setName(text(item.get("name"), "Request"));
 		operation.setMethodName(text(item.get("name"), "request"));
 		operation.setMethod(text(request.get("method"), "GET").toUpperCase());
 		operation.setAllowedMethods(List.of(operation.getMethod()));

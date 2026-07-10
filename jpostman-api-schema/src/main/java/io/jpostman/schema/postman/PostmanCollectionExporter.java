@@ -88,7 +88,7 @@ public class PostmanCollectionExporter {
 
 	private Map<String, Object> operationItem(ApiSpec spec, ApiOperation operation) {
 		Map<String, Object> item = new LinkedHashMap<>();
-		item.put("name", valueOrDefault(operation.getMethodName(), "Request"));
+		item.put("name", valueOrDefault(operation.getName(), valueOrDefault(operation.getMethodName(), "Request")));
 		Map<String, Object> request = new LinkedHashMap<>();
 		request.put("method", valueOrDefault(operation.getMethod(), "GET"));
 		if (!isBlank(operation.getDescription())) {
