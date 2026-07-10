@@ -577,7 +577,7 @@ public final class JPostman {
 
 	/**
 	 * Marks a test method that executes one request manually through
-	 * {@link Runtime#request()} or {@link Runtime#request(BiConsumer)}.
+	 * {@link Runtime#call()} or {@link Runtime#call(BiConsumer)}.
 	 */
 	@Target(METHOD)
 	@Retention(RUNTIME)
@@ -901,7 +901,7 @@ public final class JPostman {
 		 *
 		 * @return framework-neutral test context for assertions
 		 */
-		Test request();
+		Test call();
 
 		/**
 		 * Executes the request described by {@link Call} after applying an optional
@@ -911,7 +911,7 @@ public final class JPostman {
 		 *               and execution info
 		 * @return framework-neutral test context for assertions
 		 */
-		Test request(BiConsumer<C, Info> action);
+		Test call(BiConsumer<C, Info> action);
 
 		/**
 		 * Logs a trace message.

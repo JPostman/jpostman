@@ -203,7 +203,7 @@ public final class JPostmanTestNgAnnotationListener
 			}
 
 			// Do not rewrite normal test-method results here. @JPostman.Call is the
-			// exception because assertions can happen after jpostman.request() returns,
+			// exception because assertions can happen after jpostman.call() returns,
 			// so TestNG may store the original assertion failure directly on ITestResult.
 			if (invokedMethod.isTestMethod()) {
 				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();

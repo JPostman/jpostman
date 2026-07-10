@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.2
+
+### Added
+
+- Added regression coverage for `JPostman.Runtime.call()` and `JPostman.Runtime.call((ctx, info) -> ...)`, including optional request customization and verification that the old runtime `request()` API is no longer exposed.
+
+### Changed
+
+- Renamed `JPostman.Runtime.request()` to `JPostman.Runtime.call()` for clearer manual execution of requests declared with `@JPostman.Call`.
+- Renamed `JPostman.Runtime.request((ctx, info) -> ...)` to `JPostman.Runtime.call((ctx, info) -> ...)`.
+- Updated `@JPostman.Call` documentation, validation guidance, and TestNG listener comments to use `jpostman.call(...)`.
+
 ## 2.2.1
 
 ### Added

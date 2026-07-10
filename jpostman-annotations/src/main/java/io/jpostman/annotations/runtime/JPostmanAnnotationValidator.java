@@ -182,7 +182,7 @@ public final class JPostmanAnnotationValidator {
 					.append(JPostmanErrors.ENDL)
 					.append("The test framework invokes @Test methods directly and only supports its own parameter injection rules.")
 					.append(JPostmanErrors.ENDL)
-					.append("Use jpostman.request((ctx, info) -> ...) inside the test body instead.")
+					.append("Use jpostman.call((ctx, info) -> ...) inside the test body instead.")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid call methods:")
 					.append(JPostmanErrors.ENDL);
 

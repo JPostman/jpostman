@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a test method that will execute one annotated request manually through
- * {@code JPostman.Runtime.request(...)}.
+ * {@code JPostman.Runtime.call(...)}.
  */
 @Target(METHOD)
 @Retention(RUNTIME)

@@ -1331,6 +1331,35 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies the runtime facade uses call() exclusively for manual
+	 * {@link JPostman.Call} execution and applies optional call customization.
+	 */
+	@Test
+	public void runtimeCallUsesCallApi() throws Exception {
+		TestNgContext context = TestNgContext.create();
+		JPostmanInfo info = new JPostmanInfo("@JPostmanCall", "call", "", "", "Get all products");
+		AtomicInteger customized = new AtomicInteger();
+		JPostmanRuntime<TestNgContext> runtime = new JPostmanRuntime<>(null, "", namespace -> context, () -> context,
+				() -> info, null, action -> {
+					if (action != null) {
+						action.accept(context, info);
+					}
+					return context;
+				});
+
+		assertNotNull(runtime.call());
+		assertNotNull(runtime.call((ctx, current) -> {
+			assertSame(context, ctx);
+			assertSame(info, current);
+			customized.incrementAndGet();
+		}));
+		assertEquals(1, customized.get());
+		assertNotNull(JPostman.Runtime.class.getMethod("call"));
+		assertNotNull(JPostman.Runtime.class.getMethod("call", java.util.function.BiConsumer.class));
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Runtime.class.getMethod("request"));
+	}
+
+	/**
 	 * Verifies runtime runner rules match the current request name and run end only
 	 * for the last executed runner request.
 	 */

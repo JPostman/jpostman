@@ -174,12 +174,12 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	}
 
 	/** {@inheritDoc} */
-	public io.jpostman.annotations.JPostman.Test request() {
-		return request(null);
+	public io.jpostman.annotations.JPostman.Test call() {
+		return call(null);
 	}
 
 	/** {@inheritDoc} */
-	public io.jpostman.annotations.JPostman.Test request(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
+	public io.jpostman.annotations.JPostman.Test call(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
 		if (requestExecutor == null) {
 			throw new IllegalStateException("No active @JPostman.Call request executor is available.");
 		}
