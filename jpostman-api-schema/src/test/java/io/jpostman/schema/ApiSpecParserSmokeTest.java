@@ -424,8 +424,7 @@ class ApiSpecParserSmokeTest {
 				+ "      tags:\n        - Auth\n      summary: Login user and get access/refresh tokens\n"
 				+ "      requestBody:\n        required: true\n        description: JSON request body\n"
 				+ "        content:\n          application/json:\n            schema:\n"
-				+ "              $ref: '#/components/schemas/AuthLoginRequest'\n"
-				+ "      responses:\n        '200':\n"
+				+ "              $ref: '#/components/schemas/AuthLoginRequest'\n      responses:\n        '200':\n"
 				+ "          description: Login response with user and tokens\n"
 				+ "          content:\n            application/json:\n              schema:\n"
 				+ "                $ref: '#/components/schemas/AuthLoginResponse'\n"
@@ -476,10 +475,8 @@ class ApiSpecParserSmokeTest {
 				+ "\"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },\n"
 				+ "  \"item\": [ { \"name\": \"loginUser\", \"request\": {"
 				+ " \"description\": \"Login request description\", \"method\": \"POST\","
-				+ " \"url\": \"https://dummy.com/auth/login\","
-				+ " \"body\": { \"mode\": \"raw\", \"raw\": "
-				+ "\"{ \\\"username\\\": \\\"emilys\\\", \\\"password\\\": \\\"emilyspass\\\" }\" }"
-				+ " } } ]\n}";
+				+ " \"url\": \"https://dummy.com/auth/login\", \"body\": { \"mode\": \"raw\", \"raw\": "
+				+ "\"{ \\\"username\\\": \\\"emilys\\\", \\\"password\\\": \\\"emilyspass\\\" }\" } } } ]\n}";
 
 		ApiSpec spec = ApiSpecParser.parse(postman);
 		ApiOperation operation = spec.getOperations().get(0);
@@ -572,7 +569,6 @@ class ApiSpecParserSmokeTest {
 
 		assertThrows(IllegalArgumentException.class, () -> new ApiSpecEnvironmentUpdater().update(spec, request));
 	}
-
 
 	@Test
 	void apiSpecIncludesCurrentModelVersion() throws Exception {

@@ -62,8 +62,8 @@ public final class ApiMethodNameAllocator {
 	 */
 	static String toJavaIdentifier(String value) {
 		String safe = value == null ? "request" : value.trim();
-		String[] parts = safe.replaceAll("([a-z0-9])([A-Z])", "$1 $2")
-				.replaceAll("[^A-Za-z0-9_$]+", " ").trim().split("\\s+");
+		String[] parts = safe.replaceAll("([a-z0-9])([A-Z])", "$1 $2").replaceAll("[^A-Za-z0-9_$]+", " ").trim()
+				.split("\\s+");
 		StringBuilder result = new StringBuilder();
 		for (String part : parts) {
 			if (part.isBlank()) {
@@ -102,10 +102,10 @@ public final class ApiMethodNameAllocator {
 		return null;
 	}
 
-	private static final Set<String> JAVA_KEYWORDS = Set.of("abstract", "assert", "boolean", "break", "byte",
-			"case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else",
-			"enum", "extends", "final", "finally", "float", "for", "goto", "if", "implements", "import",
-			"instanceof", "int", "interface", "long", "native", "new", "package", "private", "protected",
-			"public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
-			"throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null");
+	private static final Set<String> JAVA_KEYWORDS = Set.of("abstract", "assert", "boolean", "break", "byte", "case",
+			"catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends",
+			"final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface",
+			"long", "native", "new", "package", "private", "protected", "public", "return", "short", "static",
+			"strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void",
+			"volatile", "while", "true", "false", "null");
 }
