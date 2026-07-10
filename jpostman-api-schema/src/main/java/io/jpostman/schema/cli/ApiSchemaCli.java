@@ -16,8 +16,6 @@ import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParseException;
 import io.jpostman.schema.parser.ApiSpecParser;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
-import io.jpostman.schema.postman.PostmanCollectionExporter;
-import io.jpostman.schema.postman.PostmanEnvironmentExporter;
 
 /**
  * Command-line bridge used by RESTAGE Studio to parse API documents with the

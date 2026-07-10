@@ -1,4 +1,4 @@
-package io.jpostman.schema.postman;
+package io.jpostman.schema.cli;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

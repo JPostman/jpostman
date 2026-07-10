@@ -1,4 +1,4 @@
-package io.jpostman.schema.postman;
+package io.jpostman.schema.cli;
 
 import java.time.Instant;
 import java.util.ArrayList;

@@ -25,8 +25,9 @@ import io.jpostman.codegen.render.JavaTestMethodRenderer;
 public final class JPostmanCodegenCli {
 
 	private static final Set<String> COMMON_OPTIONS = setOf("method", "id", "tags", "namespace", "folder", "request",
-			"rule", "filter", "depends-on", "include", "exclude", "verify", "executor", "cache", "log", "soft",
-			"lifecycle", "data", "asserts", "enabled", "skip", "output", "append", "help");
+			"rule", "filter", "depends-on", "include", "exclude", "verify", "executor", "executor-class", "cache",
+			"log", "soft", "lifecycle", "data", "asserts", "enabled", "skip", "pom", "pom-file", "project-dir",
+			"version-property", "output", "append", "help");
 
 	private static final Set<String> PROPERTIES_OPTIONS = setOf("namespace", "executor", "executor-class", "collection",
 			"environment", "output", "help");
@@ -85,6 +86,7 @@ public final class JPostmanCodegenCli {
 
 			JPostmanMethodSpec spec = buildSpec(type, options);
 			String source = JavaTestMethodRenderer.render(spec);
+			updatePomIfRequested(options, spec.getExecutor());
 			writeOutput(source, options);
 			return 0;
 		} catch (IllegalArgumentException | IOException e) {
@@ -104,8 +106,9 @@ public final class JPostmanCodegenCli {
 				.folder(options.value("folder")).request(options.value("request")).rule(options.value("rule"))
 				.filter(options.values("filter")).dependsOn(options.values("depends-on"))
 				.include(options.values("include")).exclude(options.values("exclude"))
-				.executor(options.value("executor")).cache(options.value("cache")).log(options.value("log"))
-				.data(options.value("data")).asserts(options.values("asserts"));
+				.executor(firstNonBlank(options.value("executor-class"), options.value("executor")))
+				.cache(options.value("cache")).log(options.value("log")).data(options.value("data"))
+				.asserts(options.values("asserts"));
 
 		if (options.has("verify")) {
 			builder.verify(options.integer("verify"));
@@ -150,6 +153,119 @@ public final class JPostmanCodegenCli {
 						"--" + name + " is not supported for " + type.commandName() + " command");
 			}
 		}
+	}
+
+	private static void updatePomIfRequested(CliOptions options, String executorClass) throws IOException {
+		Path pomPath = pomPath(options);
+		if (pomPath == null) {
+			return;
+		}
+
+		String normalizedExecutor = trimToNull(executorClass);
+		if (normalizedExecutor == null) {
+			return;
+		}
+
+		ensureExecutorDependency(pomPath, normalizedExecutor,
+				firstNonBlank(options.value("version-property"), "jpostman.version"));
+	}
+
+	private static Path pomPath(CliOptions options) {
+		String pom = firstNonBlank(options.value("pom"), options.value("pom-file"));
+		if (pom != null) {
+			return Paths.get(pom);
+		}
+
+		String projectDir = trimToNull(options.value("project-dir"));
+		if (projectDir != null) {
+			return Paths.get(projectDir).resolve("pom.xml");
+		}
+		return null;
+	}
+
+	private static void ensureExecutorDependency(Path pomPath, String executorClass, String versionProperty)
+			throws IOException {
+		if (!Files.exists(pomPath)) {
+			throw new IllegalArgumentException("pom.xml was not found: " + pomPath);
+		}
+
+		String pom = Files.readString(pomPath, StandardCharsets.UTF_8);
+		String artifactId = executorArtifactId(executorClass);
+		if (hasDependency(pom, "io.github.jpostman", artifactId)) {
+			return;
+		}
+
+		String updated = insertDependency(pom, dependencyXml(artifactId, versionProperty, lineSeparator(pom)));
+		Files.write(pomPath, updated.getBytes(StandardCharsets.UTF_8), StandardOpenOption.TRUNCATE_EXISTING,
+				StandardOpenOption.WRITE);
+	}
+
+	private static String executorArtifactId(String executorClass) {
+		String normalized = trimToNull(executorClass);
+		if (normalized == null) {
+			throw new IllegalArgumentException("Executor class is required to update pom.xml.");
+		}
+
+		String[] parts = normalized.split("\\.");
+		if (parts.length >= 4 && "io".equals(parts[0]) && "jpostman".equals(parts[1])) {
+			return "jpostman-" + parts[2];
+		}
+
+		throw new IllegalArgumentException("Unsupported executor class for Maven dependency mapping: " + executorClass);
+	}
+
+	private static boolean hasDependency(String pom, String groupId, String artifactId) {
+		String compact = pom.replaceAll("\\s+", "");
+		return compact.contains("<groupId>" + groupId + "</groupId>")
+				&& compact.contains("<artifactId>" + artifactId + "</artifactId>");
+	}
+
+	private static String dependencyXml(String artifactId, String versionProperty, String newline) {
+		String version = versionExpression(versionProperty);
+		return "\t\t<dependency>" + newline + "\t\t\t<groupId>io.github.jpostman</groupId>" + newline
+				+ "\t\t\t<artifactId>" + artifactId + "</artifactId>" + newline + "\t\t\t<version>" + version
+				+ "</version>" + newline + "\t\t\t<scope>test</scope>" + newline + "\t\t</dependency>" + newline;
+	}
+
+	private static String versionExpression(String versionProperty) {
+		String normalized = firstNonBlank(versionProperty, "jpostman.version");
+		if (normalized.startsWith("${") && normalized.endsWith("}")) {
+			return normalized;
+		}
+		return "${" + normalized + "}";
+	}
+
+	private static String insertDependency(String pom, String dependency) {
+		String newline = lineSeparator(pom);
+		int dependenciesEnd = pom.lastIndexOf("</dependencies>");
+		if (dependenciesEnd >= 0) {
+			int insertAt = lineStart(pom, dependenciesEnd);
+			return pom.substring(0, insertAt) + dependency + pom.substring(insertAt);
+		}
+
+		int projectEnd = pom.lastIndexOf("</project>");
+		if (projectEnd < 0) {
+			throw new IllegalArgumentException("Invalid pom.xml: missing </project>.");
+		}
+
+		String dependencies = "\t<dependencies>" + newline + dependency + "\t</dependencies>" + newline;
+		return pom.substring(0, projectEnd) + dependencies + pom.substring(projectEnd);
+	}
+
+	private static int lineStart(String text, int index) {
+		int position = Math.max(0, Math.min(index, text.length()));
+		while (position > 0) {
+			char previous = text.charAt(position - 1);
+			if (previous == '\n' || previous == '\r') {
+				break;
+			}
+			position--;
+		}
+		return position;
+	}
+
+	private static String lineSeparator(String text) {
+		return text.contains("\r\n") ? "\r\n" : System.lineSeparator();
 	}
 
 	private static void writeOutput(String source, CliOptions options) throws IOException {
@@ -361,7 +477,8 @@ public final class JPostmanCodegenCli {
 		if (type == JPostmanAnnotationType.RUNNER || type == JPostmanAnnotationType.RESPONSE) {
 			System.out.println("  --verify <statusCode>");
 		}
-		System.out.println("  --executor <executorId>");
+		System.out.println("  --executor <executorClass>    Fully qualified executor class.");
+		System.out.println("  --executor-class <class>      Alias for --executor.");
 		if (type == JPostmanAnnotationType.REQUEST || type == JPostmanAnnotationType.RESPONSE) {
 			System.out.println("  --cache <cacheKey>");
 		}
@@ -380,6 +497,9 @@ public final class JPostmanCodegenCli {
 		System.out.println("  --skip <true|false>");
 		System.out.println();
 		System.out.println("Output options:");
+		System.out.println("  --pom <pom.xml>              Add missing selected executor dependency to this pom.xml.");
+		System.out.println("  --project-dir <dir>          Alias for --pom <dir>/pom.xml.");
+		System.out.println("  --version-property <name>    Maven version property. Default: jpostman.version.");
 		System.out.println("  --output <file>");
 		System.out.println("  --append");
 	}
@@ -505,6 +625,15 @@ public final class JPostmanCodegenCli {
 			}
 			if ("executorClass".equals(normalized)) {
 				return "executor-class";
+			}
+			if ("pomFile".equals(normalized)) {
+				return "pom-file";
+			}
+			if ("projectDir".equals(normalized)) {
+				return "project-dir";
+			}
+			if ("versionProperty".equals(normalized)) {
+				return "version-property";
 			}
 			return normalized;
 		}
