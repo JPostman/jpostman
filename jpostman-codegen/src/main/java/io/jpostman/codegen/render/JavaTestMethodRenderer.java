@@ -48,7 +48,6 @@ public final class JavaTestMethodRenderer {
 		if (spec.getType() == JPostmanAnnotationType.RUNNER || spec.getType() == JPostmanAnnotationType.RESPONSE) {
 			addInteger(attributes, "verify", spec.getVerify());
 		}
-		addString(attributes, "executor", spec.getExecutor());
 		if (spec.getType() == JPostmanAnnotationType.REQUEST || spec.getType() == JPostmanAnnotationType.RESPONSE) {
 			addString(attributes, "cache", spec.getCache());
 		}

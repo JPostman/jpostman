@@ -84,9 +84,10 @@ public final class JPostmanCodegenCli {
 			}
 			validateOptions(type, options);
 
+			String executorClass = executorClass(options);
 			JPostmanMethodSpec spec = buildSpec(type, options);
 			String source = JavaTestMethodRenderer.render(spec);
-			updatePomIfRequested(options, spec.getExecutor());
+			updatePomIfRequested(options, executorClass);
 			writeOutput(source, options);
 			return 0;
 		} catch (IllegalArgumentException | IOException e) {
@@ -106,7 +107,6 @@ public final class JPostmanCodegenCli {
 				.folder(options.value("folder")).request(options.value("request")).rule(options.value("rule"))
 				.filter(options.values("filter")).dependsOn(options.values("depends-on"))
 				.include(options.values("include")).exclude(options.values("exclude"))
-				.executor(firstNonBlank(options.value("executor-class"), options.value("executor")))
 				.cache(options.value("cache")).log(options.value("log")).data(options.value("data"))
 				.asserts(options.values("asserts"));
 
@@ -153,6 +153,10 @@ public final class JPostmanCodegenCli {
 						"--" + name + " is not supported for " + type.commandName() + " command");
 			}
 		}
+	}
+
+	private static String executorClass(CliOptions options) {
+		return firstNonBlank(options.value("executor-class"), options.value("executor"));
 	}
 
 	private static void updatePomIfRequested(CliOptions options, String executorClass) throws IOException {
@@ -296,7 +300,7 @@ public final class JPostmanCodegenCli {
 		Map<String, String> properties = output == null ? new LinkedHashMap<>() : readProperties(Paths.get(output));
 		String suffix = suffix(options.value("namespace"));
 
-		String executor = firstNonBlank(options.value("executor-class"), options.value("executor"));
+		String executor = executorClass(options);
 		if (executor != null) {
 			properties.put("executor" + suffix, executor);
 		}
@@ -310,6 +314,7 @@ public final class JPostmanCodegenCli {
 		}
 
 		String content = renderProperties(properties);
+		content += "\n";
 		if (output == null) {
 			System.out.print(content);
 			return;
@@ -329,7 +334,7 @@ public final class JPostmanCodegenCli {
 				throw new IllegalArgumentException("Unsupported properties option --" + key);
 			}
 		}
-		if (options.value("executor") == null && options.value("executor-class") == null
+		if (executorClass(options) == null
 				&& options.value("collection") == null && options.value("environment") == null) {
 			throw new IllegalArgumentException(
 					"Use properties --executor-class <class> and/or --collection <path> and/or --environment <path>.");
@@ -373,11 +378,76 @@ public final class JPostmanCodegenCli {
 	}
 
 	private static String renderProperties(Map<String, String> properties) {
+		String newline = System.lineSeparator();
 		StringBuilder result = new StringBuilder();
+		Set<String> rendered = new LinkedHashSet<>();
+
+		List<String> suffixes = propertySuffixes(properties);
+		for (String suffix : suffixes) {
+			appendBlockSeparator(result, newline);
+			appendRuntimeProperty(result, rendered, properties, "executor", suffix, newline);
+			appendRuntimeProperty(result, rendered, properties, "collection", suffix, newline);
+			appendRuntimeProperty(result, rendered, properties, "environment", suffix, newline);
+		}
+
 		for (Map.Entry<String, String> entry : properties.entrySet()) {
-			result.append(entry.getKey()).append('=').append(entry.getValue()).append(System.lineSeparator());
+			if (rendered.contains(entry.getKey())) {
+				continue;
+			}
+			appendBlockSeparator(result, newline);
+			result.append(entry.getKey()).append('=').append(entry.getValue()).append(newline);
 		}
 		return result.toString();
+	}
+
+	private static List<String> propertySuffixes(Map<String, String> properties) {
+		List<String> suffixes = new ArrayList<>();
+		if (hasRuntimeBlock(properties, "")) {
+			suffixes.add("");
+		}
+
+		for (String key : properties.keySet()) {
+			String suffix = runtimePropertySuffix(key);
+			if (suffix != null && !suffixes.contains(suffix) && hasRuntimeBlock(properties, suffix)) {
+				suffixes.add(suffix);
+			}
+		}
+		return suffixes;
+	}
+
+	private static boolean hasRuntimeBlock(Map<String, String> properties, String suffix) {
+		return properties.containsKey("executor" + suffix) || properties.containsKey("collection" + suffix)
+				|| properties.containsKey("environment" + suffix);
+	}
+
+	private static String runtimePropertySuffix(String key) {
+		if (key.startsWith("executor.")) {
+			return key.substring("executor".length());
+		}
+		if (key.startsWith("collection.")) {
+			return key.substring("collection".length());
+		}
+		if (key.startsWith("environment.")) {
+			return key.substring("environment".length());
+		}
+		return null;
+	}
+
+	private static void appendRuntimeProperty(StringBuilder result, Set<String> rendered, Map<String, String> properties,
+			String baseName, String suffix, String newline) {
+		String key = baseName + suffix;
+		String value = properties.get(key);
+		if (value == null) {
+			return;
+		}
+		result.append(key).append('=').append(value).append(newline);
+		rendered.add(key);
+	}
+
+	private static void appendBlockSeparator(StringBuilder result, String newline) {
+		if (result.length() > 0 && !result.toString().endsWith(newline + newline)) {
+			result.append(newline);
+		}
 	}
 
 	private static String suffix(String namespace) {
@@ -477,8 +547,8 @@ public final class JPostmanCodegenCli {
 		if (type == JPostmanAnnotationType.RUNNER || type == JPostmanAnnotationType.RESPONSE) {
 			System.out.println("  --verify <statusCode>");
 		}
-		System.out.println("  --executor <executorClass>    Fully qualified executor class.");
-		System.out.println("  --executor-class <class>      Alias for --executor.");
+		System.out.println("  --executor <executorClass>    Selected executor class for pom.xml dependency update.");
+		System.out.println("  --executor-class <class>      Alias for --executor. Not rendered in annotations.");
 		if (type == JPostmanAnnotationType.REQUEST || type == JPostmanAnnotationType.RESPONSE) {
 			System.out.println("  --cache <cacheKey>");
 		}

@@ -1,4 +1,4 @@
-package io.jpostman.executor;
+package io.jpostman.httpclient;
 
 import java.io.IOException;
 import java.net.CookieManager;

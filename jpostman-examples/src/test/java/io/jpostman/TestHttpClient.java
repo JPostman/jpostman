@@ -16,7 +16,7 @@ import java.util.Arrays;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import io.jpostman.executor.HttpClientExecutor;
+import io.jpostman.httpclient.HttpClientExecutor;
 
 /**
  * Demonstrates how to execute Postman-exported collection requests with

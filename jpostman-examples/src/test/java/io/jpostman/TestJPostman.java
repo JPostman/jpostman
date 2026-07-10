@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import io.jpostman.executor.HttpClientExecutor;
+import io.jpostman.httpclient.HttpClientExecutor;
 import io.jpostman.playwright.PlaywrightExecutor;
 import io.jpostman.restassured.RestAssuredExecutor;
 import io.jpostman.unirest.UnirestExecutor;
