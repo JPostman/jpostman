@@ -1,0 +1,59 @@
+{
+  "info": {
+    "name": "Nested Annotation Test Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "level1",
+      "item": [
+        {
+          "name": "level2",
+          "item": [
+            {
+              "name": "level3",
+              "item": [
+                {
+                  "name": "Nested request",
+                  "request": {
+                    "method": "GET",
+                    "url": "https://example.com/nested"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Duplicate",
+              "item": [
+                {
+                  "name": "First duplicate request",
+                  "request": {
+                    "method": "GET",
+                    "url": "https://example.com/first"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "other",
+      "item": [
+        {
+          "name": "Duplicate",
+          "item": [
+            {
+              "name": "Second duplicate request",
+              "request": {
+                "method": "GET",
+                "url": "https://example.com/second"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

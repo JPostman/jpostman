@@ -365,11 +365,21 @@ public final class JPostman {
 		String namespace() default "";
 
 		/**
-		 * Collection folder name.
+		 * Collection folder path from the collection root to the target folder.
 		 *
-		 * @return folder name
+		 * <p>
+		 * Each value represents one folder level. An empty value selects requests from
+		 * the collection root.
+		 * </p>
+		 *
+		 * <pre>
+		 * folder = "Products"
+		 * folder = { "level1", "level2", "level3" }
+		 * </pre>
+		 *
+		 * @return folder path levels from parent to child
 		 */
-		String folder() default "";
+		String[] folder() default "";
 
 		/**
 		 * Collection request name.
@@ -471,11 +481,21 @@ public final class JPostman {
 		String namespace() default "";
 
 		/**
-		 * Collection folder name.
+		 * Collection folder path from the collection root to the target folder.
 		 *
-		 * @return folder name
+		 * <p>
+		 * Each value represents one folder level. An empty value selects requests from
+		 * the collection root.
+		 * </p>
+		 *
+		 * <pre>
+		 * folder = "Products"
+		 * folder = { "level1", "level2", "level3" }
+		 * </pre>
+		 *
+		 * @return folder path levels from parent to child
 		 */
-		String folder() default "";
+		String[] folder() default "";
 
 		/**
 		 * Collection request name.
@@ -605,11 +625,21 @@ public final class JPostman {
 		String namespace() default "";
 
 		/**
-		 * Collection folder name.
+		 * Collection folder path from the collection root to the target folder.
 		 *
-		 * @return folder name
+		 * <p>
+		 * Each value represents one folder level. An empty value selects requests from
+		 * the collection root.
+		 * </p>
+		 *
+		 * <pre>
+		 * folder = "Products"
+		 * folder = { "level1", "level2", "level3" }
+		 * </pre>
+		 *
+		 * @return folder path levels from parent to child
 		 */
-		String folder() default "";
+		String[] folder() default "";
 
 		/**
 		 * Collection request name.
@@ -709,11 +739,21 @@ public final class JPostman {
 		String namespace() default "";
 
 		/**
-		 * Collection folder name.
+		 * Collection folder path from the collection root to the target folder.
 		 *
-		 * @return folder name
+		 * <p>
+		 * Each value represents one folder level. An empty value selects requests from
+		 * the collection root.
+		 * </p>
+		 *
+		 * <pre>
+		 * folder = "Products"
+		 * folder = { "level1", "level2", "level3" }
+		 * </pre>
+		 *
+		 * @return folder path levels from parent to child
 		 */
-		String folder() default "";
+		String[] folder() default "";
 
 		/**
 		 * Request names to include.

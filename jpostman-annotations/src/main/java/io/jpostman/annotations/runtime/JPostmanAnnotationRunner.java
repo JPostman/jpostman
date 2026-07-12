@@ -813,15 +813,15 @@ public final class JPostmanAnnotationRunner<C> {
 			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), name, info);
 			JPostmanRequest requestAnnotation = JPostmanAnnotations.request(dependencyMethod);
 			if (requestAnnotation != null && !isBlank(requestAnnotation.request())) {
-				info.location(requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request())
-						.requestId(requestAnnotation.id());
+				info.location(requestAnnotation.namespace(), folder(requestAnnotation.folder()),
+						requestAnnotation.request()).requestId(requestAnnotation.id());
 				return true;
 			}
 
 			JPostmanResponse responseAnnotation = JPostmanAnnotations.response(dependencyMethod);
 			if (responseAnnotation != null) {
 				if (!isBlank(responseAnnotation.request())) {
-					info.location(responseAnnotation.namespace(), responseAnnotation.folder(),
+					info.location(responseAnnotation.namespace(), folder(responseAnnotation.folder()),
 							responseAnnotation.request()).requestId(responseAnnotation.id());
 					return true;
 				}
@@ -849,7 +849,7 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanCall callAnnotation, JPostmanRunner runnerAnnotation) {
 		if (requestAnnotation != null) {
 			JPostmanInfo info = new JPostmanInfo(requestAnnotation.tags(), requestAnnotation.executor(), methodName,
-					requestAnnotation.namespace(), requestAnnotation.folder(), requestAnnotation.request())
+					requestAnnotation.namespace(), folder(requestAnnotation.folder()), requestAnnotation.request())
 					.annotation("@JPostmanRequest").id(requestAnnotation.id());
 			if (!isBlank(requestAnnotation.request())) {
 				info.requestId(requestAnnotation.id());
@@ -859,18 +859,18 @@ public final class JPostmanAnnotationRunner<C> {
 
 		if (responseAnnotation != null) {
 			return new JPostmanInfo(responseAnnotation.tags(), responseAnnotation.executor(), methodName,
-					responseAnnotation.namespace(), responseAnnotation.folder(), responseAnnotation.request())
+					responseAnnotation.namespace(), folder(responseAnnotation.folder()), responseAnnotation.request())
 					.annotation("@JPostmanResponse").id(responseAnnotation.id());
 		}
 
 		if (callAnnotation != null) {
 			return new JPostmanInfo(callAnnotation.tags(), callAnnotation.executor(), methodName,
-					callAnnotation.namespace(), callAnnotation.folder(), callAnnotation.request())
+					callAnnotation.namespace(), folder(callAnnotation.folder()), callAnnotation.request())
 					.annotation("@JPostmanCall").id(callAnnotation.id());
 		}
 
 		return new JPostmanInfo(runnerAnnotation.tags(), runnerAnnotation.executor(), methodName,
-				runnerAnnotation.namespace(), runnerAnnotation.folder(), "").annotation("@JPostmanRunner")
+				runnerAnnotation.namespace(), folder(runnerAnnotation.folder()), "").annotation("@JPostmanRunner")
 				.id(annotationId(runnerAnnotation.id()));
 	}
 
@@ -936,7 +936,7 @@ public final class JPostmanAnnotationRunner<C> {
 		 */
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), "", annotation.executor(), cache, annotation.namespace(),
-						annotation.folder(), annotation.request())
+						folder(annotation.folder()), annotation.request())
 				.annotation("@JPostmanResponse").id(annotationId(annotation.id()));
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		resolver.info(info);
@@ -987,7 +987,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 		JPostmanInfo info = parentInfo
 				.child(dependencyMethod.getName(), new String[0], annotation.executor(), "", annotation.namespace(),
-						annotation.folder(), parentInfo.request)
+						folder(annotation.folder()), parentInfo.request)
 				.annotation("@JPostmanRunner").id(annotationId(annotation.id()));
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(dependencyMethod.getName());
@@ -1030,7 +1030,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (annotation == null || dependencies(annotation.dependsOn()).length != 1) {
 			return false;
 		}
-		return isBlank(annotation.namespace()) && isBlank(annotation.folder()) && isBlank(annotation.rule())
+		return isBlank(annotation.namespace()) && isBlank(folder(annotation.folder())) && isBlank(annotation.rule())
 				&& isBlank(annotation.executor()) && isBlank(annotation.data()) && isEmpty(annotation.include())
 				&& isEmpty(annotation.exclude()) && isEmpty(annotation.filter()) && isEmpty(annotation.asserts())
 				&& annotation.verify() == -1 && !annotation.soft();
@@ -1084,7 +1084,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 		JPostmanInfo info = parentInfo
 				.child(reusableRunner.getName(), new String[0], reusableAnnotation.executor(), "",
-						reusableAnnotation.namespace(), reusableAnnotation.folder(), parentInfo.request)
+						reusableAnnotation.namespace(), folder(reusableAnnotation.folder()), parentInfo.request)
 				.annotation("@JPostmanRunner").id(annotationId(reusableAnnotation.id()));
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(reusableRunner.getName());
@@ -1180,9 +1180,9 @@ public final class JPostmanAnnotationRunner<C> {
 		 */
 		JPostmanInfo info = isBlank(annotation.request())
 				? parentInfo.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
-						annotation.namespace(), annotation.folder(), annotation.request())
+						annotation.namespace(), folder(annotation.folder()), annotation.request())
 				: parentInfo.childExact(dependencyMethod.getName(), "", annotation.executor(), cache,
-						annotation.namespace(), annotation.folder(), annotation.request());
+						annotation.namespace(), folder(annotation.folder()), annotation.request());
 
 		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id()));
 		if (!isBlank(annotation.request())) {
@@ -1398,7 +1398,8 @@ public final class JPostmanAnnotationRunner<C> {
 	private C prepareRequest(C context, Collection collection, JPostmanRunner annotation, JPostmanInfo info,
 			String requestName) {
 		C result = applyRuleAndFilter(context, annotation.rule(), annotation.filter());
-		return requestWithCache(result, request(collection, info.namespace, annotation.folder(), requestName), info);
+		return requestWithCache(result, request(collection, info.namespace, folder(annotation.folder()), requestName),
+				info);
 	}
 
 	private C requestWithCache(C context, Request request, JPostmanInfo info) {
@@ -1445,10 +1446,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private Request request(Collection collection, String namespace, String folder, String request) {
 		captureDebugCollection(collection, folder);
 		try {
-			if (folder == null || folder.isBlank()) {
-				return collection.getRequest(request);
-			}
-			return collection.getFolder(folder).getRequest(request);
+			return JPostmanFolderPath.request(collection, folder, request);
 		} catch (AssertionError | RuntimeException e) {
 			AssertionError error = new AssertionError("Request not found: \"" + request + "\" (namespace="
 					+ value(namespace) + ", folder=" + value(folder) + ")");
@@ -2423,11 +2421,8 @@ public final class JPostmanAnnotationRunner<C> {
 
 		try {
 			String folderName = value(folder).trim();
-			if (folderName.isBlank()) {
-				JPostmanDebugFile.COLLECTIONS.put("<default>", collection.getRequests());
-			} else {
-				JPostmanDebugFile.COLLECTIONS.put(folderName, collection.getFolder(folderName).getRequests());
-			}
+			String key = folderName.isBlank() ? "<default>" : folderName;
+			JPostmanDebugFile.COLLECTIONS.put(key, JPostmanFolderPath.requests(collection, folderName));
 		} catch (RuntimeException | LinkageError ignored) {
 			// Internal diagnostics must never affect annotation execution.
 		}
@@ -2612,6 +2607,10 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private String idReference(String id) {
 		return ID_PREFIX + annotationId(id);
+	}
+
+	private String folder(String[] levels) {
+		return JPostmanFolderPath.value(levels);
 	}
 
 	private boolean isBlank(String value) {

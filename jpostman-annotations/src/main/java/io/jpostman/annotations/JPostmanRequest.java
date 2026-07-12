@@ -73,16 +73,21 @@ public @interface JPostmanRequest {
 	String namespace() default "";
 
 	/**
-	 * Postman folder name to search before resolving the request.
+	 * Collection folder path from the collection root to the target folder.
 	 *
 	 * <p>
-	 * Empty means inherit from the parent chain. If no folder is available, the
-	 * collection root is searched by request name.
+	 * Each value represents one folder level. An empty value selects requests from
+	 * the collection root.
 	 * </p>
 	 *
-	 * @return Postman folder name
+	 * <pre>
+	 * folder = "Products"
+	 * folder = { "level1", "level2", "level3" }
+	 * </pre>
+	 *
+	 * @return folder path levels from parent to child
 	 */
-	String folder() default "";
+	String[] folder() default "";
 
 	/**
 	 * Postman request name to prepare.

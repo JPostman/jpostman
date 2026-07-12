@@ -53,11 +53,21 @@ public @interface JPostmanResponse {
 	String namespace() default "";
 
 	/**
-	 * Optional Postman folder name. Empty means search by request name only.
+	 * Collection folder path from the collection root to the target folder.
 	 *
-	 * @return Postman folder name
+	 * <p>
+	 * Each value represents one folder level. An empty value selects requests from
+	 * the collection root.
+	 * </p>
+	 *
+	 * <pre>
+	 * folder = "Products"
+	 * folder = { "level1", "level2", "level3" }
+	 * </pre>
+	 *
+	 * @return folder path levels from parent to child
 	 */
-	String folder() default "";
+	String[] folder() default "";
 
 	/**
 	 * Postman request name to prepare and execute.

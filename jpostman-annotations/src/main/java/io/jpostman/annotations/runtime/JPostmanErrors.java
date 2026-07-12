@@ -152,7 +152,13 @@ final class JPostmanErrors {
 
 	private static String annotationValue(Annotation annotation, String elementName) {
 		Object value = annotationElementValue(annotation, elementName);
-		return value == null ? "" : String.valueOf(value);
+		if (value == null) {
+			return "";
+		}
+		if (value instanceof String[]) {
+			return JPostmanFolderPath.value((String[]) value);
+		}
+		return String.valueOf(value);
 	}
 
 	private static String[] annotationArrayValue(Annotation annotation, String elementName) {

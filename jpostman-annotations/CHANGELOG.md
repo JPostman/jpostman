@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.4
+
+### Added
+
+- Added ordered folder traversal with syntax such as `folder = { "level1", "level2", "level3" }`.
+
+### Changed
+
+- Changed annotation `folder()` values from `String` to `String[]`; existing single-folder source syntax such as `folder = "Products"` remains valid after recompilation.
+
+### Fixed
+
+- Fixed nested runner and request resolution so every folder level is matched in parent-to-child order.
+
+
 ## 2.2.3
 
 ### Added

@@ -101,7 +101,7 @@ public final class JPostmanJUnitExtension
 
 	private boolean isRunnerDependencyLauncher(io.jpostman.annotations.JPostmanRunner runner) {
 		return runner != null && dependencies(runner).length == 1 && isBlank(runner.namespace())
-				&& isBlank(runner.folder()) && isBlank(runner.rule()) && isBlank(runner.executor())
+				&& isEmpty(runner.folder()) && isBlank(runner.rule()) && isBlank(runner.executor())
 				&& isBlank(runner.data()) && isEmpty(runner.include()) && isEmpty(runner.exclude())
 				&& isEmpty(runner.filter()) && isEmpty(runner.asserts()) && runner.verify() == -1 && !runner.soft()
 				&& !runner.lifecycle();
