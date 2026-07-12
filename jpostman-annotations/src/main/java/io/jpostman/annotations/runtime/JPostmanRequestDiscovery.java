@@ -19,12 +19,8 @@ final class JPostmanRequestDiscovery {
 
 	List<String> runnerRequestNames(Collection collection, String folder) {
 		List<String> names = new ArrayList<>();
-		try {
-			for (Request request : JPostmanFolderPath.requests(collection, folder)) {
-				addName(names, request.getName());
-			}
-		} catch (AssertionError | RuntimeException e) {
-			return new ArrayList<>();
+		for (Request request : JPostmanFolderPath.requests(collection, folder)) {
+			addName(names, request.getName());
 		}
 		return names;
 	}
@@ -48,10 +44,14 @@ final class JPostmanRequestDiscovery {
 		return false;
 	}
 
-	boolean hasExplicitRequest(Class<?> type, String namespace, String folder, String requestName) {
+	boolean hasExplicitRequest(Class<?> type, String namespace, String folder, String requestName,
+			Set<Method> ignoredMethods) {
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
+				if (ignoredMethods != null && ignoredMethods.contains(method)) {
+					continue;
+				}
 				JPostmanRequest request = JPostmanAnnotations.request(method);
 				if (request == null) {
 					continue;

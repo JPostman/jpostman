@@ -178,7 +178,7 @@ public final class JPostmanAnnotationRunner<C> {
 						info, responseAnnotation.data(), stack);
 				if (reusedResponse) {
 					completeReusedResponse(testInstance, prepared, currentContext, responseAnnotation, info);
-				} else if (hasResponseExecution(responseAnnotation, info)) {
+				} else {
 					executeResponse(testInstance, prepared, currentContext, responseAnnotation, info, stack);
 				}
 				prepared.info(info);
@@ -191,6 +191,7 @@ public final class JPostmanAnnotationRunner<C> {
 					runRunnerDependencyLauncher(testInstance, prepared, testMethod, reusableRunner, runnerAnnotation,
 							info, stack);
 				} else {
+					prepareRunnerScope(testInstance, prepared, runnerAnnotation, info);
 					runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
 							info.withTags(runnerAnnotation.tags()), stack);
 					executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
@@ -706,6 +707,7 @@ public final class JPostmanAnnotationRunner<C> {
 		boolean responseDependency = hasDirectResponseDependency(testInstance, dependencies(annotation.dependsOn()),
 				info);
 		inheritResponseLocationFromDependencies(testInstance, annotation, info);
+		validateResponseRequestName(info);
 		applyData(testInstance, prepared, info, data, stack);
 
 		C source = prepared.context(info.namespace);
@@ -772,20 +774,20 @@ public final class JPostmanAnnotationRunner<C> {
 		passed(report(testInstance), info);
 	}
 
-	private boolean hasResponseExecution(JPostmanResponse annotation, JPostmanInfo info) {
-		if (info.request != null && !info.request.isBlank()) {
-			return true;
+	/**
+	 * Requires an executable request name for a response annotation. A response may
+	 * declare the request directly or inherit it from a request dependency that
+	 * declares {@code request = "..."}. Blank-request request annotations are
+	 * folder scopes for runners only and cannot supply a response execution
+	 * request.
+	 */
+	private void validateResponseRequestName(JPostmanInfo info) {
+		if (hasResponseRequest(info)) {
+			return;
 		}
 
-		if (hasAssertions(annotation.asserts()) || shouldVerify(annotation.verify())
-				|| cacheRequested(annotation.cache())) {
-			throw JPostmanErrors.usage(info, "@JPostmanResponse request is required when using response execution,",
-					"verification, assertions, or cache.",
-					"Set namespace, folder, and request directly on the @JPostmanResponse,",
-					"or depend on a @JPostmanRequest method that defines the request location: " + value(info.method));
-		}
-
-		return false;
+		throw JPostmanErrors.usage(info, "@JPostman.Response request name is missing.",
+				"Set request = \"...\" on @JPostman.Response, or depend on @JPostman.Request that defines request = \"...\".");
 	}
 
 	private void inheritResponseLocationFromDependencies(Object testInstance, JPostmanResponse annotation,
@@ -872,6 +874,59 @@ public final class JPostmanAnnotationRunner<C> {
 		return new JPostmanInfo(runnerAnnotation.tags(), runnerAnnotation.executor(), methodName,
 				runnerAnnotation.namespace(), folder(runnerAnnotation.folder()), "").annotation("@JPostmanRunner")
 				.id(annotationId(runnerAnnotation.id()));
+	}
+
+	/**
+	 * Resolves a runner's effective namespace and folder from a direct
+	 * {@code @JPostman.Request} dependency when the runner leaves those values
+	 * blank. Both blank-request and named-request dependencies may provide the
+	 * runner scope. The runner's {@code include} and {@code exclude} values remain
+	 * responsible for selecting which requests are executed. Explicit runner values
+	 * always take precedence.
+	 */
+	private void prepareRunnerScope(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
+			JPostmanInfo info) {
+		if (annotation == null || info == null) {
+			return;
+		}
+
+		boolean inheritNamespace = isBlank(annotation.namespace());
+		boolean inheritFolder = isBlank(folder(annotation.folder()));
+		if (!inheritNamespace && !inheritFolder) {
+			return;
+		}
+
+		for (String dependencyName : dependencies(annotation.dependsOn())) {
+			if (dependencyName == null || dependencyName.isBlank()) {
+				continue;
+			}
+
+			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), dependencyName.trim(), info);
+			JPostmanRequest request = JPostmanAnnotations.request(dependencyMethod);
+			if (request == null) {
+				continue;
+			}
+
+			String requestNamespace = value(request.namespace()).trim();
+			String requestFolder = folder(request.folder());
+			if (requestNamespace.isBlank() && requestFolder.isBlank()) {
+				continue;
+			}
+
+			if (inheritNamespace && !requestNamespace.isBlank()) {
+				info.namespace = requestNamespace;
+			}
+			if (inheritFolder && !requestFolder.isBlank()) {
+				info.folder = requestFolder;
+			}
+			break;
+		}
+
+		PreparedContext<C> current = resolver.resolve(info.namespace);
+		info.context(current.contextAnnotation);
+		resolver.info(info);
+		framework.setCurrent(current.context);
+		captureDebugContext(current, info);
 	}
 
 	private void runDependencies(Object testInstance, PreparedContexts<C> resolver, String[] dependencyNames,
@@ -970,6 +1025,7 @@ public final class JPostmanAnnotationRunner<C> {
 		runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()), info.withTags(annotation.tags()),
 				stack);
 		inheritResponseLocationFromDependencies(testInstance, annotation, info);
+		validateResponseRequestName(info);
 		applyData(testInstance, resolver, info, annotation.data(), stack);
 		ctx = prepareRequest(resolver.context(info.namespace), resolver.collection(info.namespace), annotation, info);
 		resolver.update(info.namespace, ctx);
@@ -989,6 +1045,7 @@ public final class JPostmanAnnotationRunner<C> {
 				.child(dependencyMethod.getName(), new String[0], annotation.executor(), "", annotation.namespace(),
 						folder(annotation.folder()), parentInfo.request)
 				.annotation("@JPostmanRunner").id(annotationId(annotation.id()));
+		prepareRunnerScope(testInstance, resolver, annotation, info);
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(dependencyMethod.getName());
 		resolver.info(runnerInfo);
@@ -1086,6 +1143,7 @@ public final class JPostmanAnnotationRunner<C> {
 				.child(reusableRunner.getName(), new String[0], reusableAnnotation.executor(), "",
 						reusableAnnotation.namespace(), folder(reusableAnnotation.folder()), parentInfo.request)
 				.annotation("@JPostmanRunner").id(annotationId(reusableAnnotation.id()));
+		prepareRunnerScope(testInstance, resolver, reusableAnnotation, info);
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(reusableRunner.getName());
 		resolver.info(runnerInfo);
@@ -1398,8 +1456,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private C prepareRequest(C context, Collection collection, JPostmanRunner annotation, JPostmanInfo info,
 			String requestName) {
 		C result = applyRuleAndFilter(context, annotation.rule(), annotation.filter());
-		return requestWithCache(result, request(collection, info.namespace, folder(annotation.folder()), requestName),
-				info);
+		return requestWithCache(result, request(collection, info.namespace, info.folder, requestName), info);
 	}
 
 	private C requestWithCache(C context, Request request, JPostmanInfo info) {
@@ -1541,7 +1598,12 @@ public final class JPostmanAnnotationRunner<C> {
 		validateLocalLog(annotation.log(), info);
 		JPostmanReport report = report(testInstance);
 		Collection collection = resolver.collection(info.namespace);
-		List<String> requestNames = requestDiscovery.runnerRequestNames(collection, info.folder);
+		List<String> requestNames;
+		try {
+			requestNames = requestDiscovery.runnerRequestNames(collection, info.folder);
+		} catch (IllegalArgumentException e) {
+			throw runnerFolderNotFoundError(info, e);
+		}
 		Set<String> includes = requestDiscovery.normalizeNames(annotation.include());
 		Set<String> excludes = requestDiscovery.normalizeNames(annotation.exclude());
 		List<String> skipped = new ArrayList<>();
@@ -1559,8 +1621,9 @@ public final class JPostmanAnnotationRunner<C> {
 		// executors are accepted for @JPostmanRunner too.
 		executorCall(testInstance, resolver.context(info.namespace), info);
 
+		Set<Method> requestDependencyMethods = runnerRequestDependencyMethods(testInstance, annotation, info);
 		List<String> executableRequestNames = runnerExecutableRequestNames(testInstance, info, requestNames, includes,
-				excludes, skipped);
+				excludes, skipped, requestDependencyMethods);
 
 		if (notifyAfterRequest) {
 			JPostmanRuntimeRunner.begin(executableRequestNames, annotation.lifecycle());
@@ -1623,7 +1686,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private List<String> runnerExecutableRequestNames(Object testInstance, JPostmanInfo info, List<String> requestNames,
-			Set<String> includes, Set<String> excludes, List<String> skipped) {
+			Set<String> includes, Set<String> excludes, List<String> skipped, Set<Method> requestDependencyMethods) {
 
 		List<String> executable = new ArrayList<>();
 		for (String requestName : requestNames) {
@@ -1643,8 +1706,8 @@ public final class JPostmanAnnotationRunner<C> {
 				continue;
 			}
 
-			if (requestDiscovery.hasExplicitRequest(testInstance.getClass(), info.namespace, info.folder,
-					requestName)) {
+			if (requestDiscovery.hasExplicitRequest(testInstance.getClass(), info.namespace, info.folder, requestName,
+					requestDependencyMethods)) {
 				skipped.add(requestName + " (handled by explicit @JPostmanRequest)");
 				continue;
 			}
@@ -1657,6 +1720,31 @@ public final class JPostmanAnnotationRunner<C> {
 			executable.add(requestName);
 		}
 		return executable;
+	}
+
+	/**
+	 * Returns direct request dependencies used by the current runner. A request
+	 * dependency is a setup/scope provider for that runner, so it must not cause
+	 * the same collection request to be filtered as an independently handled
+	 * request.
+	 */
+	private Set<Method> runnerRequestDependencyMethods(Object testInstance, JPostmanRunner annotation,
+			JPostmanInfo info) {
+		Set<Method> result = new LinkedHashSet<>();
+		if (testInstance == null || annotation == null) {
+			return result;
+		}
+
+		for (String dependencyName : dependencies(annotation.dependsOn())) {
+			if (dependencyName == null || dependencyName.isBlank()) {
+				continue;
+			}
+			Method method = findDependencyMethod(testInstance.getClass(), dependencyName.trim(), info);
+			if (JPostmanAnnotations.request(method) != null) {
+				result.add(method);
+			}
+		}
+		return result;
 	}
 
 	private boolean deferRunnerSoftVerification(boolean notifyAfterRequest, JPostmanRunner annotation,
@@ -1779,6 +1867,16 @@ public final class JPostmanAnnotationRunner<C> {
 		return reason.contains("(handled by explicit @JPostmanResponse)")
 				|| reason.contains("(handled by explicit @JPostmanRequest)")
 				|| reason.contains("(handled by explicit @JPostmanCall)");
+	}
+
+	private AssertionError runnerFolderNotFoundError(JPostmanInfo info, IllegalArgumentException cause) {
+		String folder = value(info == null ? "" : info.folder).trim();
+		String detail = value(cause == null ? "" : cause.getMessage()).trim();
+		if (detail.isBlank()) {
+			detail = "Folder not found: " + (folder.isBlank() ? "<default>" : folder);
+		}
+		return JPostmanErrors.usage(info, "JPostman runner folder was not found.", detail,
+				"Check @JPostmanRunner.folder or the @JPostman.Request dependency used as the runner scope.");
 	}
 
 	private AssertionError runnerNothingExecutedError(JPostmanInfo info, List<String> requestNames,
@@ -2192,10 +2290,6 @@ public final class JPostmanAnnotationRunner<C> {
 			return method == null ? "" : "__" + method.getName() + "__";
 		}
 		return cache;
-	}
-
-	private boolean cacheRequested(String rawCache) {
-		return !NO_CACHE.equals(value(rawCache));
 	}
 
 	private Object cachedResponseValue(PreparedContexts<C> resolver, JPostmanInfo info, String cache) {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.5
+
+### Added
+
+- Added runner scope inheritance from direct `@JPostman.Request` dependencies. When a runner leaves `namespace` or `folder` blank, it can reuse those values from the referenced request annotation.
+- Added support for both blank-request and named-request dependencies as runner scope providers; runner `include` and `exclude` values continue to control which collection requests execute.
+- Added clear validation for `@JPostman.Response` when no request name can be resolved directly or from a request dependency.
+- Added regression coverage for inherited runner scopes, named-request dependencies, missing inherited folders, response request-name validation, and duplicate request filtering.
+
 ## 2.2.4
 
 ### Added
