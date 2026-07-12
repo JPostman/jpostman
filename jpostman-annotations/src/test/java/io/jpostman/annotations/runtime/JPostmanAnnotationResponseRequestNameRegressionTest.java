@@ -55,10 +55,8 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 
 	private static void assertMissingRequestMessage(AssertionError error) {
 		String message = error.getMessage();
-		assertTrue(message.contains("JPostman response request name is missing."));
-		assertTrue(message.contains("Set request = \"...\" on @JPostmanResponse"));
-		assertTrue(message.contains("depend on @JPostmanRequest that defines request = \"...\""));
-		assertTrue(message.contains("blank-request @JPostmanRequest"));
+		assertTrue(message.contains("@JPostman.Response request name is missing."));
+		assertTrue(message.contains("Set request = \"...\" on @JPostman.Response, or depend on @JPostman.Request that defines request = \"...\"."));
 	}
 
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
