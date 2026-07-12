@@ -1002,6 +1002,11 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("Get current auth user", attr.request);
 		assertEquals("token", attr.id);
 		assertEquals("authRequest", info.method());
+		assertEquals("authRequest", info.method(0));
+		assertEquals("filter1", info.method(1));
+		assertEquals("authRequest", info.method(2),
+				"An unavailable method-chain entry should fall back to the current method.");
+		assertThrows(IllegalArgumentException.class, () -> info.method(-1));
 		assertEquals("Auth", info.folder());
 		assertEquals("Get current auth user", info.request());
 	}

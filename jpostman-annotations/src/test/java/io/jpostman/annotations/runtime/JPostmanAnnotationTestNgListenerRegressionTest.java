@@ -97,6 +97,29 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
+	public void listenerInvokesReusableRunnerLauncherThroughTestNgHook() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		ReusableRunnerLauncherFixture fixture = new ReusableRunnerLauncherFixture();
+		Method method = ReusableRunnerLauncherFixture.class.getDeclaredMethod("testProductsRunner2");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		AtomicInteger hookCalls = new AtomicInteger();
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> {
+			hookCalls.incrementAndGet();
+			invoke(fixture, method);
+		}), result);
+
+		assertEquals(1, hookCalls.get(), "The reusable-runner launcher must execute through TestNG's IHookCallBack.");
+		assertEquals(1, fixture.reusableBodyCalls);
+		assertEquals(1, fixture.launcherBodyCalls);
+		assertEquals(1, fixture.executorCalls);
+		assertEquals(ITestResult.SUCCESS, status.get());
+		assertEquals(null, throwable.get());
+	}
+
+	@Test
 	public void listenerKeepsRuntimeCallErrorTraceBeyondUserFrame() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		RuntimeCallErrorTraceFixture fixture = new RuntimeCallErrorTraceFixture();
@@ -195,6 +218,35 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			executorCalls++;
 			return okExecutor("{\"id\":" + executorCalls + ",\"request\":\"" + info.request + "\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ReusableRunnerLauncherFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int reusableBodyCalls;
+		private int launcherBodyCalls;
+		private int executorCalls;
+
+		@JPostman.Runner(id = "runner1", include = "Login user and get tokens", verify = 0)
+		@org.testng.annotations.Test
+		public void testProductsRunner1() {
+			reusableBodyCalls++;
+		}
+
+		@JPostman.Runner(dependsOn = "#runner1")
+		@org.testng.annotations.Test
+		public void testProductsRunner2() {
+			launcherBodyCalls++;
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executorCalls++;
+			return okExecutor("{\"id\":1}");
 		}
 	}
 

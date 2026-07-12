@@ -26,8 +26,8 @@ public final class JPostmanCodegenCli {
 
 	private static final Set<String> COMMON_OPTIONS = setOf("method", "id", "tags", "namespace", "folder", "request",
 			"rule", "filter", "depends-on", "include", "exclude", "verify", "executor", "executor-class", "cache",
-			"log", "soft", "lifecycle", "data", "asserts", "enabled", "skip", "pom", "pom-file", "project-dir",
-			"version-property", "output", "append", "help");
+			"log", "soft", "lifecycle", "data", "asserts", "enabled", "skip", "include-test", "pom", "pom-file",
+			"project-dir", "version-property", "output", "append", "help");
 
 	private static final Set<String> PROPERTIES_OPTIONS = setOf("namespace", "executor", "executor-class", "collection",
 			"environment", "output", "help");
@@ -86,7 +86,7 @@ public final class JPostmanCodegenCli {
 
 			String executorClass = executorClass(options);
 			JPostmanMethodSpec spec = buildSpec(type, options);
-			String source = JavaTestMethodRenderer.render(spec);
+			String source = JavaTestMethodRenderer.render(spec, options.boolOrDefault("include-test", false));
 			updatePomIfRequested(options, executorClass);
 			writeOutput(source, options);
 			return 0;
@@ -106,9 +106,8 @@ public final class JPostmanCodegenCli {
 				.id(options.value("id")).tags(options.values("tags")).namespace(options.value("namespace"))
 				.folder(options.value("folder")).request(options.value("request")).rule(options.value("rule"))
 				.filter(options.values("filter")).dependsOn(options.values("depends-on"))
-				.include(options.values("include")).exclude(options.values("exclude"))
-				.cache(options.value("cache")).log(options.value("log")).data(options.value("data"))
-				.asserts(options.values("asserts"));
+				.include(options.values("include")).exclude(options.values("exclude")).cache(options.value("cache"))
+				.log(options.value("log")).data(options.value("data")).asserts(options.values("asserts"));
 
 		if (options.has("verify")) {
 			builder.verify(options.integer("verify"));
@@ -334,8 +333,8 @@ public final class JPostmanCodegenCli {
 				throw new IllegalArgumentException("Unsupported properties option --" + key);
 			}
 		}
-		if (executorClass(options) == null
-				&& options.value("collection") == null && options.value("environment") == null) {
+		if (executorClass(options) == null && options.value("collection") == null
+				&& options.value("environment") == null) {
 			throw new IllegalArgumentException(
 					"Use properties --executor-class <class> and/or --collection <path> and/or --environment <path>.");
 		}
@@ -433,8 +432,8 @@ public final class JPostmanCodegenCli {
 		return null;
 	}
 
-	private static void appendRuntimeProperty(StringBuilder result, Set<String> rendered, Map<String, String> properties,
-			String baseName, String suffix, String newline) {
+	private static void appendRuntimeProperty(StringBuilder result, Set<String> rendered,
+			Map<String, String> properties, String baseName, String suffix, String newline) {
 		String key = baseName + suffix;
 		String value = properties.get(key);
 		if (value == null) {
@@ -506,9 +505,9 @@ public final class JPostmanCodegenCli {
 		System.out.println("  jpostman-codegen --version");
 		System.out.println();
 		System.out.println("Commands:");
-		System.out.println("  runner       Generate @Test + @JPostman.Runner method");
-		System.out.println("  request      Generate @Test + @JPostman.Request method");
-		System.out.println("  response     Generate @Test + @JPostman.Response method");
+		System.out.println("  request      Generate @JPostman.Request method");
+		System.out.println("  response     Generate @JPostman.Response method");
+		System.out.println("  runner       Generate @JPostman.Runner method");
 		System.out.println("  properties   Generate or update jpostman.properties");
 		System.out.println();
 		System.out.println("Common options:");
@@ -518,6 +517,7 @@ public final class JPostmanCodegenCli {
 		System.out.println("  --request <name>            Postman request name. Request/response only.");
 		System.out.println("  --tags <a,b>                Tags. Can be comma-separated or repeated.");
 		System.out.println("  --depends-on <a,b>          JPostman dependencies. Use method names or #ids.");
+		System.out.println("  --include-test              Include the TestNG @Test annotation.");
 		System.out.println("  --log <debug|none|error>    Local JPostman log mode.");
 		System.out.println("  --output <file>             Write generated output to file instead of stdout.");
 		System.out.println();
@@ -565,6 +565,7 @@ public final class JPostmanCodegenCli {
 			System.out.println("  --enabled <true|false>");
 		}
 		System.out.println("  --skip <true|false>");
+		System.out.println("  --include-test [true|false]  Include the TestNG @Test annotation. Default: false.");
 		System.out.println();
 		System.out.println("Output options:");
 		System.out.println("  --pom <pom.xml>              Add missing selected executor dependency to this pom.xml.");
@@ -704,6 +705,9 @@ public final class JPostmanCodegenCli {
 			}
 			if ("versionProperty".equals(normalized)) {
 				return "version-property";
+			}
+			if ("includeTest".equals(normalized)) {
+				return "include-test";
 			}
 			return normalized;
 		}

@@ -16,16 +16,27 @@ public final class JavaTestMethodRenderer {
 	}
 
 	public static String render(JPostmanMethodSpec spec) {
+		return render(spec, false);
+	}
+
+	public static String render(JPostmanMethodSpec spec, boolean includeTest) {
 		List<String> attributes = annotationAttributes(spec);
 		StringBuilder source = new StringBuilder();
-		source.append("@Test").append(System.lineSeparator());
+		if (includeTest) {
+			source.append("@Test").append(System.lineSeparator());
+		}
 		source.append('@').append(spec.getType().annotationName());
 		if (!attributes.isEmpty()) {
 			source.append('(').append(String.join(", ", attributes)).append(')');
 		}
 		source.append(System.lineSeparator());
-		source.append("public void ").append(spec.getMethodName()).append("() {").append(System.lineSeparator())
-				.append(System.lineSeparator()).append('}').append(System.lineSeparator());
+		source.append("public void ").append(spec.getMethodName());
+		if (spec.getType() != JPostmanAnnotationType.REQUEST) {
+			source.append("() {");
+		} else {
+			source.append("(JPostman.Test test, JPostman.Info info) {");
+		}
+		source.append(System.lineSeparator()).append(System.lineSeparator()).append('}').append(System.lineSeparator());
 		return source.toString();
 	}
 

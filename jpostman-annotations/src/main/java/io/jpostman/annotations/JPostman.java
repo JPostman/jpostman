@@ -1135,6 +1135,36 @@ public final class JPostman {
 		}
 
 		/**
+		 * Returns an entry from the current execution method chain relative to the
+		 * current invocation.
+		 *
+		 * <p>
+		 * A value of {@code 0} returns the current method-chain entry, {@code 1}
+		 * returns the immediately preceding entry, and larger values walk farther back.
+		 * When the requested entry is outside the available chain, this method falls
+		 * back to {@link #method()}.
+		 * </p>
+		 *
+		 * @param stepsBack number of method-chain entries to move backward; must be
+		 *                  zero or greater
+		 * @return selected method-chain entry, or the current method name when the
+		 *         requested entry is unavailable
+		 * @throws IllegalArgumentException when {@code stepsBack} is negative
+		 */
+		default String method(int stepsBack) {
+			if (stepsBack < 0) {
+				throw new IllegalArgumentException("stepsBack must be zero or greater.");
+			}
+
+			JPostmanInfo info = attr();
+			int index = info.methodIndex - stepsBack;
+			if (index >= 0 && index < info.methods.size()) {
+				return info.methods.get(index);
+			}
+			return method();
+		}
+
+		/**
 		 * Returns the current Postman folder name.
 		 *
 		 * @return current folder name

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.3
+
+### Added
+
+- Added `JPostman.Info.method(int stepsBack)` to read entries from the active execution method chain, with bounds fallback and validation for negative values.
+- Added regression coverage for internal diagnostics, `@JPostman.Call` placeholder replacement, full request and response capture, failure deduplication, compact stack traces, and reusable TestNG runner callbacks.
+
+### Fixed
+
+- Fixed TestNG `TestNotInvokedException` for reusable `@JPostman.Runner(dependsOn = "#id")` launcher methods by invoking the launcher through TestNG's hook callback.
+- Fixed duplicate internal failure records when the same throwable is observed through multiple annotation execution paths.
+
 ## 2.2.2
 
 ### Added

@@ -91,21 +91,48 @@ class JPostmanCodegenCliTest {
 		assertEquals(0, exit);
 		String text = Files.readString(output, StandardCharsets.UTF_8);
 		assertTrue(text.contains("@JPostman.Response(request = \"Get current auth user\")"));
+		assertFalse(text.contains("@Test"));
 		assertFalse(text.contains("executor"));
 		assertFalse(text.contains("RestAssuredExecutor"));
+	}
+
+	@Test
+	void responseCodegenIncludesTestAnnotationWhenRequested() throws Exception {
+		Path output = tempDir.resolve("response.java");
+
+		int exit = JPostmanCodegenCli.run(new String[] { "response", "--method", "getCurrentAuthUser", "--request",
+				"Get current auth user", "--include-test", "--output", output.toString() });
+
+		assertEquals(0, exit);
+		String text = Files.readString(output, StandardCharsets.UTF_8);
+		assertTrue(text.startsWith("@Test" + System.lineSeparator()));
+		assertTrue(text.contains("@JPostman.Response(request = \"Get current auth user\")"));
+	}
+
+	@Test
+	void includeTestFalseDoesNotRenderTestAnnotation() throws Exception {
+		Path output = tempDir.resolve("runner.java");
+
+		int exit = JPostmanCodegenCli.run(new String[] { "runner", "--method", "runAll", "--include-test", "false",
+				"--output", output.toString() });
+
+		assertEquals(0, exit);
+		String text = Files.readString(output, StandardCharsets.UTF_8);
+		assertFalse(text.contains("@Test"));
 	}
 
 	@Test
 	void requestCodegenDoesNotRenderExecutorAnnotationAttribute() throws Exception {
 		Path output = tempDir.resolve("request.java");
 
-		int exit = JPostmanCodegenCli.run(new String[] { "request", "--method", "loadCurrentUser", "--request",
-				"Get current auth user", "--executor", "io.jpostman.httpclient.HttpClientExecutor", "--output",
-				output.toString() });
+		int exit = JPostmanCodegenCli
+				.run(new String[] { "request", "--method", "loadCurrentUser", "--request", "Get current auth user",
+						"--executor", "io.jpostman.httpclient.HttpClientExecutor", "--output", output.toString() });
 
 		assertEquals(0, exit);
 		String text = Files.readString(output, StandardCharsets.UTF_8);
 		assertTrue(text.contains("@JPostman.Request(request = \"Get current auth user\")"));
+		assertFalse(text.contains("@Test"));
 		assertFalse(text.contains("executor"));
 		assertFalse(text.contains("HttpClientExecutor"));
 	}
@@ -117,17 +144,17 @@ class JPostmanCodegenCliTest {
 		assertEquals(0, JPostmanCodegenCli.run(new String[] { "properties", "--executor-class",
 				"io.jpostman.httpclient.HttpClientExecutor", "--collection", "src/test/resources/collection.json",
 				"--environment", "src/test/resources/environment.json", "--output", output.toString() }));
-		assertEquals(0, JPostmanCodegenCli.run(new String[] { "properties", "--namespace", "test",
-				"--executor-class", "io.jpostman.httpclient.HttpClientExecutor", "--collection",
-				"src/test/resources/collection.json", "--environment", "src/test/resources/environment.json", "--output",
-				output.toString() }));
+		assertEquals(0, JPostmanCodegenCli.run(new String[] { "properties", "--namespace", "test", "--executor-class",
+				"io.jpostman.httpclient.HttpClientExecutor", "--collection", "src/test/resources/collection.json",
+				"--environment", "src/test/resources/environment.json", "--output", output.toString() }));
 
 		String newline = System.lineSeparator();
 		String text = Files.readString(output, StandardCharsets.UTF_8);
 		assertTrue(text.contains("executor=io.jpostman.httpclient.HttpClientExecutor" + newline
 				+ "collection=classpath:collection.json" + newline + "environment=classpath:environment.json" + newline
 				+ newline + "executor.test=io.jpostman.httpclient.HttpClientExecutor" + newline
-				+ "collection.test=classpath:collection.json" + newline + "environment.test=classpath:environment.json"));
+				+ "collection.test=classpath:collection.json" + newline
+				+ "environment.test=classpath:environment.json"));
 	}
 
 	private static String minimalPom() {

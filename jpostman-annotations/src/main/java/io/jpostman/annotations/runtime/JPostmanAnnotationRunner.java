@@ -135,6 +135,7 @@ public final class JPostmanAnnotationRunner<C> {
 		stack.add(testMethod.getName());
 		add(report, info);
 		info.method(testMethod.getName());
+		captureDebugContext(current, info);
 		debug(testInstance, info,
 				annotationLog(requestAnnotation, responseAnnotation, callAnnotation, runnerAnnotation));
 
@@ -145,6 +146,7 @@ public final class JPostmanAnnotationRunner<C> {
 				throw JPostmanErrors.skip(framework, info, callSkipLines(callAnnotation, info));
 			}
 			registerJPostmanCallRuntime(testInstance, testMethod, prepared, callAnnotation, info);
+			JPostmanDebugFile.call(testInstance, info, callAnnotation.log());
 			return;
 		}
 
@@ -196,10 +198,15 @@ public final class JPostmanAnnotationRunner<C> {
 				}
 			}
 		} catch (Exception | Error e) {
+			String localLog = annotationLog(requestAnnotation, responseAnnotation, callAnnotation, runnerAnnotation);
+			C latest = latestContext(prepared, info.namespace, current.context);
+			String internalDiagnostic = internalDiagnosticLog(latest);
 			if (isFrameworkSkip(e)) {
 				skippedIfMissing(report, info);
+				JPostmanDebugFile.skipped(testInstance, info, localLog, internalDiagnostic, e);
 			} else {
 				failedIfMissing(report, info);
+				JPostmanDebugFile.failure(testInstance, info, localLog, internalDiagnostic, e);
 			}
 			throw e;
 		} finally {
@@ -1106,7 +1113,7 @@ public final class JPostmanAnnotationRunner<C> {
 			if (JPostmanRuntimeRunner.isBeforeRequest()) {
 				invokeAnnotated(testInstance, reusableRunner, ctx, callbackInfo);
 				if (launcherBefore) {
-					invokeAnnotated(testInstance, launcherMethod, ctx, callbackInfo);
+					invokeRunnerLauncherBody(testInstance, launcherMethod, ctx, callbackInfo);
 				}
 				return;
 			}
@@ -1121,7 +1128,7 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 
 			try {
-				invokeAnnotated(testInstance, launcherMethod, ctx, callbackInfo);
+				invokeRunnerLauncherBody(testInstance, launcherMethod, ctx, callbackInfo);
 			} catch (Exception | Error e) {
 				if (!JPostmanRuntimeRunner.isRunnerBodyComplete(e)) {
 					if (failure != null) {
@@ -1139,6 +1146,28 @@ public final class JPostmanAnnotationRunner<C> {
 				throw (Error) failure;
 			}
 		};
+	}
+
+	/**
+	 * Invokes the active reusable-runner launcher body through the framework hook
+	 * when one is available.
+	 *
+	 * <p>
+	 * TestNG requires {@code IHookCallBack#runTestMethod(...)} to be invoked for an
+	 * {@code IHookable} test. Calling the launcher only through reflection executes
+	 * its Java body but leaves TestNG believing the method was never invoked. JUnit
+	 * uses the same callback to mark its intercepted invocation as proceeded.
+	 * Direct annotation-engine callers do not provide a framework callback, so they
+	 * keep the reflective fallback.
+	 * </p>
+	 */
+	private void invokeRunnerLauncherBody(Object testInstance, Method launcherMethod, C ctx, JPostmanInfo info)
+			throws Exception {
+		if (afterRunnerRequestCallback != null) {
+			afterRunnerRequestCallback.run();
+			return;
+		}
+		invokeAnnotated(testInstance, launcherMethod, ctx, info);
 	}
 
 	private JPostmanInfo requestDependencyInfo(JPostmanInfo parentInfo, Method dependencyMethod,
@@ -1414,6 +1443,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private Request request(Collection collection, String namespace, String folder, String request) {
+		captureDebugCollection(collection, folder);
 		try {
 			if (folder == null || folder.isBlank()) {
 				return collection.getRequest(request);
@@ -2001,6 +2031,7 @@ public final class JPostmanAnnotationRunner<C> {
 		AssertionError assertion = assertionFailure(info, cause, failureDiagnostics(testInstance, annotationLog, info));
 		if (assertion != null) {
 			options.markFailure(assertion, annotationLog);
+			JPostmanDebugFile.failure(testInstance, info, annotationLog, internalDiagnosticLog(ctx), assertion);
 			return assertion;
 		}
 
@@ -2021,6 +2052,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 		AssertionError error = JPostmanErrors.execution(info, cause, message.toString());
 		options.markFailure(error, annotationLog);
+		JPostmanDebugFile.failure(testInstance, info, annotationLog, internalDiagnosticLog(ctx), error);
 
 		return error;
 	}
@@ -2310,6 +2342,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void debug(Object testInstance, JPostmanInfo info, String annotationLog) {
+		JPostmanDebugFile.info(testInstance, info, annotationLog);
 		JPostmanRuntimeOptions.from(testInstance).debug(testInstance, info, annotationLog);
 	}
 
@@ -2340,6 +2373,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void logOutput(Object testInstance, C ctx, JPostmanInfo info, String annotationLog) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
+		JPostmanDebugFile.execution(testInstance, info, annotationLog, internalDiagnosticLog(ctx));
 
 		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> outputs = options.logOutput(annotationLog, info);
 		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.NONE)) {
@@ -2359,6 +2393,43 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 		if (outputs.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE)) {
 			framework.printResponse(ctx);
+		}
+	}
+
+	private String internalDiagnosticLog(C ctx) {
+		if (!JPostmanDebugFile.enabled() || ctx == null) {
+			return "";
+		}
+		return JPostmanDebugFile.diagnosticLog(ctx);
+	}
+
+	private void captureDebugContext(PreparedContext<C> current, JPostmanInfo info) {
+		if (!JPostmanDebugFile.enabled() || current == null || info == null) {
+			return;
+		}
+
+		try {
+			JPostmanDebugFile.ENVIRONMENTS = current.loaded == null ? null : current.loaded.getEnvironment();
+			captureDebugCollection(current.collection, info.folder);
+		} catch (RuntimeException | LinkageError ignored) {
+			// Internal diagnostics must never affect annotation execution.
+		}
+	}
+
+	private void captureDebugCollection(Collection collection, String folder) {
+		if (!JPostmanDebugFile.enabled() || collection == null) {
+			return;
+		}
+
+		try {
+			String folderName = value(folder).trim();
+			if (folderName.isBlank()) {
+				JPostmanDebugFile.COLLECTIONS.put("<default>", collection.getRequests());
+			} else {
+				JPostmanDebugFile.COLLECTIONS.put(folderName, collection.getFolder(folderName).getRequests());
+			}
+		} catch (RuntimeException | LinkageError ignored) {
+			// Internal diagnostics must never affect annotation execution.
 		}
 	}
 

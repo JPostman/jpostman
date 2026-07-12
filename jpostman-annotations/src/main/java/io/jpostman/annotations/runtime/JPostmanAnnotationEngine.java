@@ -46,8 +46,13 @@ public final class JPostmanAnnotationEngine {
 	 *                   fails
 	 */
 	public static void setupJUnit(Object testInstance) throws Exception {
-		JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
-		new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).setup(testInstance);
+		try {
+			JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).setup(testInstance);
+		} catch (Exception | Error e) {
+			JPostmanDebugFile.failure(testInstance, null, "setup", "", e);
+			throw e;
+		}
 	}
 
 	/**
@@ -80,11 +85,12 @@ public final class JPostmanAnnotationEngine {
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
 			throws Exception {
-		JPostmanAnnotationValidator.validateTestMethod(testMethod);
 		try {
+			JPostmanAnnotationValidator.validateTestMethod(testMethod);
 			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework(), afterRunnerRequestCallback).run(testInstance,
 					testMethod);
 		} catch (Throwable e) {
+			JPostmanDebugFile.failure(testInstance, debugInfo(testMethod), "debug", "", e);
 			Throwable root = JPostmanStackTraceCleaner.rootCause(e);
 			if (JPostmanStackTraceCleaner.isJUnitSkip(root)) {
 				throw asException(cleanThrowable(testInstance, testMethod, root));
@@ -122,6 +128,10 @@ public final class JPostmanAnnotationEngine {
 		return JPostmanRuntimeRunner.isRunnerBodyComplete(throwable);
 	}
 
+	private static JPostmanInfo debugInfo(Method method) {
+		return method == null ? null : new JPostmanInfo("@JPostman", method.getName(), "", "", "");
+	}
+
 	private static Exception asException(Throwable throwable) {
 		if (throwable instanceof Exception) {
 			return (Exception) throwable;
@@ -148,8 +158,13 @@ public final class JPostmanAnnotationEngine {
 	 *                   fails
 	 */
 	public static void setupTestNg(Object testInstance) throws Exception {
-		JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
-		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).setup(testInstance);
+		try {
+			JPostmanAnnotationValidator.validateTestClass(testInstance.getClass());
+			new JPostmanAnnotationRunner<>(new TestNgPostmanFramework()).setup(testInstance);
+		} catch (Exception | Error e) {
+			JPostmanDebugFile.failure(testInstance, null, "setup", "", e);
+			throw e;
+		}
 	}
 
 	/**
@@ -182,9 +197,14 @@ public final class JPostmanAnnotationEngine {
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
 			throws Exception {
-		JPostmanAnnotationValidator.validateTestMethod(testMethod);
-		new JPostmanAnnotationRunner<>(new TestNgPostmanFramework(), afterRunnerRequestCallback).run(testInstance,
-				testMethod);
+		try {
+			JPostmanAnnotationValidator.validateTestMethod(testMethod);
+			new JPostmanAnnotationRunner<>(new TestNgPostmanFramework(), afterRunnerRequestCallback).run(testInstance,
+					testMethod);
+		} catch (Exception | Error e) {
+			JPostmanDebugFile.failure(testInstance, debugInfo(testMethod), "debug", "", e);
+			throw e;
+		}
 	}
 
 	/**
