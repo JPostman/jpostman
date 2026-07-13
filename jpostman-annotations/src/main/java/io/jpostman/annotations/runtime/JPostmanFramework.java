@@ -46,6 +46,20 @@ public interface JPostmanFramework<C> {
 	C create();
 
 	/**
+	 * Creates a request/response-free copy of a configured framework context.
+	 *
+	 * <p>
+	 * The copied context preserves setup-time values, redaction rules, filters, and
+	 * shared cache state, while the underlying secure context deliberately omits
+	 * the latest request and response.
+	 * </p>
+	 *
+	 * @param context source framework context
+	 * @return copied framework context
+	 */
+	C copy(C context);
+
+	/**
 	 * Sets the current context for the active test thread.
 	 *
 	 * @param context context to make current

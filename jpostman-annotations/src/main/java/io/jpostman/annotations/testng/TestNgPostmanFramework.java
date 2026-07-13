@@ -30,6 +30,12 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 
 	/** {@inheritDoc} */
 	@Override
+	public TestNgContext copy(TestNgContext context) {
+		return context == null ? TestNgContext.create() : context.copy();
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void setCurrent(TestNgContext context) {
 		TestNgContext.setCurrent(context);
 	}

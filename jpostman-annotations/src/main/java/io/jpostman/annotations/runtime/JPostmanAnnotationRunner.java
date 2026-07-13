@@ -82,6 +82,7 @@ public final class JPostmanAnnotationRunner<C> {
 		validateExecutors(testInstance);
 		injectReportContext(testInstance);
 		PreparedContexts<C> prepared = contextRunner.prepare(testInstance);
+		contextRunner.activateBaseline(testInstance, prepared);
 		contextRunner.activate(testInstance, prepared);
 		contextRunner.injectLoadedContexts(testInstance, prepared);
 		contextRunner.injectAssertContexts(testInstance, prepared);
@@ -102,7 +103,7 @@ public final class JPostmanAnnotationRunner<C> {
 	public void run(Object testInstance, Method testMethod) throws Exception {
 		validateExecutors(testInstance);
 		JPostmanReport report = injectReportContext(testInstance);
-		PreparedContexts<C> prepared = contextRunner.prepare(testInstance);
+		PreparedContexts<C> prepared = contextRunner.prepareForRun(testInstance);
 		contextRunner.activate(testInstance, prepared);
 		contextRunner.injectLoadedContexts(testInstance, prepared);
 		contextRunner.injectAssertContexts(testInstance, prepared);

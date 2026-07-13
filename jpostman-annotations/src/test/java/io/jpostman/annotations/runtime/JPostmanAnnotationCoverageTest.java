@@ -90,6 +90,22 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies explicit secret values take precedence over explicit plain values.
+	 * Environment values remain the final fallback and are not promoted into either
+	 * explicit value store by the annotation context loader.
+	 */
+	@Test
+	public void frameworkValuePrefersSecretOverPlain() {
+		JUnitPostmanFramework junitFramework = new JUnitPostmanFramework();
+		JUnitContext junit = JUnitContext.create().plain("username", "PLAIN").secret("username", "DAVID");
+		assertEquals("DAVID", junitFramework.value(junit, "username"));
+
+		TestNgPostmanFramework testngFramework = new TestNgPostmanFramework();
+		TestNgContext testng = TestNgContext.create().plain("username", "PLAIN").secret("username", "DAVID");
+		assertEquals("DAVID", testngFramework.value(testng, "username"));
+	}
+
+	/**
 	 * Verifies that PreparedContext stores the same context object and collection
 	 * reference passed to its constructor.
 	 */

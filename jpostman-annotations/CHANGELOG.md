@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.6
+
+### Added
+
+- Added setup-context baselines for annotation-driven JUnit and TestNG execution so values configured in lifecycle methods such as JUnit `@BeforeAll` and TestNG `@BeforeClass` are retained during test-method execution.
+- Added framework context-copy support for creating clean per-method contexts that preserve setup values, redaction rules, filters, and shared cache state while excluding previous request and response state.
+
 ## 2.2.5
 
 ### Added

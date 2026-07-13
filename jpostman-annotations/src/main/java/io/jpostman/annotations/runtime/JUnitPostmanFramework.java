@@ -28,6 +28,12 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 
 	/** {@inheritDoc} */
 	@Override
+	public JUnitContext copy(JUnitContext context) {
+		return context == null ? JUnitContext.create() : context.copy();
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void setCurrent(JUnitContext context) {
 		JUnitContext.setCurrent(context);
 	}

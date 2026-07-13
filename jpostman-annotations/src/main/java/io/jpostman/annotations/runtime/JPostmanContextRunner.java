@@ -41,14 +41,32 @@ final class JPostmanContextRunner<C> {
 	private static final ThreadLocal<Map<ContextKey, PreparedContexts<?>>> CURRENT_CONTEXTS = ThreadLocal
 			.withInitial(LinkedHashMap::new);
 
+	/*
+	 * Contexts created during framework setup are retained as execution baselines.
+	 * TestNG @BeforeClass and JUnit @BeforeAll mutate these objects after setup, so
+	 * each test-method context must be copied from the baseline instead of being
+	 * rebuilt from annotations and losing those user overrides.
+	 */
+	private static final ThreadLocal<Map<ContextKey, PreparedContexts<?>>> BASELINE_CONTEXTS = ThreadLocal
+			.withInitial(LinkedHashMap::new);
+
 	JPostmanContextRunner(JPostmanFramework<C> framework) {
 		this.framework = framework;
 	}
 
 	PreparedContexts<C> prepare(Object testInstance) throws Exception {
+		return prepare(testInstance, false);
+	}
+
+	PreparedContexts<C> prepareForRun(Object testInstance) throws Exception {
+		return prepare(testInstance, true);
+	}
+
+	private PreparedContexts<C> prepare(Object testInstance, boolean useBaseline) throws Exception {
 		validateContextDefinitions(testInstance);
 
 		PreparedContexts<C> previous = currentContexts(testInstance);
+		PreparedContexts<C> baseline = useBaseline ? baselineContexts(testInstance) : null;
 		PreparedContexts<C> prepared = new PreparedContexts<>();
 
 		/*
@@ -60,6 +78,7 @@ final class JPostmanContextRunner<C> {
 		prepared.missingContextFactory(
 				namespace -> createMissingNamespaceContext(testInstance, prepared, previous, namespace));
 		prepareNamedContexts(testInstance, prepared);
+		applyBaseline(prepared, baseline);
 		prepareActiveContexts(testInstance, prepared);
 		preservePreviousCaches(prepared, previous);
 
@@ -72,6 +91,12 @@ final class JPostmanContextRunner<C> {
 		}
 	}
 
+	void activateBaseline(Object testInstance, PreparedContexts<C> contexts) {
+		if (testInstance != null && contexts != null) {
+			BASELINE_CONTEXTS.get().put(contextKey(testInstance), contexts);
+		}
+	}
+
 	@SuppressWarnings("unchecked")
 	private PreparedContexts<C> currentContexts(Object testInstance) {
 		if (testInstance == null) {
@@ -81,8 +106,36 @@ final class JPostmanContextRunner<C> {
 		return current == null ? null : (PreparedContexts<C>) current;
 	}
 
+	@SuppressWarnings("unchecked")
+	private PreparedContexts<C> baselineContexts(Object testInstance) {
+		if (testInstance == null) {
+			return null;
+		}
+		PreparedContexts<?> baseline = BASELINE_CONTEXTS.get().get(contextKey(testInstance));
+		return baseline == null ? null : (PreparedContexts<C>) baseline;
+	}
+
 	private ContextKey contextKey(Object testInstance) {
 		return new ContextKey(testInstance, framework.contextType());
+	}
+
+	private void applyBaseline(PreparedContexts<C> prepared, PreparedContexts<C> baseline) {
+		if (prepared == null || baseline == null) {
+			return;
+		}
+
+		for (String namespace : prepared.namespaces()) {
+			if (!baseline.contains(namespace)) {
+				continue;
+			}
+
+			/*
+			 * SecureContext.copy() retains setup values/rules/cache but intentionally omits
+			 * request and response state. This preserves @BeforeClass/@BeforeAll overrides
+			 * while still giving each method a clean execution context.
+			 */
+			prepared.resolve(namespace).context = framework.copy(baseline.context(namespace));
+		}
 	}
 
 	private void preservePreviousCaches(PreparedContexts<C> prepared, PreparedContexts<C> previous) {
