@@ -1100,7 +1100,8 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies logs supports stack modes plus request/response failure diagnostics.
+	 * Verifies local log supports one failure mode plus explicit
+	 * request/response/info output overrides.
 	 */
 	@Test
 	public void logsSupportFailureDiagnosticsAndStackModes() {
@@ -1117,6 +1118,8 @@ public class JPostmanAnnotationCoverageTest {
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("none"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("info"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug,info"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("request,response"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error,response"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
