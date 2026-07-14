@@ -76,6 +76,7 @@ public final class JPostmanJUnitExtension
 				JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
 				try {
 					invocation.proceed();
+					verifySoftResponseAssertions(testMethod);
 				} finally {
 					JPostmanAnnotationEngine.endAssertionCleanup();
 				}
@@ -97,6 +98,18 @@ public final class JPostmanJUnitExtension
 			return false;
 		}
 		return findRunnerDependency(testMethod.getDeclaringClass(), firstDependency(runner)) != null;
+	}
+
+	/**
+	 * Flushes soft response verification after the user body has inspected the
+	 * response and added any manual assertions. The collector is verified in the
+	 * same method invocation, so failures cannot leak into a later test.
+	 */
+	private void verifySoftResponseAssertions(Method testMethod) {
+		io.jpostman.annotations.JPostmanResponse response = JPostmanAnnotations.response(testMethod);
+		if (response != null && response.soft()) {
+			JUnitContext.current().soft(false).assertAll();
+		}
 	}
 
 	private boolean isRunnerDependencyLauncher(io.jpostman.annotations.JPostmanRunner runner) {

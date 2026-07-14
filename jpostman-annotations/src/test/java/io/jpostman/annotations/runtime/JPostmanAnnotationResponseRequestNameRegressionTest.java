@@ -42,6 +42,70 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 	}
 
 	@Test
+	public void explicitResponseRequestInheritsScopeFromBlankRequestDependency() throws Exception {
+		ResponseRequestNameFixture fixture = new ResponseRequestNameFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "responseWithExplicitRequestAndInheritedScope");
+
+		assertEquals(1, fixture.blankScopedHelperCalls);
+		assertTrue(fixture.blankScopedHelperSawRequest,
+				"The blank request helper must receive the response request before its body runs.");
+		assertEquals(1, fixture.executorCalls);
+		assertEquals("Nested request", fixture.executedRequest);
+		assertEquals("product", fixture.executedNamespace);
+		assertEquals("level1/level2/level3", fixture.executedFolder);
+	}
+
+	@Test
+	public void explicitResponseRequestInheritsScopeFromMethodNameDependency() throws Exception {
+		ResponseRequestNameFixture fixture = new ResponseRequestNameFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "responseWithExplicitRequestAndMethodDependency");
+
+		assertEquals(1, fixture.blankScopedHelperCalls);
+		assertTrue(fixture.blankScopedHelperSawRequest,
+				"A method-name dependency must receive the prepared response request before its body runs.");
+		assertEquals(1, fixture.executorCalls);
+		assertEquals("Nested request", fixture.executedRequest);
+		assertEquals("product", fixture.executedNamespace);
+		assertEquals("level1/level2/level3", fixture.executedFolder);
+	}
+
+	@Test
+	public void explicitCallRequestInheritsScopeFromBlankRequestDependency() throws Exception {
+		ResponseRequestNameFixture fixture = new ResponseRequestNameFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "callWithExplicitRequestAndInheritedScope");
+		fixture.jpostman.call();
+
+		assertEquals(1, fixture.blankScopedHelperCalls);
+		assertTrue(fixture.blankScopedHelperSawRequest,
+				"The blank request helper must receive the call request before its body runs.");
+		assertEquals(1, fixture.executorCalls);
+		assertEquals("Nested request", fixture.executedRequest);
+		assertEquals("product", fixture.executedNamespace);
+		assertEquals("level1/level2/level3", fixture.executedFolder);
+	}
+
+	@Test
+	public void callRejectsBlankRequestScopeDependencyWithClearMessage() throws Exception {
+		ResponseRequestNameFixture fixture = new ResponseRequestNameFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "callWithoutRequest");
+		AssertionError error = assertThrows(AssertionError.class, () -> fixture.jpostman.call());
+
+		assertTrue(error.getMessage().contains("@JPostman.Call request name is missing."));
+		assertTrue(error.getMessage().contains(
+				"Set request = \"...\" on @JPostman.Call, or depend on @JPostman.Request that defines request = \"...\"."));
+		assertEquals(0, fixture.blankScopedHelperCalls);
+		assertEquals(0, fixture.executorCalls);
+	}
+
+	@Test
 	public void responseInheritsRequestNameFromNamedRequestDependency() throws Exception {
 		ResponseRequestNameFixture fixture = new ResponseRequestNameFixture();
 
@@ -56,7 +120,8 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 	private static void assertMissingRequestMessage(AssertionError error) {
 		String message = error.getMessage();
 		assertTrue(message.contains("@JPostman.Response request name is missing."));
-		assertTrue(message.contains("Set request = \"...\" on @JPostman.Response, or depend on @JPostman.Request that defines request = \"...\"."));
+		assertTrue(message.contains(
+				"Set request = \"...\" on @JPostman.Response, or depend on @JPostman.Request that defines request = \"...\"."));
 	}
 
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
@@ -67,16 +132,20 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 	@JPostman.TestNG
 	private static final class ResponseRequestNameFixture {
 
-		@JPostman.Context(collection = "classpath:annotation-test-nested-collection.json", verifyStatusCode = 0)
+		@JPostman.Context(config = "classpath:annotation-test-response-request-scope.properties", verifyStatusCode = 0)
 		private JPostman.Runtime<TestNgContext> jpostman;
 
 		private int executorCalls;
 		private String executedRequest;
+		private String executedNamespace;
 		private String executedFolder;
+		private int blankScopedHelperCalls;
+		private boolean blankScopedHelperSawRequest;
 
 		@JPostman.Request(id = "blankRequest", folder = { "level1", "level2", "level3" })
 		public void blankRequestScope(JPostman.Info info) {
-			// A blank-request dependency is a valid folder scope for runners only.
+			// A blank-request dependency may supply scope, but not an executable request
+			// name.
 		}
 
 		@JPostman.Response(dependsOn = "#blankRequest", verify = 0)
@@ -91,6 +160,34 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 		public void runnerDependingOnBlankResponse() {
 		}
 
+		@JPostman.Request(id = "blankScopedRequest", namespace = "product", folder = { "level1", "level2", "level3" })
+		public void blankScopedRequest(TestNgContext ctx) {
+			blankScopedHelperCalls++;
+			blankScopedHelperSawRequest = ctx.request() != null;
+		}
+
+		@JPostman.Response(dependsOn = "#blankScopedRequest", request = "Nested request", verify = 0)
+		public void responseWithExplicitRequestAndInheritedScope() {
+		}
+
+		@JPostman.Request(namespace = "product", folder = { "level1", "level2", "level3" })
+		public void blankScopedRequestByMethod(TestNgContext ctx) {
+			blankScopedHelperCalls++;
+			blankScopedHelperSawRequest = ctx.request() != null;
+		}
+
+		@JPostman.Response(dependsOn = "blankScopedRequestByMethod", request = "Nested request", verify = 0)
+		public void responseWithExplicitRequestAndMethodDependency() {
+		}
+
+		@JPostman.Call(dependsOn = "#blankScopedRequest", request = "Nested request", log = "none")
+		public void callWithExplicitRequestAndInheritedScope() {
+		}
+
+		@JPostman.Call(dependsOn = "#blankScopedRequest", log = "none")
+		public void callWithoutRequest() {
+		}
+
 		@JPostman.Request(id = "namedRequest", folder = { "level1", "level2", "level3" }, request = "Nested request")
 		public void namedRequest() {
 		}
@@ -103,6 +200,7 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			executorCalls++;
 			executedRequest = info.request;
+			executedNamespace = info.namespace;
 			executedFolder = info.folder;
 			return () -> new ApiResponse(200, "{\"id\":1}", "{\"id\":1}".getBytes(), Map.of());
 		}

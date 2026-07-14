@@ -1,0 +1,41 @@
+{
+  "info": {
+    "name": "Runner Per Request Test Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Root request one",
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/root-one"
+      }
+    },
+    {
+      "name": "Root request two",
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/root-two"
+      }
+    },
+    {
+      "name": "Product",
+      "item": [
+        {
+          "name": "Folder request one",
+          "request": {
+            "method": "POST",
+            "url": "https://example.com/product-one"
+          }
+        },
+        {
+          "name": "Folder request two",
+          "request": {
+            "method": "POST",
+            "url": "https://example.com/product-two"
+          }
+        }
+      ]
+    }
+  ]
+}

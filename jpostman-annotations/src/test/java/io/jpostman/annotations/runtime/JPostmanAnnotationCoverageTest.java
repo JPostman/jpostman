@@ -90,6 +90,52 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies the compact assertion facade fails immediately with exactly the
+	 * supplied custom message and no Boolean expected/actual noise.
+	 */
+	@Test
+	public void assertContextFailUsesExactCustomMessage() {
+		TestNgContext testng = TestNgContext.create();
+		JPostman.Assert testngAsserts = JPostmanTestProxy.wrapAssert(() -> testng);
+		AssertionError testngError = assertThrows(AssertionError.class, () -> testngAsserts.fail("MY CUSTOM ERROR"));
+		assertEquals("MY CUSTOM ERROR", testngError.getMessage());
+		assertFalse(testngError.getMessage().contains("expected"), testngError.getMessage());
+
+		JUnitContext junit = JUnitContext.create();
+		JPostman.Assert junitAsserts = JPostmanTestProxy.wrapAssert(() -> junit);
+		AssertionError junitError = assertThrows(AssertionError.class, () -> junitAsserts.fail("MY CUSTOM ERROR"));
+		assertEquals("MY CUSTOM ERROR", junitError.getMessage());
+		assertFalse(junitError.getMessage().contains("expected"), junitError.getMessage());
+	}
+
+	/**
+	 * Verifies fail(message) remains a hard failure when called from a soft facade
+	 * and does not leave a pending failure in the soft collector.
+	 */
+	@Test
+	public void assertContextFailIsAlwaysHardAndIsNotCollected() {
+		TestNgContext testng = TestNgContext.create();
+		JPostman.Assert testngSoft = JPostmanTestProxy.wrapAssert(() -> testng).soft(false);
+		AssertionError testngError = assertThrows(AssertionError.class, () -> testngSoft.fail("MY CUSTOM ERROR"));
+		assertEquals("MY CUSTOM ERROR", testngError.getMessage());
+		assertDoesNotThrow(testngSoft::assertAll);
+
+		JUnitContext junit = JUnitContext.create();
+		JPostman.Assert junitSoft = JPostmanTestProxy.wrapAssert(() -> junit).soft(false);
+		AssertionError junitError = assertThrows(AssertionError.class, () -> junitSoft.fail("MY CUSTOM ERROR"));
+		assertEquals("MY CUSTOM ERROR", junitError.getMessage());
+		assertDoesNotThrow(junitSoft::assertAll);
+	}
+
+	/** Verifies null and blank custom messages use a stable default. */
+	@Test
+	public void assertContextFailUsesDefaultMessageForBlankInput() {
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> TestNgContext.create());
+		assertEquals("Assertion failed", assertThrows(AssertionError.class, () -> asserts.fail(null)).getMessage());
+		assertEquals("Assertion failed", assertThrows(AssertionError.class, () -> asserts.fail("  ")).getMessage());
+	}
+
+	/**
 	 * Verifies explicit secret values take precedence over explicit plain values.
 	 * Environment values remain the final fallback and are not promoted into either
 	 * explicit value store by the annotation context loader.
@@ -103,6 +149,40 @@ public class JPostmanAnnotationCoverageTest {
 		TestNgPostmanFramework testngFramework = new TestNgPostmanFramework();
 		TestNgContext testng = TestNgContext.create().plain("username", "PLAIN").secret("username", "DAVID");
 		assertEquals("DAVID", testngFramework.value(testng, "username"));
+	}
+
+	/**
+	 * Verifies assertion diagnostics preserve the method where a hard or deferred
+	 * soft failure was originally recorded. A later verify() call may run from a
+	 * different method, so the annotation suffix must carry the originating method.
+	 */
+	@Test
+	public void annotationErrorSuffixIncludesOriginatingMethod() {
+		JPostmanInfo info = new JPostmanInfo("newKeyboardProduct3", "product", "Product", "Add a new product")
+				.annotation("@JPostmanResponse").withTags("keyboard");
+
+		String suffix = JPostmanErrors.suffix(info);
+
+		assertTrue(suffix.contains("method=newKeyboardProduct3"), suffix);
+		assertTrue(suffix.contains("tags=keyboard"), suffix);
+		assertTrue(suffix.contains("namespace=product"), suffix);
+		assertTrue(suffix.contains("folder=Product"), suffix);
+		assertTrue(suffix.contains("request=Add a new product"), suffix);
+	}
+
+	/**
+	 * Keeps annotation-only validation messages backward compatible when there is
+	 * no Java method associated with the error.
+	 */
+	@Test
+	public void annotationErrorSuffixOmitsMethodWhenUnavailable() {
+		JPostmanInfo info = new JPostmanInfo("", "product", "Product", "Add a new product")
+				.annotation("@JPostmanResponse");
+
+		String suffix = JPostmanErrors.suffix(info);
+
+		assertFalse(suffix.contains("method="), suffix);
+		assertTrue(suffix.startsWith("(@JPostmanResponse: tags="), suffix);
 	}
 
 	/**
@@ -1100,8 +1180,7 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies local log supports one failure mode plus explicit
-	 * request/response/info output overrides.
+	 * Verifies logs supports stack modes plus request/response failure diagnostics.
 	 */
 	@Test
 	public void logsSupportFailureDiagnosticsAndStackModes() {
@@ -1118,8 +1197,6 @@ public class JPostmanAnnotationCoverageTest {
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("none"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("info"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug,info"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("request,response"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error,response"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
@@ -1628,6 +1705,30 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(error.getMessage().contains("java.lang.AssertionError:"));
 		assertEquals(1, proceedCalls.get());
 		assertEquals(2, fixture.bodyCount);
+	}
+
+	/**
+	 * Verifies a normal JUnit response with soft verification runs the body first,
+	 * then flushes the collected failure before the same method invocation exits.
+	 */
+	@Test
+	public void junitExtensionFlushesSoftResponseVerificationAfterBody() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		JUnitSoftResponseAutoFlushFixture fixture = new JUnitSoftResponseAutoFlushFixture();
+		Method method = JUnitSoftResponseAutoFlushFixture.class.getDeclaredMethod("inspectSoftFailure");
+		AtomicInteger proceedCalls = new AtomicInteger();
+
+		AssertionError error = assertThrows(AssertionError.class, () -> extension.interceptTestMethod(invocation(() -> {
+			proceedCalls.incrementAndGet();
+			invokeUnchecked(fixture, method);
+		}), reflectiveInvocation(method), extensionContext(fixture)));
+
+		assertEquals(1, proceedCalls.get());
+		assertEquals(1, fixture.bodyCount,
+				"soft=true must allow the response body to run before collected failures are flushed.");
+		assertTrue(error.getMessage().contains("method=inspectSoftFailure"), "Actual message: " + error.getMessage());
+		assertTrue(error.getMessage().contains("Status code mismatch: ==> expected: <401> but was: <200>"),
+				"Actual message: " + error.getMessage());
 	}
 
 	/**
@@ -2767,6 +2868,24 @@ public class JPostmanAnnotationCoverageTest {
 		@JPostmanExecutor(id = "junitRunner")
 		ApiExecutor junitRunnerExecutor(JUnitContext context) {
 			assertNotNull(context.request());
+			return okExecutor("{\"id\":1}");
+		}
+	}
+
+	private static final class JUnitSoftResponseAutoFlushFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int bodyCount;
+
+		@io.jpostman.annotations.JPostman.Response(request = "Get current auth user", verify = 401, soft = true, log = "none")
+		void inspectSoftFailure() {
+			bodyCount++;
+			assertNotNull(jpostman.ctx().response());
+		}
+
+		@JPostmanExecutor
+		ApiExecutor defaultExecutor(JUnitContext context) {
 			return okExecutor("{\"id\":1}");
 		}
 	}

@@ -193,10 +193,16 @@ public final class JPostmanAnnotationRunner<C> {
 							info, stack);
 				} else {
 					prepareRunnerScope(testInstance, prepared, runnerAnnotation, info);
-					runDependencies(testInstance, prepared, dependencies(runnerAnnotation.dependsOn()),
-							info.withTags(runnerAnnotation.tags()), stack);
+					String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, runnerAnnotation,
+							info);
+					String[] setupDependencies = runnerAnnotation.lifecycle()
+							? dependencies(runnerAnnotation.dependsOn())
+							: runnerSetupDependencies(testInstance, runnerAnnotation, info);
+					runDependencies(testInstance, prepared, setupDependencies, info.withTags(runnerAnnotation.tags()),
+							stack);
 					executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
-							runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod));
+							runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod),
+							runnerAnnotation.lifecycle() ? new String[0] : perRequestDependencies);
 				}
 			}
 		} catch (Exception | Error e) {
@@ -697,6 +703,15 @@ public final class JPostmanAnnotationRunner<C> {
 			return ctx;
 		}
 
+		/*
+		 * Resolve annotation location before the first request lookup. A response may
+		 * declare the request name itself while a blank-request dependency supplies the
+		 * namespace/folder. Waiting until after dependencies would make the first
+		 * lookup incorrectly use the default namespace/root folder.
+		 */
+		inheritResponseLocationFromDependencies(testInstance, annotation, info);
+		validateResponseRequestName(info);
+
 		String ownerNamespace = info.namespace;
 		C ownerContext = prepared.context(ownerNamespace);
 		C ctx = prepareRequest(ownerContext, prepared.collection(info.namespace), annotation, info, false);
@@ -778,9 +793,8 @@ public final class JPostmanAnnotationRunner<C> {
 	/**
 	 * Requires an executable request name for a response annotation. A response may
 	 * declare the request directly or inherit it from a request dependency that
-	 * declares {@code request = "..."}. Blank-request request annotations are
-	 * folder scopes for runners only and cannot supply a response execution
-	 * request.
+	 * declares {@code request = "..."}. A blank-request dependency may still supply
+	 * namespace/folder scope, but it cannot supply the executable request name.
 	 */
 	private void validateResponseRequestName(JPostmanInfo info) {
 		if (hasResponseRequest(info)) {
@@ -791,20 +805,35 @@ public final class JPostmanAnnotationRunner<C> {
 				"Set request = \"...\" on @JPostman.Response, or depend on @JPostman.Request that defines request = \"...\".");
 	}
 
-	private void inheritResponseLocationFromDependencies(Object testInstance, JPostmanResponse annotation,
-			JPostmanInfo info) {
-		if (annotation == null || info == null || !isBlank(info.request)) {
+	private void validateCallRequestName(JPostmanInfo info) {
+		if (hasResponseRequest(info)) {
 			return;
 		}
 
-		inheritResponseLocationFromDependencies(testInstance, dependencies(annotation.dependsOn()), info,
+		throw JPostmanErrors.usage(info, "@JPostman.Call request name is missing.",
+				"Set request = \"...\" on @JPostman.Call, or depend on @JPostman.Request that defines request = \"...\".");
+	}
+
+	private void inheritResponseLocationFromDependencies(Object testInstance, JPostmanResponse annotation,
+			JPostmanInfo info) {
+		if (annotation == null || info == null) {
+			return;
+		}
+
+		inheritLocationFromDependencies(testInstance, dependencies(annotation.dependsOn()), info,
 				new LinkedHashSet<>());
 	}
 
-	private boolean inheritResponseLocationFromDependencies(Object testInstance, String[] dependencyNames,
-			JPostmanInfo info, Set<String> visited) {
-		if (dependencyNames == null || dependencyNames.length == 0) {
-			return false;
+	/**
+	 * Fills only missing location components from request/response dependencies.
+	 * Explicit values on the current annotation always win. This is important for
+	 * combinations such as a response that declares {@code request = "..."} while a
+	 * blank-request dependency supplies only {@code namespace} and {@code folder}.
+	 */
+	private void inheritLocationFromDependencies(Object testInstance, String[] dependencyNames, JPostmanInfo info,
+			Set<String> visited) {
+		if (dependencyNames == null || dependencyNames.length == 0 || info == null) {
+			return;
 		}
 
 		for (String dependencyName : dependencyNames) {
@@ -815,36 +844,42 @@ public final class JPostmanAnnotationRunner<C> {
 
 			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), name, info);
 			JPostmanRequest requestAnnotation = JPostmanAnnotations.request(dependencyMethod);
-			if (requestAnnotation != null && !isBlank(requestAnnotation.request())) {
-				info.location(requestAnnotation.namespace(), folder(requestAnnotation.folder()),
-						requestAnnotation.request()).requestId(requestAnnotation.id());
-				return true;
+			if (requestAnnotation != null) {
+				mergeMissingLocation(info, requestAnnotation.namespace(), folder(requestAnnotation.folder()),
+						requestAnnotation.request(), requestAnnotation.id());
+				inheritLocationFromDependencies(testInstance, dependencies(requestAnnotation.dependsOn()), info,
+						visited);
 			}
 
 			JPostmanResponse responseAnnotation = JPostmanAnnotations.response(dependencyMethod);
 			if (responseAnnotation != null) {
-				if (!isBlank(responseAnnotation.request())) {
-					info.location(responseAnnotation.namespace(), folder(responseAnnotation.folder()),
-							responseAnnotation.request()).requestId(responseAnnotation.id());
-					return true;
-				}
-				if (inheritResponseLocationFromDependencies(testInstance, dependencies(responseAnnotation.dependsOn()),
-						info, visited)) {
-					return true;
-				}
+				mergeMissingLocation(info, responseAnnotation.namespace(), folder(responseAnnotation.folder()),
+						responseAnnotation.request(), responseAnnotation.id());
+				inheritLocationFromDependencies(testInstance, dependencies(responseAnnotation.dependsOn()), info,
+						visited);
 			}
-
 		}
+	}
 
-		return false;
+	private void mergeMissingLocation(JPostmanInfo info, String namespace, String folder, String request, String id) {
+		if (isBlank(info.namespace) && !isBlank(namespace)) {
+			info.namespace = namespace;
+		}
+		if (isBlank(info.folder) && !isBlank(folder)) {
+			info.folder = folder;
+		}
+		if (isBlank(info.request) && !isBlank(request)) {
+			info.request = request;
+			info.requestId(annotationId(id));
+		}
 	}
 
 	private void inheritCallLocationFromDependencies(Object testInstance, JPostmanCall annotation, JPostmanInfo info) {
-		if (annotation == null || info == null || !isBlank(info.request)) {
+		if (annotation == null || info == null) {
 			return;
 		}
 
-		inheritResponseLocationFromDependencies(testInstance, dependencies(annotation.dependsOn()), info,
+		inheritLocationFromDependencies(testInstance, dependencies(annotation.dependsOn()), info,
 				new LinkedHashSet<>());
 	}
 
@@ -928,6 +963,47 @@ public final class JPostmanAnnotationRunner<C> {
 		resolver.info(info);
 		framework.setCurrent(current.context);
 		captureDebugContext(current, info);
+	}
+
+	/**
+	 * Returns blank-request {@code @JPostman.Request} dependencies that should be
+	 * invoked once for every selected runner request when lifecycle mode is
+	 * disabled. The active runner request supplies the missing request name, while
+	 * the helper may still provide namespace/folder scope and request
+	 * customizations.
+	 */
+	private String[] runnerPerRequestDependencies(Object testInstance, JPostmanRunner annotation, JPostmanInfo info) {
+		return runnerDependencies(testInstance, annotation, info, true);
+	}
+
+	/**
+	 * Returns runner dependencies that retain the existing one-time setup behavior.
+	 */
+	private String[] runnerSetupDependencies(Object testInstance, JPostmanRunner annotation, JPostmanInfo info) {
+		return runnerDependencies(testInstance, annotation, info, false);
+	}
+
+	private String[] runnerDependencies(Object testInstance, JPostmanRunner annotation, JPostmanInfo info,
+			boolean perRequest) {
+		List<String> selected = new ArrayList<>();
+		if (testInstance == null || annotation == null) {
+			return new String[0];
+		}
+
+		for (String dependencyName : dependencies(annotation.dependsOn())) {
+			if (dependencyName == null || dependencyName.isBlank()) {
+				continue;
+			}
+
+			Method method = findDependencyMethod(testInstance.getClass(), dependencyName.trim(), info);
+			JPostmanRequest request = JPostmanAnnotations.request(method);
+			boolean blankRequestDependency = request != null && isBlank(request.request());
+			if (blankRequestDependency == perRequest) {
+				selected.add(dependencyName);
+			}
+		}
+
+		return selected.toArray(String[]::new);
 	}
 
 	private void runDependencies(Object testInstance, PreparedContexts<C> resolver, String[] dependencyNames,
@@ -1020,7 +1096,15 @@ public final class JPostmanAnnotationRunner<C> {
 		info.method(dependencyMethod.getName());
 		add(report, info);
 
-		C ctx = prepareRequest(resolver.context(info.namespace), resolver.collection(info.namespace), annotation, info);
+		inheritResponseLocationFromDependencies(testInstance, annotation, info);
+		validateResponseRequestName(info);
+		/*
+		 * Prepare the dependency request without installing this response's filter.
+		 * Nested request/response dependencies must execute with their own filter
+		 * state; otherwise the parent response filter leaks into a child response body.
+		 */
+		C ctx = prepareRequest(resolver.context(info.namespace), resolver.collection(info.namespace), annotation, info,
+				false);
 		resolver.update(info.namespace, ctx);
 		framework.setCurrent(ctx);
 		runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()), info.withTags(annotation.tags()),
@@ -1062,15 +1146,16 @@ public final class JPostmanAnnotationRunner<C> {
 			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
 					runnerInfo.withTags(annotation.tags()), stack);
 			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, true,
-					runnerUsesBeforeRequestRules(dependencyMethod),
+					runnerUsesBeforeRequestRules(dependencyMethod), new String[0],
 					(ctx, callbackInfo) -> invokeAnnotated(testInstance, dependencyMethod, ctx, callbackInfo));
 			return;
 		}
 
 		runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
-			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
+			String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, annotation, runnerInfo);
+			runDependencies(testInstance, resolver, runnerSetupDependencies(testInstance, annotation, runnerInfo),
 					runnerInfo.withTags(annotation.tags()), stack);
-			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false);
+			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false, perRequestDependencies);
 		});
 	}
 
@@ -1157,10 +1242,14 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.skip(framework, runnerInfo, runnerSkipLines(reusableAnnotation, runnerInfo));
 		}
 
-		runDependencies(testInstance, resolver, dependencies(reusableAnnotation.dependsOn()),
-				runnerInfo.withTags(reusableAnnotation.tags()), stack);
+		String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, reusableAnnotation, runnerInfo);
+		String[] setupDependencies = reusableAnnotation.lifecycle() ? dependencies(reusableAnnotation.dependsOn())
+				: runnerSetupDependencies(testInstance, reusableAnnotation, runnerInfo);
+		runDependencies(testInstance, resolver, setupDependencies, runnerInfo.withTags(reusableAnnotation.tags()),
+				stack);
 		executeRunner(testInstance, resolver, reusableAnnotation, runnerInfo, stack, true,
 				reusableAnnotation.lifecycle() && runnerUsesBeforeRequestRules(reusableRunner),
+				reusableAnnotation.lifecycle() ? new String[0] : perRequestDependencies,
 				reusableRunnerBodyCallback(testInstance, reusableRunner, launcherMethod, launcherAnnotation));
 	}
 
@@ -1517,6 +1606,8 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanInfo info, BiConsumer<C, JPostmanInfo> action) throws Exception {
 
 		validateLocalLog(annotation.log(), info);
+		inheritCallLocationFromDependencies(testInstance, annotation, info);
+		validateCallRequestName(info);
 		PreparedContext<C> prepared = resolver.resolve(info.namespace);
 		Collection collection = prepared.collection;
 		List<String> stack = new ArrayList<>();
@@ -1582,10 +1673,10 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void executeRunner(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
-			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest, boolean notifyBeforeRequest)
-			throws Exception {
+			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest, boolean notifyBeforeRequest,
+			String[] perRequestDependencies) throws Exception {
 		executeRunner(testInstance, resolver, annotation, info, stack, notifyAfterRequest, notifyBeforeRequest,
-				frameworkRunnerBodyCallback());
+				perRequestDependencies, frameworkRunnerBodyCallback());
 	}
 
 	private RunnerBodyCallback<C> frameworkRunnerBodyCallback() {
@@ -1594,7 +1685,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void executeRunner(Object testInstance, PreparedContexts<C> resolver, JPostmanRunner annotation,
 			JPostmanInfo info, List<String> stack, boolean notifyAfterRequest, boolean notifyBeforeRequest,
-			RunnerBodyCallback<C> runnerBodyCallback) throws Exception {
+			String[] perRequestDependencies, RunnerBodyCallback<C> runnerBodyCallback) throws Exception {
 
 		validateLocalLog(annotation.log(), info);
 		JPostmanReport report = report(testInstance);
@@ -1648,6 +1739,15 @@ public final class JPostmanAnnotationRunner<C> {
 
 				executed++;
 				try {
+					if (perRequestDependencies != null && perRequestDependencies.length > 0) {
+						runDependencies(testInstance, resolver, perRequestDependencies,
+								requestInfo.withTags(annotation.tags()), stack);
+						ctx = prepareRequest(resolver.context(info.namespace), collection, annotation, requestInfo,
+								requestName);
+						resolver.update(info.namespace, ctx);
+						framework.setCurrent(ctx);
+					}
+
 					notifyBeforeRunnerRequest(testInstance, notifyBeforeRequest, requestIndex, requestName,
 							latestContext(resolver, requestInfo.namespace, ctx), annotation, requestInfo,
 							runnerBodyCallback);

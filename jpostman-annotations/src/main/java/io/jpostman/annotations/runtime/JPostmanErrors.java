@@ -126,7 +126,11 @@ final class JPostmanErrors {
 			message.append(", collection=").append(defaultValue(info.context.collection()));
 			message.append(", environment=").append(defaultValue(info.context.environment()));
 		} else {
-			message.append(": tags=").append(String.join(", ", info.tags));
+			message.append(":");
+			if (!blank(info.method)) {
+				message.append(" method=").append(info.method).append(",");
+			}
+			message.append(" tags=").append(String.join(", ", info.tags));
 			message.append(", namespace=").append(defaultValue(info.namespace));
 			message.append(", folder=").append(defaultValue(info.folder));
 			message.append(", request=").append(defaultValue(info.request));

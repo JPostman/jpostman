@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.7
+
+### Added
+
+- Added `JPostman.Assert.fail(String)` for immediate hard failures with an exact custom message, including when called from a soft assertion facade.
+- Added response and call scope inheritance from direct `@JPostman.Request` dependencies. Missing `namespace`, `folder`, and `request` values are resolved independently while explicit values on the current annotation remain authoritative.
+- Added clear `@JPostman.Call` validation when no executable request name can be resolved from the call or its dependencies.
+
+### Fixed
+
+- Fixed responses and calls with an explicit request name incorrectly searching the default namespace or root folder when a dependency supplied the missing namespace and folder.
+- Fixed blank-request response and call dependencies receiving a null current request instead of the prepared request selected by the parent annotation.
+- Fixed response test bodies running after hard status verification or request-preparation failures.
+- Fixed soft response assertion failures leaking into later test methods.
+- Fixed nested response filters affecting child response dependencies before the child body executed.
+- Fixed runner request helpers and runner bodies observing different or missing current-request state during default per-request execution.
+- Fixed runner info-isolation expectations for blank-request dependencies that now execute once per selected request.
+
 ## 2.2.6
 
 ### Added

@@ -338,6 +338,31 @@ public class JPostmanRunnerAssertValidationTest {
 	}
 
 	@Test
+	public void injectedAssertVerifyDelegatesToActiveContextWithoutReplacingSoftAssertions() {
+		ResetAwareAssertContext context = new ResetAwareAssertContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context);
+
+		asserts.verify();
+
+		assertEquals(1, context.verifyCalls);
+		assertEquals(0, context.assertsCalls);
+		assertFalse(context.softPending);
+	}
+
+	@Test
+	public void injectedAssertVerifyStatusDelegatesToActiveContextAndUsesRequestedStatus() {
+		ResetAwareAssertContext context = new ResetAwareAssertContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context);
+
+		asserts.verify(201);
+
+		assertEquals(1, context.verifyCalls);
+		assertEquals(201, context.statusCode);
+		assertEquals(0, context.assertsCalls);
+		assertFalse(context.softPending);
+	}
+
+	@Test
 	public void localSoftFacadePrefersRunnerFailureOverContextVerifyNoise() {
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> new TestNgNoisySoftContext());
 		JPostman.Assert soft = asserts.soft(false);
@@ -873,6 +898,55 @@ public class JPostmanRunnerAssertValidationTest {
 		ApiExecutor executor(TestNgContext context) {
 			assertNotNull(context.request());
 			return createdExecutor();
+		}
+	}
+
+	private static final class ResetAwareAssertContext {
+		private int verifyCalls;
+		private int assertsCalls;
+		private int statusCode = -1;
+		private boolean softPending = true;
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertions asserts() {
+			assertsCalls++;
+			return new ResetAwareAssertions(this);
+		}
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertContext verify() {
+			verifyCalls++;
+			softPending = false;
+			return this;
+		}
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertContext verify(int expectedStatus) {
+			verifyCalls++;
+			statusCode = expectedStatus;
+			softPending = false;
+			return this;
+		}
+	}
+
+	private static final class ResetAwareAssertions {
+		private final ResetAwareAssertContext context;
+
+		private ResetAwareAssertions(ResetAwareAssertContext context) {
+			this.context = context;
+		}
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertContext verify() {
+			context.softPending = false;
+			return context;
+		}
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertContext verify(int expectedStatus) {
+			context.statusCode = expectedStatus;
+			context.softPending = false;
+			return context;
 		}
 	}
 

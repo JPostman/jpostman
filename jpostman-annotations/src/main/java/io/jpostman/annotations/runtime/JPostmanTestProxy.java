@@ -180,6 +180,27 @@ final class JPostmanTestProxy implements InvocationHandler {
 				Object soft = invokeContext("soft", args);
 				return wrapAssert(soft, activeContextSupplier, true);
 			}
+			if ("fail".equals(name) && method.getParameterCount() == 1) {
+				Object message = args == null || args.length == 0 ? null : args[0];
+				String text = message == null || String.valueOf(message).isBlank() ? "Assertion failed"
+						: String.valueOf(message);
+				throw new AssertionError(text);
+			}
+
+			/*
+			 * The injected @JPostman.AssertContext facade has no fixed assertion target.
+			 * Its verify methods must delegate to the active context rather than first
+			 * calling context.asserts(). Calling asserts() would replace an existing soft
+			 * collector with a new hard assertion object and reintroduce the default 200
+			 * status check. Context.verify(...) flushes the active soft collector and lets
+			 * TestNG/JUnit reset it after verification. Runner aggregation keeps its
+			 * existing specialized verification path.
+			 */
+			if (target == null && isVerifyMethod(name) && !JPostmanRuntimeRunner.active()) {
+				String contextMethod = "assertAll".equals(name) ? "verify" : name;
+				Object result = invokeContext(contextMethod, args);
+				return adaptAssertReturn(proxy, method, result, soft);
+			}
 
 			if (soft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
 				AssertionError failure = JPostmanRuntimeRunner.softFailure(null);

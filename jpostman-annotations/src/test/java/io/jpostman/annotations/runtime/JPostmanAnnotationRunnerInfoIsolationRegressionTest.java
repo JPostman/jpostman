@@ -33,7 +33,7 @@ public class JPostmanAnnotationRunnerInfoIsolationRegressionTest {
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 		runTestNg(fixture, "runCollection");
 
-		assertEquals(1, fixture.sharedSetupCalls);
+		assertEquals(2, fixture.sharedSetupCalls);
 		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.executorRequests);
 		assertEquals(2, fixture.executorMethods.size());
 

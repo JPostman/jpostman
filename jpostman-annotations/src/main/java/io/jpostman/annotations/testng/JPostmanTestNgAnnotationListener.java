@@ -133,6 +133,7 @@ public final class JPostmanTestNgAnnotationListener
 			} else {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
 				runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);
+				verifySoftResponseAssertions(testMethod);
 				if (callMethod) {
 					cleanCallMethodFailure(testInstance, testMethod, testResult);
 				}
@@ -166,15 +167,14 @@ public final class JPostmanTestNgAnnotationListener
 		} catch (Throwable e) {
 			AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, e);
 			/*
-			 * Non-runner annotations may fail after preparing a response; running the body
-			 * once lets diagnostic code print or inspect that prepared context. Runner
-			 * methods are different: the annotation runner owns per-request body
-			 * invocation. If the runner fails before a request callback, running the body
-			 * here can replace a runner status failure with unrelated local assertions.
+			 * Hard @JPostman.Response verification is fail-fast: annotation execution must
+			 * complete successfully before TestNG invokes the user test body. A response
+			 * configured with soft=true records verification failures without throwing, so
+			 * it reaches the normal body invocation path above and the user can perform
+			 * additional manual assertions. Do not invoke the body from this failure path;
+			 * doing so made hard verification behave like soft verification and could add
+			 * duplicate or misleading assertion failures.
 			 */
-			if (!runnerMethod) {
-				runTestBodyAfterAnnotationFailure(callBack, testResult, failure);
-			}
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
 		} finally {
@@ -292,20 +292,24 @@ public final class JPostmanTestNgAnnotationListener
 		}
 	}
 
-	private void runTestBodyAfterAnnotationFailure(IHookCallBack callBack, ITestResult testResult, Throwable failure) {
-		try {
-			Object testInstance = testResult.getInstance();
-			Method testMethod = testResult.getMethod().getConstructorOrMethod().getMethod();
-			runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);
-		} catch (Throwable bodyFailure) {
-			if (bodyFailure != null && bodyFailure != failure) {
-				failure.addSuppressed(bodyFailure);
-			}
-		}
-
-		Throwable reported = testResult.getThrowable();
-		if (reported != null && reported != failure) {
-			failure.addSuppressed(reported);
+	/**
+	 * Flushes the soft assertion collector owned by a normal
+	 * {@code @JPostman.Response} after the user test body completes.
+	 *
+	 * <p>
+	 * Automatic response verification is recorded before the body when
+	 * {@code soft = true}. The body may inspect the response and add more soft
+	 * assertions, but those failures still belong to this method and must be
+	 * reported before TestNG marks it as passed. Calling {@code assertAll()}
+	 * directly avoids adding an implicit status-code assertion. It is also safe
+	 * when the body already called {@code asserts.verify()}: an empty collector is
+	 * then verified and reset.
+	 * </p>
+	 */
+	private void verifySoftResponseAssertions(Method testMethod) {
+		io.jpostman.annotations.JPostmanResponse response = JPostmanAnnotations.response(testMethod);
+		if (response != null && response.soft()) {
+			TestNgContext.current().soft(false).assertAll();
 		}
 	}
 

@@ -32,7 +32,7 @@ import io.jpostman.testng.TestNgContext;
 public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 	@Test
-	public void listenerRunsTestBodyAfterAnnotationVerificationFailureForDiagnostics() throws Exception {
+	public void listenerDoesNotRunTestBodyAfterHardAnnotationVerificationFailure() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		VerificationFailureBodyFixture fixture = new VerificationFailureBodyFixture();
 		Method method = VerificationFailureBodyFixture.class.getDeclaredMethod("printContextAfterFailure");
@@ -42,12 +42,95 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
 
-		assertEquals(1, fixture.bodyCalls, "The user test body should still run so it can print the prepared context.");
-		assertTrue(fixture.sawResponse,
-				"The user test body should see the response created before verification failed.");
+		assertEquals(0, fixture.bodyCalls, "A hard status verification failure must stop before the user test body.");
+		assertTrue(!fixture.sawResponse,
+				"The body did not run, so it must not observe the response through user code.");
 		assertEquals(ITestResult.FAILURE, status.get());
 		assertNotNull(throwable.get());
 		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [401] but found [200]"),
+				"Actual message: " + throwable.get().getMessage());
+	}
+
+	@Test
+	public void listenerRunsTestBodyWhenAnnotationVerificationIsSoft() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		SoftVerificationBodyFixture fixture = new SoftVerificationBodyFixture();
+		Method method = SoftVerificationBodyFixture.class.getDeclaredMethod("inspectResponseAfterSoftVerification");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(1, fixture.bodyCalls, "soft=true must allow the user test body to inspect the executed response.");
+		assertTrue(fixture.sawResponse, "The soft response body should see the prepared response.");
+		assertEquals(ITestResult.FAILURE, status.get(),
+				"The collected soft verification must be flushed after the same method body exits.");
+		assertNotNull(throwable.get());
+		assertTrue(throwable.get().getMessage().contains("method=inspectResponseAfterSoftVerification"),
+				"Actual message: " + throwable.get().getMessage());
+		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [401] but found [200]"),
+				"Actual message: " + throwable.get().getMessage());
+	}
+
+	@Test
+	public void automaticSoftVerificationIsResetBeforeTheNextTestMethod() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		SoftVerificationBodyFixture fixture = new SoftVerificationBodyFixture();
+
+		Method failingMethod = SoftVerificationBodyFixture.class
+				.getDeclaredMethod("inspectResponseAfterSoftVerification");
+		AtomicReference<Throwable> firstThrowable = new AtomicReference<>();
+		AtomicInteger firstStatus = new AtomicInteger(ITestResult.SUCCESS);
+		listener.run(hookCallBack(() -> invoke(fixture, failingMethod)),
+				testResult(fixture, failingMethod, firstThrowable, firstStatus));
+
+		Method passingMethod = SoftVerificationBodyFixture.class
+				.getDeclaredMethod("inspectResponseAfterSuccessfulSoftVerification");
+		AtomicReference<Throwable> secondThrowable = new AtomicReference<>();
+		AtomicInteger secondStatus = new AtomicInteger(ITestResult.SUCCESS);
+		listener.run(hookCallBack(() -> invoke(fixture, passingMethod)),
+				testResult(fixture, passingMethod, secondThrowable, secondStatus));
+
+		assertEquals(ITestResult.FAILURE, firstStatus.get());
+		assertEquals(ITestResult.SUCCESS, secondStatus.get(),
+				"The first method's soft failure must be consumed and reset at method exit.");
+		assertEquals(null, secondThrowable.get());
+		assertEquals(2, fixture.bodyCalls);
+	}
+
+	@Test
+	public void injectedAssertVerifyFlushesAndResetsAutomaticSoftStatusVerification() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		SoftVerifyResetFixture fixture = new SoftVerifyResetFixture();
+		Method method = SoftVerifyResetFixture.class.getDeclaredMethod("verifyCreatedResponse");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(1, fixture.bodyCalls);
+		assertEquals(ITestResult.SUCCESS, status.get());
+		assertEquals(null, throwable.get(),
+				"asserts.verify() must flush the existing verify=201 soft collector instead of creating a hard default-200 assertion.");
+	}
+
+	@Test
+	public void listenerDoesNotRunResponseBodyWhenRequestPreparationFails() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		RequestPreparationFailureFixture fixture = new RequestPreparationFailureFixture();
+		Method method = RequestPreparationFailureFixture.class.getDeclaredMethod("missingRequest");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(0, fixture.bodyCalls, "The response body must not run when no request/response was prepared.");
+		assertEquals(ITestResult.FAILURE, status.get());
+		assertNotNull(throwable.get());
+		assertTrue(throwable.get().getMessage().contains("Request not found"),
 				"Actual message: " + throwable.get().getMessage());
 	}
 
@@ -169,6 +252,45 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@JPostman.TestNG
+	private static final class SoftVerifyResetFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		@JPostman.AssertContext
+		private JPostman.Assert asserts;
+
+		private int bodyCalls;
+
+		@JPostman.Response(request = "Get current auth user", verify = 201, soft = true, log = "none")
+		@org.testng.annotations.Test
+		public void verifyCreatedResponse() {
+			bodyCalls++;
+			asserts.verify();
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return () -> new ApiResponse(201, "{\"id\":1}", "{\"id\":1}".getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RequestPreparationFailureFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int bodyCalls;
+
+		@JPostman.Response(request = "Missing request", verify = 0)
+		@org.testng.annotations.Test
+		public void missingRequest() {
+			bodyCalls++;
+		}
+	}
+
+	@JPostman.TestNG
 	private static final class VerificationFailureBodyFixture {
 
 		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 401)
@@ -180,6 +302,35 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		@JPostman.Response(request = "Get current auth user")
 		@org.testng.annotations.Test
 		public void printContextAfterFailure() {
+			bodyCalls++;
+			sawResponse = jpostman.ctx().response() != null;
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{\"id\":1,\"firstName\":\"Emily\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class SoftVerificationBodyFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int bodyCalls;
+		private boolean sawResponse;
+
+		@JPostman.Response(request = "Get current auth user", verify = 401, soft = true)
+		@org.testng.annotations.Test
+		public void inspectResponseAfterSoftVerification() {
+			bodyCalls++;
+			sawResponse = jpostman.ctx().response() != null;
+		}
+
+		@JPostman.Response(request = "Get current auth user", verify = 200, soft = true)
+		@org.testng.annotations.Test
+		public void inspectResponseAfterSuccessfulSoftVerification() {
 			bodyCalls++;
 			sawResponse = jpostman.ctx().response() != null;
 		}

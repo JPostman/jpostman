@@ -319,41 +319,18 @@ public final class JPostman {
 		boolean session() default false;
 
 		/**
-		 * Controls local automatic annotation output and failure formatting.
-		 *
-		 * <p>
-		 * The value may contain one failure mode and optional explicit output
-		 * selections, separated by commas.
-		 * </p>
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
 		 * <ul>
-		 * <li>{@code none} - suppress normal automatic annotation output and use the
-		 * minimum failure message with the first useful user-code stack frame.</li>
-		 * <li>{@code debug} - inherit the active context {@code debug} configuration;
-		 * when it resolves to {@code none}, use minimum failure output.</li>
-		 * <li>{@code error} - suppress normal automatic annotation output and print the
-		 * failure message with its trace.</li>
-		 * <li>{@code request} - explicitly print the prepared request for this
-		 * annotation.</li>
-		 * <li>{@code response} - explicitly print the received response for this
-		 * annotation.</li>
-		 * <li>{@code info} - explicitly print runtime annotation information for this
-		 * annotation.</li>
-		 * <li>{@code all} - explicitly print request, response, and info output for
-		 * this annotation.</li>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
 		 * </ul>
 		 *
-		 * <p>
-		 * Explicit {@code request}, {@code response}, and {@code info} selections
-		 * override the context debug output for this annotation and may be combined.
-		 * {@code all} selects all three and must be used alone as an output selection.
-		 * Only one failure mode ({@code none}, {@code debug}, or {@code error}) may be
-		 * supplied. For example, {@code log = "debug"} inherits the context
-		 * configuration, {@code log = "info"} prints only info, and
-		 * {@code log = "request,response"} prints both request and response.
-		 * </p>
-		 *
-		 * @return local automatic output and failure mode
+		 * @return local automatic failure output mode
 		 */
 		String log() default "debug";
 
@@ -448,41 +425,18 @@ public final class JPostman {
 		String cache() default JPostmanRequest.NO_CACHE;
 
 		/**
-		 * Controls local automatic annotation output and failure formatting.
-		 *
-		 * <p>
-		 * The value may contain one failure mode and optional explicit output
-		 * selections, separated by commas.
-		 * </p>
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
 		 * <ul>
-		 * <li>{@code none} - suppress normal automatic annotation output and use the
-		 * minimum failure message with the first useful user-code stack frame.</li>
-		 * <li>{@code debug} - inherit the active context {@code debug} configuration;
-		 * when it resolves to {@code none}, use minimum failure output.</li>
-		 * <li>{@code error} - suppress normal automatic annotation output and print the
-		 * failure message with its trace.</li>
-		 * <li>{@code request} - explicitly print the prepared request for this
-		 * annotation.</li>
-		 * <li>{@code response} - explicitly print the received response for this
-		 * annotation.</li>
-		 * <li>{@code info} - explicitly print runtime annotation information for this
-		 * annotation.</li>
-		 * <li>{@code all} - explicitly print request, response, and info output for
-		 * this annotation.</li>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
 		 * </ul>
 		 *
-		 * <p>
-		 * Explicit {@code request}, {@code response}, and {@code info} selections
-		 * override the context debug output for this annotation and may be combined.
-		 * {@code all} selects all three and must be used alone as an output selection.
-		 * Only one failure mode ({@code none}, {@code debug}, or {@code error}) may be
-		 * supplied. For example, {@code log = "debug"} inherits the context
-		 * configuration, {@code log = "info"} prints only info, and
-		 * {@code log = "request,response"} prints both request and response.
-		 * </p>
-		 *
-		 * @return local automatic output and failure mode
+		 * @return local automatic failure output mode
 		 */
 		String log() default "debug";
 
@@ -594,41 +548,18 @@ public final class JPostman {
 		String cache() default JPostmanResponse.NO_CACHE;
 
 		/**
-		 * Controls local automatic annotation output and failure formatting.
-		 *
-		 * <p>
-		 * The value may contain one failure mode and optional explicit output
-		 * selections, separated by commas.
-		 * </p>
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
 		 * <ul>
-		 * <li>{@code none} - suppress normal automatic annotation output and use the
-		 * minimum failure message with the first useful user-code stack frame.</li>
-		 * <li>{@code debug} - inherit the active context {@code debug} configuration;
-		 * when it resolves to {@code none}, use minimum failure output.</li>
-		 * <li>{@code error} - suppress normal automatic annotation output and print the
-		 * failure message with its trace.</li>
-		 * <li>{@code request} - explicitly print the prepared request for this
-		 * annotation.</li>
-		 * <li>{@code response} - explicitly print the received response for this
-		 * annotation.</li>
-		 * <li>{@code info} - explicitly print runtime annotation information for this
-		 * annotation.</li>
-		 * <li>{@code all} - explicitly print request, response, and info output for
-		 * this annotation.</li>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
 		 * </ul>
 		 *
-		 * <p>
-		 * Explicit {@code request}, {@code response}, and {@code info} selections
-		 * override the context debug output for this annotation and may be combined.
-		 * {@code all} selects all three and must be used alone as an output selection.
-		 * Only one failure mode ({@code none}, {@code debug}, or {@code error}) may be
-		 * supplied. For example, {@code log = "debug"} inherits the context
-		 * configuration, {@code log = "info"} prints only info, and
-		 * {@code log = "request,response"} prints both request and response.
-		 * </p>
-		 *
-		 * @return local automatic output and failure mode
+		 * @return local automatic failure output mode
 		 */
 		String log() default "debug";
 
@@ -747,41 +678,18 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Controls local automatic annotation output and failure formatting.
-		 *
-		 * <p>
-		 * The value may contain one failure mode and optional explicit output
-		 * selections, separated by commas.
-		 * </p>
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
 		 * <ul>
-		 * <li>{@code none} - suppress normal automatic annotation output and use the
-		 * minimum failure message with the first useful user-code stack frame.</li>
-		 * <li>{@code debug} - inherit the active context {@code debug} configuration;
-		 * when it resolves to {@code none}, use minimum failure output.</li>
-		 * <li>{@code error} - suppress normal automatic annotation output and print the
-		 * failure message with its trace.</li>
-		 * <li>{@code request} - explicitly print the prepared request for this
-		 * annotation.</li>
-		 * <li>{@code response} - explicitly print the received response for this
-		 * annotation.</li>
-		 * <li>{@code info} - explicitly print runtime annotation information for this
-		 * annotation.</li>
-		 * <li>{@code all} - explicitly print request, response, and info output for
-		 * this annotation.</li>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
 		 * </ul>
 		 *
-		 * <p>
-		 * Explicit {@code request}, {@code response}, and {@code info} selections
-		 * override the context debug output for this annotation and may be combined.
-		 * {@code all} selects all three and must be used alone as an output selection.
-		 * Only one failure mode ({@code none}, {@code debug}, or {@code error}) may be
-		 * supplied. For example, {@code log = "debug"} inherits the context
-		 * configuration, {@code log = "info"} prints only info, and
-		 * {@code log = "request,response"} prints both request and response.
-		 * </p>
-		 *
-		 * @return local automatic output and failure mode
+		 * @return local automatic failure output mode
 		 */
 		String log() default "debug";
 
@@ -906,41 +814,18 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Controls local automatic annotation output and failure formatting.
-		 *
-		 * <p>
-		 * The value may contain one failure mode and optional explicit output
-		 * selections, separated by commas.
-		 * </p>
+		 * Local automatic JPostman failure output mode. Values are single-choice; use
+		 * one value only.
 		 *
 		 * <ul>
-		 * <li>{@code none} - suppress normal automatic annotation output and use the
-		 * minimum failure message with the first useful user-code stack frame.</li>
-		 * <li>{@code debug} - inherit the active context {@code debug} configuration;
-		 * when it resolves to {@code none}, use minimum failure output.</li>
-		 * <li>{@code error} - suppress normal automatic annotation output and print the
-		 * failure message with its trace.</li>
-		 * <li>{@code request} - explicitly print the prepared request for this
-		 * annotation.</li>
-		 * <li>{@code response} - explicitly print the received response for this
-		 * annotation.</li>
-		 * <li>{@code info} - explicitly print runtime annotation information for this
-		 * annotation.</li>
-		 * <li>{@code all} - explicitly print request, response, and info output for
-		 * this annotation.</li>
+		 * <li>{@code none} - print only the minimum failure message and the first
+		 * useful user-code stack frame.</li>
+		 * <li>{@code debug} - print the configured debug output and use minimum failure
+		 * output when debug is {@code none}.</li>
+		 * <li>{@code error} - print the failure message and include the trace.</li>
 		 * </ul>
 		 *
-		 * <p>
-		 * Explicit {@code request}, {@code response}, and {@code info} selections
-		 * override the context debug output for this annotation and may be combined.
-		 * {@code all} selects all three and must be used alone as an output selection.
-		 * Only one failure mode ({@code none}, {@code debug}, or {@code error}) may be
-		 * supplied. For example, {@code log = "debug"} inherits the context
-		 * configuration, {@code log = "info"} prints only info, and
-		 * {@code log = "request,response"} prints both request and response.
-		 * </p>
-		 *
-		 * @return local automatic output and failure mode
+		 * @return local automatic failure output mode
 		 */
 		String log() default "debug";
 
@@ -955,11 +840,13 @@ public final class JPostman {
 		 * Enables request/response runner lifecycle callbacks.
 		 *
 		 * <p>
-		 * The default {@code false} keeps the original runner behavior: the method body
-		 * is invoked only after each executed response. Set this to {@code true} when
-		 * using {@code jpostman.runner().start(...)},
-		 * {@code jpostman.runner().request(...)}, or
-		 * {@code jpostman.runner().response(...)}.
+		 * The default {@code false} invokes blank-request {@code @JPostman.Request}
+		 * dependencies once for each selected collection request after that request is
+		 * prepared, then invokes the runner method body after the response. Set this to
+		 * {@code true} to keep dependencies as one-time runner setup and enable the
+		 * before-request/response lifecycle used by
+		 * {@code jpostman.runner().start(...)}, {@code jpostman.runner().request(...)},
+		 * or {@code jpostman.runner().response(...)}.
 		 * </p>
 		 *
 		 * @return {@code true} to enable before-request and response lifecycle
@@ -1570,6 +1457,22 @@ public final class JPostman {
 	 * JPostman test context.
 	 */
 	public interface Assert extends JPostmanAssertions<Test, Assert>, JPostmanSoftAssertions<Test, Assert> {
+
+		/**
+		 * Immediately fails with the supplied custom message.
+		 *
+		 * <p>
+		 * This is always a hard failure, including when invoked from a facade returned
+		 * by {@link #soft(boolean)}. The failure is not added to the soft assertion
+		 * collector.
+		 * </p>
+		 *
+		 * @param message custom failure message; blank values use
+		 *                {@code "Assertion failed"}
+		 * @return never returns normally
+		 * @throws AssertionError always, using the supplied message
+		 */
+		Assert fail(String message);
 
 		/**
 		 * Switches this facade to soft assertion mode.
