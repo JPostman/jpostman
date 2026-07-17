@@ -180,6 +180,22 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
+	public void successfulFrameworkOwnedRunnerTransitionsStartedResultToSuccess() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		SuccessfulRunnerBodyFixture fixture = new SuccessfulRunnerBodyFixture();
+		Method method = SuccessfulRunnerBodyFixture.class.getDeclaredMethod("printLatestRunnerInfo");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.STARTED);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(ITestResult.SUCCESS, status.get(),
+				"A successful IHookable runner must not remain STARTED after framework execution.");
+		assertEquals(null, throwable.get());
+	}
+
+	@Test
 	public void listenerInvokesReusableRunnerLauncherThroughTestNgHook() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		ReusableRunnerLauncherFixture fixture = new ReusableRunnerLauncherFixture();

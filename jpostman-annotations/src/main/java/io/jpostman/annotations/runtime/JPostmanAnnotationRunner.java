@@ -1435,7 +1435,8 @@ public final class JPostmanAnnotationRunner<C> {
 			return;
 		}
 
-		Object cacheValue = dependencyMethod.getReturnType() == Void.TYPE ? resolver.context(info.namespace) : value;
+		Object cacheValue = dependencyMethod.getReturnType() == Void.TYPE ? resolver.context(info.namespace)
+				: snapshotCacheValue(value);
 		if (cacheValue == null) {
 			throw JPostmanErrors.usage(info,
 					"Dependency method returned null and cannot be cached: " + dependencyMethod.getName(),
@@ -1480,6 +1481,13 @@ public final class JPostmanAnnotationRunner<C> {
 							+ "or return a non-null value when another request needs the cached value.");
 		}
 		framework.cache(resolver.context(contextNamespace), cache, cacheValue);
+	}
+
+	private Object snapshotCacheValue(Object value) {
+		if (value instanceof JPostman.Test) {
+			return JPostmanResponseSnapshot.create(value);
+		}
+		return value;
 	}
 
 	private C freshContext(PreparedContexts<C> prepared, String namespace, C cacheSource) {

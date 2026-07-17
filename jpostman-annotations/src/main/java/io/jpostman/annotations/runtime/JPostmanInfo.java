@@ -1226,7 +1226,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		}
 		for (Map.Entry<String, ?> entry : values.entrySet()) {
 			if (entry.getKey() != null) {
-				result.put(entry.getKey(), secret ? serverValue(entry.getValue()) : entry.getValue());
+				Object value = JPostmanCacheValueConverter.unwrap(entry.getValue());
+				result.put(entry.getKey(), secret ? serverValue(value) : value);
 			}
 		}
 		return result;

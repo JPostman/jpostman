@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.8
+
+### Added
+
+- Added cache path expressions such as `test.cache("token/accessToken")` and nested paths such as `test.cache("token/user/id")`.
+- Added typed cache conversion with `test.cache("token/user/id", Integer.class)`.
+
+### Fixed
+
+- Fixed cached response values being replaced or becoming unavailable after later requests changed the active context.
+- Fixed cached response paths returning Gson `JsonPrimitive` values instead of ordinary Java scalar values.
+- Fixed secure cached values being serialized as wrapper objects such as `{ "value": "********" }` instead of scalar request values.
+- Fixed missing body, header, query, and path parameters not being added when their keys were absent from the original request.
+- Fixed `info.auth("oauth2", token)` and `info.sauth("oauth2", token)` compatibility by retaining the legacy bearer-header fallback.
+
 ## 2.2.7
 
 ### Added

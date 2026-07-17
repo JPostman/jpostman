@@ -1,7 +1,6 @@
 package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
@@ -20,7 +19,7 @@ import io.jpostman.Request;
 public class JPostmanAnnotationRequestValueModeRegressionTest {
 
 	@Test
-	public void bodyQueryAndHeadersSetExistingValuesAndAddOnlyWhenRequested() throws Exception {
+	public void bodyQueryAndHeadersSetExistingValuesAndAddMissingValues() throws Exception {
 		Request request = requestWithExistingBodyQueryAndHeader();
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");
 
@@ -32,16 +31,35 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 
 		assertEquals("25", updated.getUrl().get("limit"));
 		assertEquals("true", updated.getUrl().get("debug"));
-		assertFalse(updated.getUrl().getParams().containsKey("missingQuery"));
+		assertEquals("not-added", updated.getUrl().get("missingQuery"));
 
 		assertEquals("token-123", updated.getHeader().get("X-Token"));
 		assertEquals("enabled", updated.getHeader().get("X-Debug"));
-		assertFalse(updated.getHeader().getParams().containsKey("X-Not-Added"),
-				"add() should apply only to the next value method call.");
+		assertEquals("missing", updated.getHeader().get("X-Not-Added"));
 
 		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
 		assertEquals("Wireless Mouse", body.get("title").getAsString());
 		assertEquals("today", body.get("dateCreated").getAsString());
+	}
+
+	@Test
+	public void secureValuesSetConfiguredParamsAndAddMissingParams() throws Exception {
+		Request request = requestWithExistingBodyQueryAndHeader();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Update product");
+
+		info.sbody("title", "updated-title").sbody("refreshToken", "refresh-secret")
+				.sheaders("X-Token", "updated-header").sheaders("MY_SECRET", "new-header").spath("limit", "50")
+				.spath("todo", "new-url-param");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("updated-title", body.get("title").getAsString());
+		assertEquals("refresh-secret", body.get("refreshToken").getAsString());
+		assertEquals("updated-header", updated.getHeader().get("X-Token"));
+		assertEquals("new-header", updated.getHeader().get("MY_SECRET"));
+		assertEquals("50", updated.getUrl().get("limit"));
+		assertEquals("new-url-param", updated.getUrl().get("todo"));
 	}
 
 	@Test
@@ -103,6 +121,44 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 
 		assertEquals("Bearer secret-token", updated.getHeader().get("Authorization"));
 		assertEquals("secret-token", info.secretValues().get("oauth2"));
+	}
+
+	@Test
+	public void secureValueMethodsNormalizeCachedSecretWrappersBeforeWrappingAgain() {
+		JPostmanInfo source = new JPostmanInfo("response", "", "", "Login");
+		source.sbody("refreshToken", "refresh-secret");
+		Object cachedSecret = source.body.get("refreshToken");
+
+		JPostmanInfo target = new JPostmanInfo("request", "", "", "Refresh");
+		target.sbody("refreshToken", cachedSecret).squery("refreshToken", cachedSecret)
+				.sheaders("X-Refresh-Token", cachedSecret).spath("refreshToken", cachedSecret)
+				.sauth("oauth2", cachedSecret);
+
+		assertEquals("refresh-secret", target.secretValues().get("refreshToken"));
+		assertEquals("refresh-secret", target.secretValues().get("X-Refresh-Token"));
+		assertEquals("refresh-secret", target.secretValues().get("oauth2"));
+	}
+
+	@Test
+	public void secureValuesAreRevealedOnlyWhenAppliedToExecutableRequest() throws Exception {
+		Request request = requestWithExistingBodyQueryAndHeader();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Update product");
+
+		info.sbody("title", "refresh-secret").squery("limit", 40).sheaders("X-Token", "header-secret").sauth("oauth2",
+				"access-secret");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertTrue(body.get("title").isJsonPrimitive(),
+				"Secure body values must be applied as scalars, not serialized wrapper objects.");
+		assertEquals("refresh-secret", body.get("title").getAsString());
+		assertEquals("40", updated.getUrl().get("limit"));
+		assertEquals("header-secret", updated.getHeader().get("X-Token"));
+		assertEquals("Bearer access-secret", updated.getHeader().get("Authorization"));
+
+		assertEquals("refresh-secret", info.secretValues().get("title"),
+				"Masking metadata must still retain the secret value independently of request serialization.");
 	}
 
 	private static Request requestWithExistingBodyQueryAndHeader() throws Exception {

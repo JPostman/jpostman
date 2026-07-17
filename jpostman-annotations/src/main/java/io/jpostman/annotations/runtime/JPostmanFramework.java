@@ -4,14 +4,10 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
@@ -231,85 +227,59 @@ public interface JPostmanFramework<C> {
 			return request;
 		}
 
+		Request built = request.builder().build();
 		Request.RequestBuilder builder = request.builder();
 
-		applySetOrMap(builder.url(), info.query);
-		applySetOrMap(builder.headers(), info.headers);
-		applyBodySetOrMap(builder.body(), request, info.body);
-		applyOAuth2Header(builder.headers(), info.auth);
+		Map<String, String> bodyParams = built.getBody() == null || built.getBody().params() == null ? Map.of()
+				: built.getBody().params();
+		Map<String, String> headerParams = built.getHeader() == null || built.getHeader().getParams() == null ? Map.of()
+				: built.getHeader().getParams();
+		Map<String, String> urlParams = built.getUrl() == null || built.getUrl().getParams() == null ? Map.of()
+				: built.getUrl().getParams();
+
+		applySetOrAdd(builder.url(), urlParams, info.query);
+		applySetOrAdd(builder.headers(), headerParams, info.headers);
+		applySetOrAdd(builder.body(), bodyParams, info.body);
+		applySetOrAdd(builder.url(), urlParams, info.path);
+		applyAuth(request, builder, info.auth);
 
 		applyAdd(builder.url(), info.queryAdd);
 		applyAdd(builder.headers(), info.headersAdd);
 		applyAdd(builder.body(), info.bodyAdd);
 
-		if (info.path != null && !info.path.isEmpty()) {
-			builder.url().end(info.path);
-		}
-
 		return builder.build();
 	}
 
-	private static void applySetOrMap(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
-		if (step == null || values == null || values.isEmpty()) {
-			return;
-		}
-
-		Map<String, Object> missing = new LinkedHashMap<>();
-		for (Map.Entry<String, Object> entry : values.entrySet()) {
-			String key = entry.getKey();
-			if (key == null || key.isBlank()) {
-				continue;
-			}
-			try {
-				step.set(key, entry.getValue());
-			} catch (IllegalArgumentException ex) {
-				missing.put(key, entry.getValue());
-			}
-		}
-
-		if (!missing.isEmpty()) {
-			step.end(missing);
-		}
-	}
-
-	private static void applyBodySetOrMap(Request.RequestBuilder.ParamStep step, Request request,
+	private static void applySetOrAdd(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
 			Map<String, Object> values) {
 		if (step == null || values == null || values.isEmpty()) {
 			return;
 		}
 
-		JsonObject object = bodyObject(request);
-		Map<String, Object> existing = new LinkedHashMap<>();
-		Map<String, Object> missing = new LinkedHashMap<>();
-
+		Map<String, String> params = configuredParams == null ? Map.of() : configuredParams;
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String key = entry.getKey();
 			if (key == null || key.isBlank()) {
 				continue;
 			}
-			if (object != null && object.has(key)) {
-				existing.put(key, entry.getValue());
-			} else {
-				missing.put(key, entry.getValue());
-			}
-		}
 
-		applySetOrMap(step, existing);
-		if (!missing.isEmpty()) {
-			step.end(missing);
+			Object value = executableValue(entry.getValue());
+			if (params.containsKey(key)) {
+				step.set(key, value);
+			} else {
+				step.add(key, value);
+			}
 		}
 	}
 
-	private static JsonObject bodyObject(Request request) {
-		try {
-			if (request == null || request.getBody() == null) {
-				return null;
-			}
-			JsonElement parsed = request.getBody().getParsed();
-			return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
-		} catch (RuntimeException ex) {
-			return null;
+	private static void applyAuth(Request request, Request.RequestBuilder builder, Map<String, Object> auth) {
+		if (builder == null || auth == null || auth.isEmpty()) {
+			return;
 		}
+		// No collection auth parameters: preserve the legacy bearer-header fallback.
+		// Configured collection auth is applied later by JPostmanDefaultExecutorFactory
+		// through executor.auth().oauth2(token), so it is not duplicated in headers.
+		applyOAuth2Header(builder.headers(), auth);
 	}
 
 	private static void applyOAuth2Header(Request.RequestBuilder.ParamStep headers, Map<String, Object> auth) {
@@ -322,7 +292,7 @@ public interface JPostmanFramework<C> {
 			return;
 		}
 
-		Object value = JPostmanInfo.reveal(token);
+		Object value = executableValue(token);
 		if (value == null || String.valueOf(value).isBlank()) {
 			return;
 		}
@@ -333,7 +303,7 @@ public interface JPostmanFramework<C> {
 	private static Object firstAuthValue(Map<String, Object> auth, String... keys) {
 		for (String key : keys) {
 			Object value = auth.get(key);
-			Object raw = JPostmanInfo.reveal(value);
+			Object raw = executableValue(value);
 			if (raw != null && !String.valueOf(raw).isBlank()) {
 				return value;
 			}
@@ -356,9 +326,18 @@ public interface JPostmanFramework<C> {
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String key = entry.getKey();
 			if (key != null && !key.isBlank()) {
-				step.add(key, entry.getValue());
+				step.add(key, executableValue(entry.getValue()));
 			}
 		}
+	}
+
+	/**
+	 * Converts secret/cache wrapper values into ordinary Java values only at the
+	 * executable request boundary. JPostmanInfo retains the wrappers so masking and
+	 * secure-request metadata continue to work.
+	 */
+	private static Object executableValue(Object value) {
+		return JPostmanCacheValueConverter.unwrap(value);
 	}
 
 	private static void applySecureRequestMetadata(Object context, JPostmanInfo info) {

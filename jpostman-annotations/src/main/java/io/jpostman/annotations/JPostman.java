@@ -1496,5 +1496,18 @@ public final class JPostman {
 
 	/** Compact framework-neutral test context facade. */
 	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
+
+		/**
+		 * Reads a cached value or cached response path and converts it to the requested
+		 * Java type.
+		 *
+		 * @param expression cache key, optionally followed by a response path
+		 * @param type       requested Java type
+		 * @param <T>        result type
+		 * @return converted cached value
+		 */
+		default <T> T cache(String expression, Class<T> type) {
+			return io.jpostman.annotations.runtime.JPostmanCacheValueConverter.convert(cache(expression), type);
+		}
 	}
 }

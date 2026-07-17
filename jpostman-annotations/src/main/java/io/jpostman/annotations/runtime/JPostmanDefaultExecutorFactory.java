@@ -23,7 +23,9 @@ final class JPostmanDefaultExecutorFactory {
 			Object result = session ? createSessionExecutor(executorClass, ctx)
 					: createRequestExecutor(executorClass, ctx);
 			if (result instanceof ApiExecutor) {
-				return (ApiExecutor) result;
+				ApiExecutor executor = (ApiExecutor) result;
+				applyRequestAuthentication(executor, request(ctx));
+				return executor;
 			}
 			throw new IllegalStateException("JPostman default executor method must return ApiExecutor: "
 					+ executorClass.getName() + (session ? ".create()" : ".apply(request)"));
@@ -46,7 +48,9 @@ final class JPostmanDefaultExecutorFactory {
 	static ApiExecutor request(ApiExecutor executor, Object ctx) {
 		try {
 			Object request = request(ctx);
-			return setRequest(executor, request);
+			ApiExecutor configured = setRequest(executor, request);
+			applyRequestAuthentication(configured, request);
+			return configured;
 		} catch (InvocationTargetException e) {
 			Throwable cause = e.getTargetException();
 			if (cause instanceof RuntimeException) {
@@ -68,7 +72,7 @@ final class JPostmanDefaultExecutorFactory {
 		Method method = executorClass.getMethod("create");
 		Object result = method.invoke(null);
 		if (result instanceof ApiExecutor) {
-			return request((ApiExecutor) result, ctx);
+			return setRequest((ApiExecutor) result, request(ctx));
 		}
 		return result;
 	}
@@ -150,4 +154,79 @@ final class JPostmanDefaultExecutorFactory {
 		throw new IllegalStateException(
 				"Executor class does not provide static apply(request): " + executorClass.getName());
 	}
+
+	/**
+	 * Applies authentication already resolved on the final request through the
+	 * executor's common fluent auth API. All supported executors expose
+	 * {@code auth().oauth2(token)}, so the annotation module can configure the
+	 * selected executor class without depending on RestAssured, Playwright,
+	 * Unirest, or HttpClient implementation classes.
+	 */
+	private static void applyRequestAuthentication(ApiExecutor executor, Object request)
+			throws ReflectiveOperationException {
+		if (executor == null || request == null) {
+			return;
+		}
+
+		Object built = buildRequest(request);
+		Object auth = invokeNoArg(built, "getAuth", "auth");
+		if (auth == null) {
+			return;
+		}
+
+		String type = stringValue(invokeNoArg(auth, "getType", "type"));
+		Object paramsValue = invokeNoArg(auth, "getParams", "params");
+		if (!(paramsValue instanceof java.util.Map<?, ?>)) {
+			return;
+		}
+
+		java.util.Map<?, ?> params = (java.util.Map<?, ?>) paramsValue;
+		if (!"bearer".equalsIgnoreCase(type) && !"oauth2".equalsIgnoreCase(type)) {
+			return;
+		}
+
+		String token = stringValue(params.get("token"));
+		if (token == null || token.isBlank()) {
+			return;
+		}
+
+		Method authMethod;
+		try {
+			authMethod = executor.getClass().getMethod("auth");
+		} catch (NoSuchMethodException ignored) {
+			// Preserve compatibility with custom executors that do not expose auth().
+			return;
+		}
+		Object authentication = authMethod.invoke(executor);
+		if (authentication == null) {
+			return;
+		}
+
+		Method oauth2;
+		try {
+			oauth2 = authentication.getClass().getMethod("oauth2", String.class);
+		} catch (NoSuchMethodException ignored) {
+			return;
+		}
+		oauth2.invoke(authentication, token);
+	}
+
+	private static Object invokeNoArg(Object target, String... methodNames) throws ReflectiveOperationException {
+		if (target == null) {
+			return null;
+		}
+		for (String methodName : methodNames) {
+			try {
+				return target.getClass().getMethod(methodName).invoke(target);
+			} catch (NoSuchMethodException ignored) {
+				// Try the next supported accessor name.
+			}
+		}
+		return null;
+	}
+
+	private static String stringValue(Object value) {
+		return value == null ? null : String.valueOf(value);
+	}
+
 }

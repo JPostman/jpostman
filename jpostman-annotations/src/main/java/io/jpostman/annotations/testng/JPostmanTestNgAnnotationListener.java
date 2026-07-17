@@ -130,6 +130,16 @@ public final class JPostmanTestNgAnnotationListener
 			if (runnerMethod) {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod,
 						() -> runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult));
+				/*
+				 * A runner may complete successfully without invoking the user callback (for
+				 * example, when the runner itself owns all request iterations). TestNG requires
+				 * an IHookable invocation to either invoke the callback or explicitly
+				 * transition the result out of STARTED. Mark successful framework-owned
+				 * completion here.
+				 */
+				if (testResult.getStatus() == ITestResult.STARTED) {
+					testResult.setStatus(ITestResult.SUCCESS);
+				}
 			} else {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
 				runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);

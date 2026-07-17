@@ -113,10 +113,37 @@ final class JPostmanTestProxy implements InvocationHandler {
 			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
 			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
+		if ("cache".equals(name) && args != null && args.length >= 1 && args[0] instanceof String) {
+			Object value = resolveCacheExpression(target, (String) args[0]);
+			if (method.getParameterCount() == 2 && args.length == 2 && args[1] instanceof Class<?>) {
+				return JPostmanCacheValueConverter.convert(value, (Class<?>) args[1]);
+			}
+			if (method.getParameterCount() == 1) {
+				return value;
+			}
+		}
 
 		Method targetMethod = findTargetMethod(target, name, args);
 		Object result = invokeTarget(targetMethod, target, args);
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
+	}
+
+	private static Object resolveCacheExpression(Object target, String expression) throws Throwable {
+		int separator = expression.indexOf('/');
+		String key = separator > 0 ? expression.substring(0, separator) : expression;
+		Method cacheMethod = findTargetMethod(target, "cache", new Object[] { key });
+		Object cached = invokeTarget(cacheMethod, target, new Object[] { key });
+		if (separator <= 0) {
+			return cached;
+		}
+		String path = expression.substring(separator + 1);
+		if (cached == null || path.isBlank()) {
+			return cached;
+		}
+		Object cachedTarget = unwrap(cached);
+		Method pathMethod = findTargetMethod(cachedTarget, "path", new Object[] { path });
+		Object value = invokeTarget(pathMethod, cachedTarget, new Object[] { path });
+		return JPostmanCacheValueConverter.unwrap(value);
 	}
 
 	private static final class JPostmanAssertionProxy implements InvocationHandler {
