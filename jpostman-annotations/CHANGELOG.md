@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.9
+
+### Fixed
+
+- Fixed `@JPostman.Runner` report totals when every request in the runner scope is handled by explicit `@JPostman.Response` methods. The runner is now recorded as a successful top-level execution instead of being omitted.
+- Fixed `JPostmanReport` runner-request detection so multiple requests executed from the same runner method are tracked as distinct report entries rather than sharing a single top-level identity.
+- Fixed runner result matching to uniquely identify runner request records by annotation, method, namespace, folder, and request name, allowing pass/fail status updates to affect only the correct request.
+- Added regression coverage for multiple runner-request reporting, runner request status updates, and parent-runner reporting when explicit response annotations own every scoped request.
+
 ## 2.2.8
 
 ### Added

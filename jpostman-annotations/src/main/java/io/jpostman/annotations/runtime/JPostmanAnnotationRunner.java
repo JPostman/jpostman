@@ -1784,6 +1784,10 @@ public final class JPostmanAnnotationRunner<C> {
 
 		if (executed == 0) {
 			if (allRunnerRequestsHandledByExplicitAnnotations(requestNames, skipped)) {
+				// The runner is still a successful top-level test even when every request in
+				// its scope is owned by an explicit @JPostmanResponse method. No concrete
+				// runner-request records exist in this case, so record the parent runner once.
+				passed(report, info);
 				return;
 			}
 			throw runnerNothingExecutedError(info, requestNames, skipped);

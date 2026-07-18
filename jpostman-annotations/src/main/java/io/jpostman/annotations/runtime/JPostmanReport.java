@@ -121,15 +121,15 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 			return false;
 		}
 
-		if (isTopLevel(info)) {
-			return true;
-		}
+		return isRunnerRequest(info) || isTopLevel(info);
+	}
 
-		return "@JPostmanRunner".equals(value(info.annotation)) && !value(info.request).isBlank();
+	private boolean isRunnerRequest(JPostmanInfo info) {
+		return info != null && "@JPostmanRunner".equals(value(info.annotation)) && !value(info.request).isBlank();
 	}
 
 	private boolean isTopLevel(JPostmanInfo info) {
-		return info != null && (info.methodIndex == 0
+		return info != null && !isRunnerRequest(info) && (info.methodIndex == 0
 				|| (info.methodIndex < 0 && (info.methods == null || info.methods.isEmpty())));
 	}
 
@@ -142,6 +142,15 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	private boolean sameExecution(JPostmanInfo left, JPostmanInfo right) {
 		if (left == null || right == null) {
 			return false;
+		}
+
+		if (isRunnerRequest(left) || isRunnerRequest(right)) {
+			return isRunnerRequest(left) && isRunnerRequest(right)
+					&& value(left.annotation).equals(value(right.annotation))
+					&& value(left.method).equals(value(right.method))
+					&& value(left.namespace).equals(value(right.namespace))
+					&& value(left.folder).equals(value(right.folder))
+					&& value(left.request).equals(value(right.request));
 		}
 
 		if (isTopLevel(left) && isTopLevel(right)) {
