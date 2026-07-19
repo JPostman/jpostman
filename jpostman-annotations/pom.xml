@@ -16,8 +16,7 @@
 	<version>2.2.9</version>
 
 	<name>JPostman Annotations</name>
-	<description>Annotation-based execution support for JPostman JUnit and
-		TestNG modules.</description>
+	<description>Annotation-based execution support for JPostman JUnit and TestNG modules.</description>
 	<url>https://github.com/JPostman/jpostman/tree/main/jpostman-annotations</url>
 
 	<dependencies>
