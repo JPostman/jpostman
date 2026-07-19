@@ -8,4 +8,4 @@ The library also provides:
 - Postman collection export through `io.jpostman.schema.export.PostmanCollectionExporter`
 - Postman environment export through `io.jpostman.schema.export.PostmanEnvironmentExporter`
 
-This module has no command-line entry point and produces no executable or shaded CLI artifact. ReStage Engine invokes its Java APIs directly.
+This module has no command-line entry point and produces no executable or shaded CLI artifact. ReStage AI Engine invokes its Java APIs directly.
