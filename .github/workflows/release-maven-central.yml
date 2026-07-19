@@ -38,7 +38,7 @@ jobs:
             -DskipTests \
             -Dgpg.skip=false \
             -Dcentral.skipPublishing=false \
-            -pl jpostman-annotations
+            -pl jpostman-api-schema
 
           # To publish all modules instead:
           # mvn --batch-mode clean deploy \
