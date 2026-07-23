@@ -33,7 +33,7 @@ public class JPostmanDebugFileRegressionTest {
 					"[GET   ] Get current auth user -> {{base_url}}/auth/me");
 			List productRequests = List.of("[GET   ] Get all products -> {{base_url}}/products",
 					"[POST  ] Add a new product -> https://dummyjson.com/products/add");
-			JPostmanDebugFile.COLLECTIONS.put("<default>", defaultRequests);
+			JPostmanDebugFile.COLLECTIONS.put("<root>", defaultRequests);
 			JPostmanInfo info = new JPostmanInfo("@JPostmanResponse", "getUser", "", "", "Get user");
 
 			JPostmanDebugFile.execution(new DebugFixture(), info, "none",
@@ -54,7 +54,7 @@ public class JPostmanDebugFileRegressionTest {
 			assertTrue(captured.indexOf("--- INFO ---") < captured.indexOf("--- REQUEST_UNRESOLVE ---"));
 			assertTrue(captured.indexOf("--- INFO ---") < captured.indexOf(END_MARKER));
 			assertTrue(captured.lastIndexOf("--- INFO ---") < captured.lastIndexOf(END_MARKER));
-			assertTrue(captured.contains("folder=<default>\n[POST  ] Login user and get tokens"));
+			assertTrue(captured.contains("folder=<root>\n[POST  ] Login user and get tokens"));
 			assertTrue(captured.contains("folder=Product\n[GET   ] Get all products"));
 			assertTrue(!captured.contains("{<default>="));
 			assertTrue(!captured.contains("[[POST"));

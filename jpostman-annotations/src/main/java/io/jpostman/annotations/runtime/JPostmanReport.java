@@ -19,6 +19,8 @@ import io.jpostman.annotations.JPostmanOutputs;
  */
 public final class JPostmanReport implements io.jpostman.annotations.JPostman.Report {
 
+	private boolean summaryPrinted;
+
 	private static final Logger log = LoggerFactory.getLogger(JPostmanReport.class);
 
 	/** Latest JPostman execution info. */
@@ -239,7 +241,11 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	/** Prints {@link #log()} using trace level. */
-	public void summary() {
+	public synchronized void summary() {
+		if (summaryPrinted) {
+			return;
+		}
+		summaryPrinted = true;
 		String text = log();
 		if (!JPostmanOutputs.write(text)) {
 			log.trace(text);

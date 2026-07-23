@@ -84,6 +84,20 @@ public final class JPostmanAnnotations {
 		return assertContext(field) != null;
 	}
 
+	public static boolean hasSoftAssertContext(Class<?> type) {
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				JPostmanAssertContext annotation = assertContext(field);
+				if (annotation != null && annotation.soft()) {
+					return true;
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return false;
+	}
+
 	public static JPostmanExecutor executor(Method method) {
 		JPostmanExecutor old = method.getAnnotation(JPostmanExecutor.class);
 		if (old != null) {

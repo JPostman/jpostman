@@ -17,6 +17,7 @@ import org.opentest4j.TestAbortedException;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
 import io.jpostman.annotations.runtime.JPostmanAnnotations;
+import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
 
 /**
  * JUnit 5 bridge for JPostman annotation execution.
@@ -46,10 +47,86 @@ public final class JPostmanJUnitExtension
 		}
 	}
 
-	/** Clears the current JUnit context after the class completes. */
+	/**
+	 * Completes class-scoped assertions and report output after user
+	 * {@code @AfterAll} methods. Deferred class failures use the same configured
+	 * JPostman stack-trace cleaner and {@code printFailures} output as normal test
+	 * failures.
+	 */
 	@Override
 	public void afterAll(ExtensionContext context) throws Exception {
-		JUnitContext.clearCurrent();
+		Throwable failure = null;
+		Object failureInstance = null;
+		try {
+			Object direct = context.getTestInstance().orElse(null);
+			Set<Object> instances = Collections.newSetFromMap(new IdentityHashMap<>());
+			if (direct != null) {
+				instances.add(direct);
+			}
+			synchronized (prepared) {
+				for (Object candidate : prepared) {
+					if (candidate != null && context.getRequiredTestClass().isInstance(candidate)) {
+						instances.add(candidate);
+					}
+				}
+			}
+
+			for (Object instance : instances) {
+				try {
+					JPostmanAnnotationEngine.completeTestClass(instance);
+				} catch (Throwable error) {
+					Method origin = assertionOriginMethod(instance);
+					Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(instance, origin, error);
+					if (failure == null) {
+						failure = cleaned;
+						failureInstance = instance;
+					} else {
+						failure.addSuppressed(cleaned);
+					}
+				}
+			}
+
+			if (failure != null) {
+				printFailure(context, failure);
+				Method failureMethod = assertionOriginMethod(failureInstance);
+				JPostmanAnnotationEngine.recordFinalFailure(failureInstance, failureMethod);
+				if (failure instanceof Exception) {
+					throw (Exception) failure;
+				}
+				if (failure instanceof Error) {
+					throw (Error) failure;
+				}
+				throw new RuntimeException(failure);
+			}
+		} finally {
+			synchronized (prepared) {
+				for (Object instance : prepared) {
+					JPostmanAnnotationEngine.clearAssertionMethod(instance);
+				}
+			}
+			JUnitContext.clearCurrent();
+		}
+	}
+
+	private Method assertionOriginMethod(Object testInstance) {
+		Method origin = JPostmanAnnotationEngine.lastAssertionMethod(testInstance);
+		return origin == null ? classFailureMethod(testInstance) : origin;
+	}
+
+	private Method classFailureMethod(Object testInstance) {
+		if (testInstance == null) {
+			return null;
+		}
+		Method fallback = null;
+		for (Method method : testInstance.getClass().getDeclaredMethods()) {
+			if (fallback == null) {
+				fallback = method;
+			}
+			if (method.isAnnotationPresent(org.junit.jupiter.api.Test.class)) {
+				return method;
+			}
+		}
+		return fallback;
 	}
 
 	/**
@@ -253,7 +330,11 @@ public final class JPostmanJUnitExtension
 		if (instance == null) {
 			return error;
 		}
-		return JPostmanAnnotationEngine.cleanJUnitFailure(instance, method, error);
+		Method origin = JPostmanAnnotationEngine.lastAssertionMethod(instance);
+		Method failureMethod = JPostmanStackTraceCleaner.rootCause(error) instanceof AssertionError && origin != null
+				? origin
+				: method;
+		return JPostmanAnnotationEngine.cleanJUnitFailure(instance, failureMethod, error);
 	}
 
 	private Method firstMethod(Object testInstance) {

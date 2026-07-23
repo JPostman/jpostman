@@ -328,6 +328,19 @@ final class JPostmanRuntimeOptions {
 		return outputs.contains(LogOutput.INFO) || outputs.contains(LogOutput.ALL);
 	}
 
+	/**
+	 * Returns whether failure diagnostics should append the info block. When the
+	 * normal annotation output already prints INFO/ALL, appending the same
+	 * JPostmanInfo block to the assertion message duplicates console output.
+	 */
+	boolean failureInfoDiagnostic(String localLog, JPostmanInfo info) {
+		if (!failureInfo(localLog, info)) {
+			return false;
+		}
+		EnumSet<LogOutput> regular = logOutput(localLog, info);
+		return !regular.contains(LogOutput.INFO) && !regular.contains(LogOutput.ALL);
+	}
+
 	boolean failureDiagnostics() {
 		return failureDiagnostics(null, null);
 	}

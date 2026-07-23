@@ -1,5 +1,6 @@
 package io.jpostman.annotations.runtime;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -9,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
@@ -338,6 +340,15 @@ public class JPostmanRunnerAssertValidationTest {
 	}
 
 	@Test
+	public void injectedAssertVerifyWithoutActivatedContextIsNoOp() {
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> null);
+
+		assertDoesNotThrow(() -> {
+			asserts.verify();
+		});
+	}
+
+	@Test
 	public void injectedAssertVerifyDelegatesToActiveContextWithoutReplacingSoftAssertions() {
 		ResetAwareAssertContext context = new ResetAwareAssertContext();
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context);
@@ -363,6 +374,21 @@ public class JPostmanRunnerAssertValidationTest {
 	}
 
 	@Test
+	public void injectedAssertVerifyUsesLastActiveContextDuringClassTeardown() {
+		ResetAwareAssertContext context = new ResetAwareAssertContext();
+		AtomicReference<ResetAwareAssertContext> active = new AtomicReference<>(context);
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(active::get);
+
+		asserts.soft(false);
+		active.set(null);
+		asserts.verify();
+
+		assertEquals(1, context.verifyCalls);
+		assertEquals(0, context.assertsCalls);
+		assertFalse(context.softPending);
+	}
+
+	@Test
 	public void localSoftFacadePrefersRunnerFailureOverContextVerifyNoise() {
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> new TestNgNoisySoftContext());
 		JPostman.Assert soft = asserts.soft(false);
@@ -379,6 +405,37 @@ public class JPostmanRunnerAssertValidationTest {
 		} finally {
 			JPostmanRuntimeRunner.clear();
 		}
+	}
+
+	@Test
+	public void runnerCallbackAssertionFailureIncludesActiveSuccessfulRequestIdentity() throws Exception {
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		JPostmanInfo requestInfo = new JPostmanInfo(new String[0], "", "testAuthRunner", "", "Auth",
+				"Login user and get access/refresh tokens").annotation("@JPostmanRunner");
+		AssertionError assertion = new AssertionError(
+				"DemoAsserts::testAuthRunner: Condition should be true ==> expected: <true> but was: <false>");
+		assertion.setStackTrace(new StackTraceElement[] {
+				new StackTraceElement("DemoAsserts", "testAuthRunner", "DemoAsserts.java", 28) });
+
+		Method locationMethod = JPostmanAnnotationRunner.class.getDeclaredMethod("locationError", Object.class,
+				JPostmanInfo.class, Throwable.class);
+		locationMethod.setAccessible(true);
+		AssertionError located = (AssertionError) locationMethod.invoke(runner, new Object(), requestInfo, assertion);
+
+		Method combinedMethod = JPostmanAnnotationRunner.class.getDeclaredMethod("combinedRunnerError", Object.class,
+				java.util.List.class);
+		combinedMethod.setAccessible(true);
+		AssertionError combined = (AssertionError) combinedMethod.invoke(runner, new Object(),
+				java.util.List.of(located));
+
+		String message = combined.getMessage();
+		String requestHeader = "(@JPostmanRunner: method=testAuthRunner, tags=, namespace=<default>, folder=Auth, "
+				+ "request=Login user and get access/refresh tokens, executor=<default>)";
+		String assertionMessage = "DemoAsserts::testAuthRunner: Condition should be true ==> expected: <true> but was: <false>";
+
+		assertTrue(message.contains(requestHeader), message);
+		assertContainsInOrder(message, requestHeader, assertionMessage);
+		assertEquals(1, countOccurrences(message, requestHeader), message);
 	}
 
 	@Test
@@ -910,6 +967,11 @@ public class JPostmanRunnerAssertValidationTest {
 		@SuppressWarnings("unused")
 		public ResetAwareAssertions asserts() {
 			assertsCalls++;
+			return new ResetAwareAssertions(this);
+		}
+
+		@SuppressWarnings("unused")
+		public ResetAwareAssertions soft(boolean log) {
 			return new ResetAwareAssertions(this);
 		}
 

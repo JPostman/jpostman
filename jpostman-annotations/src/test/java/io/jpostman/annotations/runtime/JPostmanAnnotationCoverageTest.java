@@ -1221,6 +1221,26 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(options.failureInfo("debug", null));
 	}
 
+	/**
+	 * Verifies log=info prints JPostmanInfo through normal output only and does not
+	 * append the same block again to a failure diagnostic.
+	 */
+	@Test
+	public void infoOutputIsNotDuplicatedInsideFailureDiagnostics() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new InfoFailureLogsFixture());
+		JPostmanInfo info = new JPostmanInfo("@JPostmanRunner", "testAuthRunner", "", "Auth",
+				"Refresh auth session/token");
+
+		assertTrue(options.failureInfo("info", info));
+		assertTrue(options.logOutput("info", info).contains(JPostmanRuntimeOptions.LogOutput.INFO));
+		assertFalse(options.failureInfoDiagnostic("info", info));
+	}
+
+	static class InfoFailureLogsFixture {
+		@JPostman.Context(config = "", logs = { "none" })
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
 	static class RequestResponseFailureLogsFixture {
 		@JPostman.Context(config = "", logs = { "request", "response" })
 		JPostman.Runtime<JPostman.Test> jpostman;

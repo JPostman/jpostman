@@ -1604,7 +1604,7 @@ public final class JPostmanAnnotationRunner<C> {
 			return JPostmanFolderPath.request(collection, folder, request);
 		} catch (AssertionError | RuntimeException e) {
 			AssertionError error = new AssertionError("Request not found: \"" + request + "\" (namespace="
-					+ value(namespace) + ", folder=" + value(folder) + ")");
+					+ value(namespace) + ", folder=" + folderValue(folder) + ")");
 			error.initCause(e);
 			throw error;
 		}
@@ -1986,7 +1986,7 @@ public final class JPostmanAnnotationRunner<C> {
 		String folder = value(info == null ? "" : info.folder).trim();
 		String detail = value(cause == null ? "" : cause.getMessage()).trim();
 		if (detail.isBlank()) {
-			detail = "Folder not found: " + (folder.isBlank() ? "<default>" : folder);
+			detail = "Folder not found: " + (folder.isBlank() ? "<root>" : folder);
 		}
 		return JPostmanErrors.usage(info, "JPostman runner folder was not found.", detail,
 				"Check @JPostmanRunner.folder or the @JPostman.Request dependency used as the runner scope.");
@@ -2437,7 +2437,20 @@ public final class JPostmanAnnotationRunner<C> {
 			causeMessage = root == null ? "" : value(root.getMessage()).trim();
 		}
 		if (!causeMessage.isBlank()) {
-			message.append(JPostmanErrors.ENDL).append(causeMessage);
+			message.append(JPostmanErrors.ENDL);
+			/*
+			 * A test-body/assert facade failure can occur while a runner request is active
+			 * even when that request's HTTP verification succeeds. Such assertion messages
+			 * do not already carry an annotation suffix, so attach the active request
+			 * identity before the assertion text. This keeps the failure associated with
+			 * the request callback that produced it instead of leaving an unexplained
+			 * location-only entry in the aggregated runner output. Execution/status
+			 * failures already contain their own suffix and must not be duplicated.
+			 */
+			if (info != null && !containsJPostmanSuffix(causeMessage)) {
+				message.append(JPostmanErrors.suffix(info)).append(JPostmanErrors.ENDL);
+			}
+			message.append(causeMessage);
 		}
 
 		AssertionError error = new AssertionError(message.toString());
@@ -2449,6 +2462,13 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		return error;
+	}
+
+	private boolean containsJPostmanSuffix(String message) {
+		if (message == null || message.isBlank()) {
+			return false;
+		}
+		return message.contains("(@JPostman");
 	}
 
 	private String failureLocation(Object testInstance, Throwable cause) {
@@ -2531,7 +2551,7 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		StringBuilder result = new StringBuilder();
-		if (options.failureInfo(annotationLog, info) && info != null) {
+		if (options.failureInfoDiagnostic(annotationLog, info) && info != null) {
 			result.append(info.log(false));
 		}
 
@@ -2628,7 +2648,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 		try {
 			String folderName = value(folder).trim();
-			String key = folderName.isBlank() ? "<default>" : folderName;
+			String key = folderName.isBlank() ? "<root>" : folderName;
 			JPostmanDebugFile.COLLECTIONS.put(key, JPostmanFolderPath.requests(collection, folderName));
 		} catch (RuntimeException | LinkageError ignored) {
 			// Internal diagnostics must never affect annotation execution.
@@ -2807,6 +2827,11 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private String value(String value) {
 		return value == null ? "" : value;
+	}
+
+	private String folderValue(String value) {
+		String folder = value(value).trim();
+		return folder.isBlank() ? "<root>" : folder;
 	}
 
 	private String annotationId(String id) {

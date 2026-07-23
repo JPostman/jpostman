@@ -1,7 +1,9 @@
 package io.jpostman.annotations.runtime;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
@@ -52,6 +54,51 @@ public final class JPostmanAnnotationEngine {
 		} catch (Exception | Error e) {
 			JPostmanDebugFile.failure(testInstance, null, "setup", "", e);
 			throw e;
+		}
+	}
+
+	/**
+	 * Completes class-scoped JPostman facilities after user class teardown. Soft
+	 * assertion contexts are verified once and an injected report is summarized.
+	 *
+	 * @param testInstance completed test instance
+	 * @throws Exception when class-level assertion verification fails
+	 */
+	public static void completeTestClass(Object testInstance) throws Exception {
+		if (testInstance == null) {
+			return;
+		}
+		AssertionError assertionFailure = null;
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				field.setAccessible(true);
+				if (JPostmanAnnotations.hasReportContext(field)) {
+					Object value = field.get(testInstance);
+					if (value instanceof JPostmanReport) {
+						((JPostmanReport) value).summary();
+					}
+				}
+				io.jpostman.annotations.JPostmanAssertContext annotation = JPostmanAnnotations.assertContext(field);
+				if (annotation != null && annotation.soft()) {
+					Object value = field.get(testInstance);
+					if (value instanceof JPostman.Assert) {
+						try {
+							((JPostman.Assert) value).verify();
+						} catch (AssertionError error) {
+							if (assertionFailure == null) {
+								assertionFailure = error;
+							} else {
+								assertionFailure.addSuppressed(error);
+							}
+						}
+					}
+				}
+			}
+			current = current.getSuperclass();
+		}
+		if (assertionFailure != null) {
+			throw assertionFailure;
 		}
 	}
 
@@ -113,6 +160,16 @@ public final class JPostmanAnnotationEngine {
 	/** Clears assertion cleanup for the current test body. */
 	public static void endAssertionCleanup() {
 		JPostmanAssertionCleanup.clear();
+	}
+
+	/** Returns the latest test method that used the injected assertion facade. */
+	public static Method lastAssertionMethod(Object testInstance) {
+		return JPostmanAssertionCleanup.lastMethod(testInstance);
+	}
+
+	/** Clears retained assertion-origin metadata after class completion. */
+	public static void clearAssertionMethod(Object testInstance) {
+		JPostmanAssertionCleanup.clear(testInstance);
 	}
 
 	/**

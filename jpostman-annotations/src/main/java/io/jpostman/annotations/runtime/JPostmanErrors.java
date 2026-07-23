@@ -132,7 +132,7 @@ final class JPostmanErrors {
 			}
 			message.append(" tags=").append(String.join(", ", info.tags));
 			message.append(", namespace=").append(defaultValue(info.namespace));
-			message.append(", folder=").append(defaultValue(info.folder));
+			message.append(", folder=").append(folderValue(info.folder));
 			message.append(", request=").append(defaultValue(info.request));
 			message.append(", executor=").append(defaultValue(info.executor));
 		}
@@ -191,6 +191,10 @@ final class JPostmanErrors {
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException("Failed to read annotation element: " + elementName, e);
 		}
+	}
+
+	private static String folderValue(String value) {
+		return blank(value) ? "<root>" : value;
 	}
 
 	private static String defaultValue(String value) {

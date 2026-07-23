@@ -1,6 +1,9 @@
 package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -10,6 +13,10 @@ import java.util.function.Function;
 final class JPostmanAssertionCleanup {
 
 	private static final ThreadLocal<Function<Throwable, Throwable>> CLEANER = new ThreadLocal<>();
+	private static final ThreadLocal<Object> CURRENT_INSTANCE = new ThreadLocal<>();
+	private static final ThreadLocal<Method> CURRENT_METHOD = new ThreadLocal<>();
+	private static final Map<Object, Method> LAST_ASSERTION_METHOD = Collections
+			.synchronizedMap(new IdentityHashMap<>());
 
 	private JPostmanAssertionCleanup() {
 	}
@@ -18,11 +25,33 @@ final class JPostmanAssertionCleanup {
 		if (testInstance == null || testMethod == null) {
 			return;
 		}
+		CURRENT_INSTANCE.set(testInstance);
+		CURRENT_METHOD.set(testMethod);
 		CLEANER.set(error -> clean(testInstance, testMethod, error));
 	}
 
 	static void clear() {
 		CLEANER.remove();
+		CURRENT_INSTANCE.remove();
+		CURRENT_METHOD.remove();
+	}
+
+	static void markCurrentMethod() {
+		Object instance = CURRENT_INSTANCE.get();
+		Method method = CURRENT_METHOD.get();
+		if (instance != null && method != null) {
+			LAST_ASSERTION_METHOD.put(instance, method);
+		}
+	}
+
+	static Method lastMethod(Object testInstance) {
+		return testInstance == null ? null : LAST_ASSERTION_METHOD.get(testInstance);
+	}
+
+	static void clear(Object testInstance) {
+		if (testInstance != null) {
+			LAST_ASSERTION_METHOD.remove(testInstance);
+		}
 	}
 
 	static Throwable clean(Throwable failure) {

@@ -9,10 +9,12 @@ import java.util.Map;
 import java.util.Set;
 
 import org.testng.IAnnotationTransformer;
+import org.testng.IClassListener;
 import org.testng.IHookCallBack;
 import org.testng.IHookable;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
+import org.testng.ITestClass;
 import org.testng.ITestResult;
 import org.testng.SkipException;
 import org.testng.annotations.ITestAnnotation;
@@ -42,11 +44,43 @@ import io.jpostman.testng.TestNgContext;
  * </p>
  */
 public final class JPostmanTestNgAnnotationListener
-		implements IInvokedMethodListener, IAnnotationTransformer, IHookable {
+		implements IInvokedMethodListener, IAnnotationTransformer, IHookable, IClassListener {
 
-	private final Set<Object> prepared = Collections.newSetFromMap(new IdentityHashMap<>());
-	private final Set<Object> reportedSetupFailures = Collections.newSetFromMap(new IdentityHashMap<>());
+	private final Set<Object> prepared = Collections
+			.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+	private final Set<Object> reportedSetupFailures = Collections
+			.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+	private final Set<Object> completedClasses = Collections
+			.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
 	private final Map<Object, Throwable> setupFailures = Collections.synchronizedMap(new IdentityHashMap<>());
+
+	/**
+	 * Completes class-scoped soft assertions and report output after
+	 * user @AfterClass methods.
+	 */
+	@Override
+	public void onAfterClass(ITestClass testClass) {
+		if (testClass == null) {
+			return;
+		}
+		Class<?> realClass = testClass.getRealClass();
+
+		Object[] instances;
+		synchronized (prepared) {
+			instances = prepared.stream().filter(instance -> instance != null && realClass.isInstance(instance))
+					.toArray(Object[]::new);
+		}
+		for (Object instance : instances) {
+			if (instance == null || !usesJPostmanAnnotations(instance) || !completedClasses.add(instance)) {
+				continue;
+			}
+			try {
+				JPostmanAnnotationEngine.completeTestClass(instance);
+			} catch (Throwable error) {
+				throw asRuntime(error);
+			}
+		}
+	}
 
 	/**
 	 * Validates TestNG @Test methods before TestNG attempts native parameter
@@ -344,7 +378,8 @@ public final class JPostmanTestNgAnnotationListener
 		}
 
 		for (Field field : type.getDeclaredFields()) {
-			if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)) {
+			if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)
+					|| JPostmanAnnotations.hasAssertContext(field) || JPostmanAnnotations.hasReportContext(field)) {
 				return true;
 			}
 		}
@@ -372,7 +407,8 @@ public final class JPostmanTestNgAnnotationListener
 			}
 
 			for (Field field : current.getDeclaredFields()) {
-				if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)) {
+				if (JPostmanAnnotations.hasContext(field) || JPostmanAnnotations.hasTestContext(field)
+						|| JPostmanAnnotations.hasAssertContext(field) || JPostmanAnnotations.hasReportContext(field)) {
 					return true;
 				}
 			}

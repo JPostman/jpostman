@@ -100,7 +100,7 @@ public class JPostmanAnnotationFunctionalTest {
 		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
 		IOException error = expectThrows(IOException.class, () -> runner.setup(new ClasspathNotFoundFixture()));
 		assertEquals(debug(error.getMessage()), "Classpath resource not found: classpath:invalid.json\n"
-				+ "(@JPostman: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n");
+				+ "(@JPostman: tags=, namespace=<default>, folder=<root>, request=<default>, executor=<default>)\n");
 	}
 
 	// File or classpath resource not found: CONFIG
@@ -183,7 +183,7 @@ public class JPostmanAnnotationFunctionalTest {
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "No default @JPostmanExecutor was configured.\n"
 				+ "Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"#id\".\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=<default>, executor=<default>)\n");
 	}
 
 	// WARN JPostman runner found zero requests
@@ -207,7 +207,7 @@ public class JPostmanAnnotationFunctionalTest {
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "WARN JPostman runner found zero requests\n"
 				+ "Check the namespace, folder, include/exclude values, or collection structure.\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=<default>, executor=<default>)\n");
 	}
 
 	// No JPostman data files configured.
@@ -235,7 +235,7 @@ public class JPostmanAnnotationFunctionalTest {
 		IllegalStateException error = expectThrows(IllegalStateException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "No JPostman data files configured.\n"
 				+ "Add @JPostmanContext(dataload = {...}) or config properties key dataload.\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// JPostman data section not found: todo
@@ -262,7 +262,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		IllegalStateException error = expectThrows(IllegalStateException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman data section not found: todo\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// JPostman executor returned null: authExecutor
@@ -289,7 +289,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman executor returned null: authExecutor\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// JPostman execution failed
@@ -315,8 +315,8 @@ public class JPostmanAnnotationFunctionalTest {
 		Method method = ExecutionFailedFixture.class.getDeclaredMethod("productRunner");
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "JPostman execution failed\nConnection refused: connect\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+		assertEquals(debug(error.getMessage()), "JPostman execution failed\n" + "Connection refused: connect\n"
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// JPostman execution failed
@@ -343,7 +343,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()),
-				"(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Get current auth user, executor=<default>)\n"
+				"(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Get current auth user, executor=<default>)\n"
 						+ "Status code mismatch: expected [200] but found [401]\n",
 				"Actual message: " + error.getMessage());
 	}
@@ -374,7 +374,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertTrue(debug(error.getMessage()).contains(
-				"(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Get current auth user, executor=<default>)\n"
+				"(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Get current auth user, executor=<default>)\n"
 						+ "Status code mismatch: expected [200] but found [401]\n"),
 				"Actual message: " + error.getMessage());
 		assertTrue(error.getMessage().contains("********** SecureRequest: **********"),
@@ -448,7 +448,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.run(fixture, method);
 		AssertionError error = expectThrows(AssertionError.class, () -> invokeTestMethod(fixture, method));
 		assertTrue(debug(error.getMessage()).contains("The following asserts failed:\n"
-				+ "	(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Get current auth user, executor=<default>)\n"
+				+ "	(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Get current auth user, executor=<default>)\n"
 				+ "Status code mismatch: expected [200] but found [401]\n"));
 		assertTrue(error.getMessage().contains("********** SecureRequest: **********"),
 				"Actual message: " + error.getMessage());
@@ -486,7 +486,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.run(fixture, method);
 		AssertionError error = expectThrows(AssertionError.class, () -> invokeTestMethod(fixture, method));
 		assertTrue(debug(error.getMessage()).contains("The following asserts failed:\n"
-				+ "	(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Get current auth user, executor=<default>)\n"
+				+ "	(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Get current auth user, executor=<default>)\n"
 				+ "Status code mismatch: expected [200] but found [401]\n"), "Actual message: " + error.getMessage());
 		assertTrue(error.getMessage().contains("********** SecureRequest: **********"),
 				"Actual message: " + error.getMessage());
@@ -561,7 +561,7 @@ public class JPostmanAnnotationFunctionalTest {
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\nConnection refused: connect\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -595,7 +595,7 @@ public class JPostmanAnnotationFunctionalTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman runner failed for 1 request.\n\n"
 				+ "JPostman execution failed\nConnection refused: connect\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -630,7 +630,7 @@ public class JPostmanAnnotationFunctionalTest {
 		assertEquals(debug(error.getMessage()),
 				"Dependency method returned null and cannot be cached: requestExecutor\n"
 						+ "Use void for setup-only dependencies, or return a non-null value when another request needs the cached value.\n"
-						+ "(@JPostmanRequest: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n",
+						+ "(@JPostmanRequest: method=requestExecutor, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -713,7 +713,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman executor returned null: authExecutor\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// Duplicate sections in different files should still fail.
@@ -742,10 +742,10 @@ public class JPostmanAnnotationFunctionalTest {
 		IllegalStateException error = expectThrows(IllegalStateException.class, () -> runner.run(fixture, method));
 
 		assertEquals(debug(error.getMessage()), "Duplicate JPostman data section: default\n"
-				+ "The same section was found in more than one loaded data file.\nFound in:\n"
-				+ "- classpath:product-data.ini\n- classpath:jpostman-rules.ini\n"
+				+ "The same section was found in more than one loaded data file.\n" + "Found in:\n"
+				+ "- classpath:product-data.ini\n" + "- classpath:jpostman-rules.ini\n"
 				+ "Keep each section name unique across loaded data files.\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -780,7 +780,7 @@ public class JPostmanAnnotationFunctionalTest {
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
 				+ "No JPostman assertion files configured.\n"
 				+ "Add @JPostmanContext(assertions = {...}) or config properties key assertions.\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -810,7 +810,7 @@ public class JPostmanAnnotationFunctionalTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
 				+ "JPostman assertion section not found: missing\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -839,7 +839,7 @@ public class JPostmanAnnotationFunctionalTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
 				+ "Unsupported JPostman assertion rule: badRule\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -874,7 +874,7 @@ public class JPostmanAnnotationFunctionalTest {
 				+ "The same assertion section was found in more than one loaded assertion file.\nFound in:\n"
 				+ "- classpath:assertions.ini\n- classpath:jpostman-rules.ini\n"
 				+ "Keep each assertion section name unique across loaded files.\n"
-				+ "(@JPostmanAssertionRunner: tags=, namespace=<default>, folder=<default>, request=<default>, executor=<default>)\n",
+				+ "(@JPostmanAssertionRunner: tags=, namespace=<default>, folder=<root>, request=<default>, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -905,7 +905,7 @@ public class JPostmanAnnotationFunctionalTest {
 		assertEquals(debug(error.getMessage()), "Invalid JPostman verification configuration.\n"
 				+ "@JPostmanRunner cannot use verify and asserts together.\n"
 				+ "Use verify for status-code verification, or use asserts for assertion sections.\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -934,7 +934,7 @@ public class JPostmanAnnotationFunctionalTest {
 
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
-				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanResponse: method=login, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -964,7 +964,7 @@ public class JPostmanAnnotationFunctionalTest {
 		SkipException error = expectThrows(SkipException.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman response skipped.\n"
 				+ "@JPostmanContext(skipAll = true) is enabled.\n"
-				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanResponse: method=login, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// @JPostmanResponse(enabled = true) should override @JPostmanContext(skipAll =
@@ -1021,7 +1021,7 @@ public class JPostmanAnnotationFunctionalTest {
 				+ "enabled and skip cannot be defined on the same @JPostmanResponse annotation.\n"
 				+ "Use enabled = true to override @JPostmanContext(skipAll = true),\n"
 				+ "or use skip = true to disable this response.\n"
-				+ "(@JPostmanResponse: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n");
+				+ "(@JPostmanResponse: method=login, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// @JPostmanRequest(skip = true) should be allowed when used as a dependency.
@@ -1107,7 +1107,7 @@ public class JPostmanAnnotationFunctionalTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
 				+ "Executor class does not provide static apply(request): io.jpostman.annotations.testng.JPostmanAnnotationFunctionalTest$InvalidDefaultExecutor\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 
@@ -1135,7 +1135,7 @@ public class JPostmanAnnotationFunctionalTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
 				+ "Unable to create JPostman default executor from: io.jpostman.annotations.testng.JPostmanAnnotationFunctionalTest$InvalidSessionExecutor\n"
-				+ "(@JPostmanRunner: tags=, namespace=<default>, folder=<default>, request=Login user and get tokens, executor=<default>)\n",
+				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
 

@@ -86,15 +86,44 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier) {
-		return wrapAssert(null, activeContextSupplier, false);
+		return wrapAssert(activeContextSupplier, false);
+	}
+
+	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier, boolean soft) {
+		return wrapAssert(activeContextSupplier, soft, false);
+	}
+
+	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier, boolean soft, boolean classScopedSoft) {
+		return wrapAssert(null, activeContextSupplier, soft, classScopedSoft);
+	}
+
+	static boolean isAssertProxy(Object value) {
+		if (value == null || !Proxy.isProxyClass(value.getClass())) {
+			return false;
+		}
+		InvocationHandler handler = Proxy.getInvocationHandler(value);
+		return handler instanceof JPostmanAssertProxy;
 	}
 
 	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier, boolean soft) {
-		if (target instanceof JPostman.Assert) {
+		return wrapAssert(target, activeContextSupplier, soft, false);
+	}
+
+	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier, boolean soft,
+			boolean classScopedSoft) {
+		if (isAssertProxy(target)) {
 			return (JPostman.Assert) target;
 		}
+
+		/*
+		 * Keep assertion objects returned by the underlying context behind the JPostman
+		 * facade even when they already implement JPostman.Assert. A raw object
+		 * returned from soft(true) would otherwise bypass Runner request-scoped
+		 * collection and class-soft lifecycle rules.
+		 */
 		return (JPostman.Assert) Proxy.newProxyInstance(JPostman.Assert.class.getClassLoader(),
-				new Class<?>[] { JPostman.Assert.class }, new JPostmanAssertProxy(target, activeContextSupplier, soft));
+				new Class<?>[] { JPostman.Assert.class },
+				new JPostmanAssertProxy(target, activeContextSupplier, soft, classScopedSoft));
 	}
 
 	@Override
@@ -191,11 +220,15 @@ final class JPostmanTestProxy implements InvocationHandler {
 		private final Object target;
 		private final Supplier<?> activeContextSupplier;
 		private final boolean soft;
+		private final boolean classScopedSoft;
+		private volatile Object lastActiveContext;
 
-		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier, boolean soft) {
+		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier, boolean soft,
+				boolean classScopedSoft) {
 			this.target = target;
 			this.activeContextSupplier = activeContextSupplier;
 			this.soft = soft;
+			this.classScopedSoft = classScopedSoft;
 		}
 
 		@Override
@@ -215,7 +248,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 			}
 			if ("soft".equals(name) && method.getParameterCount() == 1) {
 				Object soft = invokeContext("soft", args);
-				return wrapAssert(soft, activeContextSupplier, true);
+				return wrapAssert(soft, activeContextSupplier, true, classScopedSoft);
 			}
 			if ("fail".equals(name) && method.getParameterCount() == 1) {
 				Object message = args == null || args.length == 0 ? null : args[0];
@@ -235,11 +268,24 @@ final class JPostmanTestProxy implements InvocationHandler {
 			 */
 			if (target == null && isVerifyMethod(name) && !JPostmanRuntimeRunner.active()) {
 				String contextMethod = "assertAll".equals(name) ? "verify" : name;
-				Object result = invokeContext(contextMethod, args);
+				Object context = resolveContext();
+
+				/*
+				 * A class may inject @JPostman.AssertContext and call verify() from
+				 * 
+				 * @AfterAll/@AfterClass without having executed any assertions. In that case no
+				 * active or remembered assertion context exists, and there is nothing to flush.
+				 * Treat verify()/assertAll() as a successful no-op.
+				 */
+				if (context == null) {
+					return adaptAssertReturn(proxy, method, null, soft);
+				}
+
+				Object result = invokeContext(context, contextMethod, args);
 				return adaptAssertReturn(proxy, method, result, soft);
 			}
 
-			if (soft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
+			if (soft && !classScopedSoft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
 				AssertionError failure = JPostmanRuntimeRunner.softFailure(null);
 				if (failure != null) {
 					throw failure;
@@ -249,7 +295,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 			Object value = assertionTarget();
 			Method targetMethod = findTargetMethod(value, name, args);
-			AssertionError localSoftFailure = soft && JPostmanRuntimeRunner.active()
+			if (!isVerifyMethod(name) && !"soft".equals(name)) {
+				JPostmanAssertionCleanup.markCurrentMethod();
+			}
+			AssertionError localSoftFailure = soft && !classScopedSoft && JPostmanRuntimeRunner.active()
 					? localSoftFailure(targetMethod, args, value)
 					: null;
 			if (localSoftFailure != null) {
@@ -261,18 +310,18 @@ final class JPostmanTestProxy implements InvocationHandler {
 			try {
 				result = invokeTarget(targetMethod, value, args);
 			} catch (AssertionError e) {
-				if (soft && isVerifyMethod(name)) {
+				if (soft && !classScopedSoft && isVerifyMethod(name)) {
 					throw JPostmanRuntimeRunner.softFailure(e);
 				}
 				throw e;
 			}
-			if (soft && isVerifyMethod(name)) {
+			if (soft && !classScopedSoft && isVerifyMethod(name)) {
 				AssertionError failure = JPostmanRuntimeRunner.softFailure(null);
 				if (failure != null) {
 					throw failure;
 				}
 			}
-			if (soft && JPostmanRuntimeRunner.active()
+			if (soft && !classScopedSoft && JPostmanRuntimeRunner.active()
 					&& shouldFailFast(targetMethod, result == null ? value : result)) {
 				recordSoftFailure(result == null ? value : result);
 			} else if (!soft && shouldFailFast(targetMethod, result == null ? value : result)) {
@@ -285,15 +334,28 @@ final class JPostmanTestProxy implements InvocationHandler {
 			if (target != null) {
 				return target;
 			}
-			return invokeContext("asserts", null);
+			return soft ? invokeContext("soft", new Object[] { Boolean.FALSE }) : invokeContext("asserts", null);
+		}
+
+		private Object resolveContext() {
+			Object context = activeContextSupplier == null ? null : activeContextSupplier.get();
+			if (context != null) {
+				lastActiveContext = context;
+				return context;
+			}
+			return lastActiveContext;
 		}
 
 		private Object invokeContext(String name, Object[] args) throws Throwable {
-			Object context = activeContextSupplier == null ? null : activeContextSupplier.get();
+			Object context = resolveContext();
 			if (context == null) {
-				throw new IllegalStateException(
-						"No active JPostman test context is available for @JPostman.AssertContext.");
+				throw new IllegalStateException("No JPostman test context is available for @JPostman.AssertContext. "
+						+ "No assertion context was activated before calling " + name + "().");
 			}
+			return invokeContext(context, name, args);
+		}
+
+		private Object invokeContext(Object context, String name, Object[] args) throws Throwable {
 			Method targetMethod = findTargetMethod(context, name, args);
 			return invokeTarget(targetMethod, context, args);
 		}

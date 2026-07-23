@@ -89,7 +89,7 @@ public final class JPostmanStackTraceCleaner {
 		if (rootMessage == null || rootMessage.isBlank()) {
 			rootMessage = root.getClass().getSimpleName();
 		}
-		message.append(rootMessage);
+		message.append(withMethodOrigin(testClass, testMethod, rootMessage));
 
 		if (includeSuppressed) {
 			// Put secure request/response details directly into the main message.
@@ -160,6 +160,57 @@ public final class JPostmanStackTraceCleaner {
 	 */
 	public static boolean isJUnitSkip(Throwable throwable) {
 		return throwable instanceof TestAbortedException;
+	}
+
+	private static String withMethodOrigin(Class<?> testClass, Method testMethod, String message) {
+		if (message == null || message.isBlank() || testClass == null || testMethod == null) {
+			return message;
+		}
+
+		String origin = testClass.getSimpleName() + "::" + testMethod.getName();
+		if (message.startsWith(origin + ":")) {
+			return message;
+		}
+
+		String[] lines = message.split("\\R", -1);
+		boolean aggregate = lines.length > 1 || message.startsWith("Multiple Failures");
+		if (!aggregate) {
+			return origin + ": " + message;
+		}
+
+		StringBuilder formatted = new StringBuilder();
+		boolean prefixedChild = false;
+		for (int i = 0; i < lines.length; i++) {
+			String line = lines[i];
+			String trimmed = line.trim();
+			String detail = assertionDetail(trimmed);
+			if (detail != null) {
+				int indentLength = line.indexOf(trimmed);
+				String indent = indentLength <= 0 ? "" : line.substring(0, indentLength);
+				line = indent + origin + ": " + detail;
+				prefixedChild = true;
+			}
+			if (i > 0) {
+				formatted.append(System.lineSeparator());
+			}
+			formatted.append(line);
+		}
+
+		return prefixedChild ? formatted.toString() : origin + ": " + message;
+	}
+
+	private static String assertionDetail(String line) {
+		if (line == null || line.isBlank()) {
+			return null;
+		}
+		String[] prefixes = { "org.opentest4j.AssertionFailedError:", "java.lang.AssertionError:",
+				"AssertionFailedError:", "AssertionError:" };
+		for (String prefix : prefixes) {
+			if (line.startsWith(prefix)) {
+				return line.substring(prefix.length()).trim();
+			}
+		}
+		return null;
 	}
 
 	private static Throwable copyThrowable(Throwable root, String message) {

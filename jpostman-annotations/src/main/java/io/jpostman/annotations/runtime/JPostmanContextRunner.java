@@ -548,8 +548,13 @@ final class JPostmanContextRunner<C> {
 									+ field.getName());
 				}
 				field.setAccessible(true);
+				Object existing = field.get(testInstance);
+				if (JPostmanTestProxy.isAssertProxy(existing)) {
+					continue;
+				}
+				boolean soft = JPostmanAnnotations.assertContext(field).soft();
 				field.set(testInstance,
-						JPostmanTestProxy.wrapAssert(() -> activeContexts(testInstance, contexts).activeContext()));
+						JPostmanTestProxy.wrapAssert(() -> assertionContext(testInstance, contexts), soft, soft));
 			}
 			current = current.getSuperclass();
 		}
@@ -641,6 +646,29 @@ final class JPostmanContextRunner<C> {
 		ParameterizedType parameterized = (ParameterizedType) type;
 		Type[] arguments = parameterized.getActualTypeArguments();
 		return arguments.length == 1 && arguments[0] == io.jpostman.annotations.JPostman.Test.class;
+	}
+
+	private C assertionContext(Object testInstance, PreparedContexts<C> fallback) {
+		PreparedContexts<C> contexts = activeContexts(testInstance, fallback);
+		if (contexts == null) {
+			return null;
+		}
+
+		C active = contexts.activeContext();
+		if (active != null) {
+			return active;
+		}
+
+		/*
+		 * Plain JUnit/TestNG test methods do not activate a Runner/Response context.
+		 * AssertContext must still operate against the class's prepared default
+		 * context. Runner/Response execution continues to take precedence whenever an
+		 * active method context is available.
+		 */
+		if (contexts.isEmpty()) {
+			return null;
+		}
+		return contexts.contains("") ? contexts.context("") : contexts.firstContext();
 	}
 
 	private PreparedContexts<C> activeContexts(Object testInstance, PreparedContexts<C> fallback) {

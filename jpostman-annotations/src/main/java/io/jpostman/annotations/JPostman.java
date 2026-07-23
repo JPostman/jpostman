@@ -262,6 +262,13 @@ public final class JPostman {
 	@Target(FIELD)
 	@Retention(RUNTIME)
 	public @interface AssertContext {
+		/**
+		 * Enables class-scoped soft assertion mode. The collector is verified after all
+		 * tests in the class complete.
+		 *
+		 * @return {@code true} to collect failures and verify them after class teardown
+		 */
+		boolean soft() default false;
 	}
 
 	/**
@@ -270,6 +277,13 @@ public final class JPostman {
 	@Target(FIELD)
 	@Retention(RUNTIME)
 	public @interface Asserts {
+		/**
+		 * Enables class-scoped soft assertion mode. The collector is verified after all
+		 * tests in the class complete.
+		 *
+		 * @return {@code true} to collect failures and verify them after class teardown
+		 */
+		boolean soft() default false;
 	}
 
 	/**

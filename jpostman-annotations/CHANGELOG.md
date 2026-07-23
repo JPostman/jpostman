@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0
+
+### Added
+
+- Added automatic class-finalization support for `@JPostman.AssertContext(soft = true)` in JUnit and TestNG.
+- Added automatic `JPostman.Report.summary()` execution after class completion when `@JPostman.ReportContext` is injected.
+- Added assertion-origin tracking so deferred failures identify the test method that produced the assertion.
+- Added regression coverage for empty `verify()`, explicit `@AfterAll` verification, class-soft assertions, Runner soft assertions, report-summary idempotency, request-scoped Runner assertions, and compact stack traces.
+
+### Changed
+
+- Changed `@JPostman.AssertContext(soft = true)` to remain class-scoped even when used inside `@JPostman.Runner(soft = true)` or `@JPostman.Response(soft = true)`.
+- Changed hard/default `@JPostman.AssertContext` soft facades to remain Runner-aware so `asserts.soft(true)` can still be collected and verified at method/request completion.
+- Changed deferred assertion output to prefix failures with `ClassName::methodName`.
+- Changed root-folder diagnostics from `folder=<default>` to `folder=<root>`.
+
 ## 2.3.0
 
 ### Added
