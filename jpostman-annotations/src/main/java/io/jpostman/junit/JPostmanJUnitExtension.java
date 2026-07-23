@@ -83,6 +83,11 @@ public final class JPostmanJUnitExtension
 			}
 		} catch (Throwable error) {
 			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, testMethod, error);
+			if (cleaned instanceof TestAbortedException) {
+				JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
+			} else {
+				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
+			}
 			if (!(cleaned instanceof TestAbortedException)) {
 				printFailure(extensionContext, cleaned);
 			}

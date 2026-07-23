@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import io.jpostman.Params;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /**
  * Runtime information shared across a JPostman annotation execution chain.
@@ -1547,7 +1548,10 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	/** Prints {@link #log(boolean)} using trace level. */
 	public void print(boolean includeAll) {
-		log.trace(log(includeAll));
+		String text = log(includeAll);
+		if (!JPostmanOutputs.write(text)) {
+			log.trace(text);
+		}
 	}
 
 	public static String formatDuration(long millis, boolean includeHours) {

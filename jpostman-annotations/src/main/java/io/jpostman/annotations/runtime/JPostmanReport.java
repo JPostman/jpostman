@@ -6,6 +6,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.jpostman.annotations.JPostmanOutputs;
+
 /**
  * Runtime report collected during JPostman annotation execution.
  *
@@ -162,6 +164,19 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				&& value(left.folder).equals(value(right.folder)) && value(left.request).equals(value(right.request));
 	}
 
+	JPostmanInfo execution(String methodName) {
+		String expected = value(methodName);
+		for (JPostmanInfo candidate : all()) {
+			if (candidate != null && expected.equals(value(candidate.method))) {
+				return candidate;
+			}
+		}
+		if (info != null && expected.equals(value(info.method))) {
+			return info;
+		}
+		return null;
+	}
+
 	private String value(String value) {
 		return value == null ? "" : value;
 	}
@@ -225,6 +240,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	/** Prints {@link #log()} using trace level. */
 	public void summary() {
-		log.trace(log());
+		String text = log();
+		if (!JPostmanOutputs.write(text)) {
+			log.trace(text);
+		}
 	}
 }

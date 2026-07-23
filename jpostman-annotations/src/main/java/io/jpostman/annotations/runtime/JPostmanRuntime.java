@@ -12,6 +12,7 @@ import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.JPostman;
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /**
  * Runtime view injected by {@link JPostmanContext}.
@@ -204,6 +205,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * @param args message and optional format arguments to write
 	 */
 	public void logTrace(Object... args) {
+		if (hasLogArgs(args) && JPostmanOutputs.write("TRACE", message(args), rest(args))) {
+			return;
+		}
 		if (context != null && hasLogArgs(args)) {
 			if (args.length == 1) {
 				context.trace(message(args));
@@ -219,6 +223,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * @param args message and optional format arguments to write
 	 */
 	public void logDebug(Object... args) {
+		if (hasLogArgs(args) && JPostmanOutputs.write("DEBUG", message(args), rest(args))) {
+			return;
+		}
 		if (context != null && hasLogArgs(args)) {
 			if (args.length == 1) {
 				context.debug(message(args));
@@ -234,6 +241,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * @param args message and optional format arguments to write
 	 */
 	public void logInfo(Object... args) {
+		if (hasLogArgs(args) && JPostmanOutputs.write("INFO", message(args), rest(args))) {
+			return;
+		}
 		if (context != null && hasLogArgs(args)) {
 			if (args.length == 1) {
 				context.info(message(args));
@@ -249,6 +259,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * @param args message and optional format arguments to write
 	 */
 	public void logWarn(Object... args) {
+		if (hasLogArgs(args) && JPostmanOutputs.write("WARN", message(args), rest(args))) {
+			return;
+		}
 		if (context != null && hasLogArgs(args)) {
 			if (args.length == 1) {
 				context.warn(message(args));
@@ -264,6 +277,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 * @param args message and optional format arguments to write
 	 */
 	public void logError(Object... args) {
+		if (hasLogArgs(args) && JPostmanOutputs.write("ERROR", message(args), rest(args))) {
+			return;
+		}
 		if (context != null && hasLogArgs(args)) {
 			if (args.length == 1) {
 				context.error(message(args));

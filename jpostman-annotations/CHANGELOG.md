@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.0
+
+### Added
+
+- Added `JPostmanOutput` and scoped `JPostmanOutputs` routing so hosting integrations can receive JPostman output directly without `System.out` or logger interception.
+- Added inherited output-sink support for child threads created during annotation execution.
+- Added output-sink routing for `JPostman.Info.print()`, `JPostmanReport.summary()`, annotation method headers, `JPostman.Test.print()`, `request().print()`, and `response().print()`.
+- Added output-sink routing for `JPostman.Runtime.logTrace(...)`, `logDebug(...)`, `logInfo(...)`, `logWarn(...)`, and `logError(...)`, including SLF4J-style `{}` placeholder expansion.
+
+### Changed
+
+- Changed user-facing annotation output to prefer the installed `JPostmanOutput` sink and retain the existing SLF4J/core logging behavior when no sink is installed.
+- Changed automatic context, request, and response printing to forward their formatted `log()` text directly to the active output sink.
+- Changed scoped output handling to restore the previous sink automatically when the execution scope closes.
+
+
 ## 2.2.9
 
 ### Fixed

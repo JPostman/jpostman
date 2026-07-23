@@ -210,10 +210,10 @@ public final class JPostmanAnnotationRunner<C> {
 			C latest = latestContext(prepared, info.namespace, current.context);
 			String internalDiagnostic = internalDiagnosticLog(latest);
 			if (isFrameworkSkip(e)) {
-				skippedIfMissing(report, info);
+				skipped(report, info);
 				JPostmanDebugFile.skipped(testInstance, info, localLog, internalDiagnostic, e);
 			} else {
-				failedIfMissing(report, info);
+				failed(report, info);
 				JPostmanDebugFile.failure(testInstance, info, localLog, internalDiagnostic, e);
 			}
 			throw e;
@@ -2670,6 +2670,33 @@ public final class JPostmanAnnotationRunner<C> {
 		return injectReportContext(testInstance);
 	}
 
+	void recordFinalFailure(Object testInstance, Method testMethod) throws IllegalAccessException {
+		recordFinalStatus(testInstance, testMethod, false);
+	}
+
+	void recordFinalSkip(Object testInstance, Method testMethod) throws IllegalAccessException {
+		recordFinalStatus(testInstance, testMethod, true);
+	}
+
+	private void recordFinalStatus(Object testInstance, Method testMethod, boolean skip) throws IllegalAccessException {
+		if (testInstance == null || testMethod == null) {
+			return;
+		}
+		JPostmanReport report = report(testInstance);
+		if (report == null) {
+			return;
+		}
+		JPostmanInfo info = report.execution(testMethod.getName());
+		if (info == null) {
+			return;
+		}
+		if (skip) {
+			report.skipped(info);
+		} else {
+			report.failed(info);
+		}
+	}
+
 	private void add(JPostmanReport report, JPostmanInfo info) {
 		if (report != null) {
 			report.update(info);
@@ -2688,26 +2715,10 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
-	private void failedIfMissing(JPostmanReport report, JPostmanInfo info) {
-		if (report != null && !isRecorded(report, info)) {
-			report.failed(info);
-		}
-	}
-
 	private void skipped(JPostmanReport report, JPostmanInfo info) {
 		if (report != null) {
 			report.skipped(info);
 		}
-	}
-
-	private void skippedIfMissing(JPostmanReport report, JPostmanInfo info) {
-		if (report != null && !isRecorded(report, info)) {
-			report.skipped(info);
-		}
-	}
-
-	private boolean isRecorded(JPostmanReport report, JPostmanInfo info) {
-		return report.passed.contains(info) || report.failed.contains(info) || report.skipped.contains(info);
 	}
 
 	private void validateResponseSkipEnabled(JPostmanResponse annotation, JPostmanInfo info) {

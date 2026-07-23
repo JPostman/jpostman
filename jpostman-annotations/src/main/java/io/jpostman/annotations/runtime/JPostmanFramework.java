@@ -12,6 +12,7 @@ import java.util.Set;
 import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.Request;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /**
  * Small bridge between the shared annotation engine and a test framework
@@ -789,6 +790,19 @@ public interface JPostmanFramework<C> {
 	private static void invokePrint(Object target) {
 		if (target == null) {
 			return;
+		}
+		if (JPostmanOutputs.isInstalled()) {
+			try {
+				Method log = target.getClass().getMethod("log");
+				Object text = log.invoke(target);
+				if (text != null && JPostmanOutputs.write(String.valueOf(text))) {
+					return;
+				}
+			} catch (NoSuchMethodException e) {
+				// Fall back to the object's original print implementation.
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				// Logging helpers must never hide the original execution.
+			}
 		}
 		try {
 			Method print = target.getClass().getMethod("print");

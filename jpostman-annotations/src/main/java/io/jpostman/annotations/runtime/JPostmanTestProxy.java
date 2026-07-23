@@ -9,6 +9,7 @@ import java.lang.reflect.TypeVariable;
 import java.util.function.Supplier;
 
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanTestAssertions;
 import io.jpostman.annotations.JPostmanTestSoftAssertions;
 
@@ -113,6 +114,12 @@ final class JPostmanTestProxy implements InvocationHandler {
 			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
 			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
+		if ("print".equals(name) && JPostmanOutputs.isInstalled()) {
+			Method logMethod = findTargetMethod(target, "log", args);
+			Object text = invokeTarget(logMethod, target, args);
+			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
+			return null;
+		}
 		if ("cache".equals(name) && args != null && args.length >= 1 && args[0] instanceof String) {
 			Object value = resolveCacheExpression(target, (String) args[0]);
 			if (method.getParameterCount() == 2 && args.length == 2 && args[1] instanceof Class<?>) {
@@ -125,6 +132,9 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		Method targetMethod = findTargetMethod(target, name, args);
 		Object result = invokeTarget(targetMethod, target, args);
+		if (("request".equals(name) || "response".equals(name)) && result != null) {
+			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
+		}
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
 	}
 

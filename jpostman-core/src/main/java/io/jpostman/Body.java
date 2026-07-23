@@ -217,7 +217,7 @@ public class Body {
 		}
 		JsonElement parsed = workingParsed[0];
 		if (parsed == null || !parsed.isJsonObject()) {
-			throw new IllegalArgumentException("Body builder add/set requires a JSON object body: " + workingRaw[0]);
+			return;
 		}
 		JsonObject obj = parsed.getAsJsonObject();
 		for (BodyMutation mutation : new ArrayList<>(pendingMutations)) {

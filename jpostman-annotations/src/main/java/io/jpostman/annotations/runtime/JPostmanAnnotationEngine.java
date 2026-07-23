@@ -207,6 +207,24 @@ public final class JPostmanAnnotationEngine {
 		}
 	}
 
+	/** Records the final framework result after deferred assertions are flushed. */
+	public static void recordFinalFailure(Object testInstance, Method testMethod) {
+		try {
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).recordFinalFailure(testInstance, testMethod);
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			// Result reporting must never replace the original test failure.
+		}
+	}
+
+	/** Records a final framework skip after annotation execution. */
+	public static void recordFinalSkip(Object testInstance, Method testMethod) {
+		try {
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).recordFinalSkip(testInstance, testMethod);
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			// Result reporting must never replace the original test outcome.
+		}
+	}
+
 	/**
 	 * Creates the same short stack-trace failure used by TestNG for JUnit failures.
 	 *

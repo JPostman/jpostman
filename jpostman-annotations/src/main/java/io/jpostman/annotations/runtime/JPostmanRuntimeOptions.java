@@ -12,6 +12,7 @@ import java.util.Properties;
 import org.slf4j.LoggerFactory;
 
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /** Runtime options resolved from @JPostmanContext and jpostman.properties. */
 final class JPostmanRuntimeOptions {
@@ -443,7 +444,11 @@ final class JPostmanRuntimeOptions {
 		if (testInstance == null || info == null) {
 			return;
 		}
-		LoggerFactory.getLogger(testInstance.getClass()).debug(" === {} === ", info.method);
+
+		String text = "DEBUG " + testInstance.getClass().getName() + ":   === " + info.method + " ===";
+		if (!JPostmanOutputs.write(text)) {
+			LoggerFactory.getLogger(testInstance.getClass()).debug("  === {} ===", info.method);
+		}
 	}
 
 	private static JPostmanContext findContextAnnotation(Object testInstance) {

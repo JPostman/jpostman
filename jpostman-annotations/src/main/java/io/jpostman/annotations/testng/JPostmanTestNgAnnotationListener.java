@@ -157,6 +157,7 @@ public final class JPostmanTestNgAnnotationListener
 					testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, cause));
 				}
 				testResult.setStatus(ITestResult.SKIP);
+				JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
 			} else {
 				if (callMethod) {
 					testResult.setThrowable(cause);
@@ -166,6 +167,7 @@ public final class JPostmanTestNgAnnotationListener
 					testResult.setThrowable(failure);
 				}
 				testResult.setStatus(ITestResult.FAILURE);
+				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
 			}
 		} catch (SkipException e) {
 			if (isJPostmanSkip(e)) {
@@ -174,6 +176,7 @@ public final class JPostmanTestNgAnnotationListener
 				testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, e));
 			}
 			testResult.setStatus(ITestResult.SKIP);
+			JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
 		} catch (Throwable e) {
 			AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, e);
 			/*
@@ -187,6 +190,7 @@ public final class JPostmanTestNgAnnotationListener
 			 */
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
+			JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
 		} finally {
 			TestNgContext.clearCurrent();
 		}
@@ -217,6 +221,11 @@ public final class JPostmanTestNgAnnotationListener
 			// so TestNG may store the original assertion failure directly on ITestResult.
 			if (invokedMethod.isTestMethod()) {
 				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+				if (testResult.getStatus() == ITestResult.FAILURE) {
+					JPostmanAnnotationEngine.recordFinalFailure(testInstance, javaMethod);
+				} else if (testResult.getStatus() == ITestResult.SKIP) {
+					JPostmanAnnotationEngine.recordFinalSkip(testInstance, javaMethod);
+				}
 				if (JPostmanAnnotations.call(javaMethod) != null) {
 					cleanCallMethodFailure(testInstance, javaMethod, testResult);
 				}
