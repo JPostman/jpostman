@@ -34,11 +34,11 @@ jobs:
 
       - name: Publish parent, core, and executors to Maven Central
         run: |
-          # mvn --batch-mode clean deploy \
-          #  -DskipTests \
-          #  -Dgpg.skip=false \
-          #  -Dcentral.skipPublishing=false \
-          #  -pl jpostman-annotations
+          mvn --batch-mode clean deploy \
+            -DskipTests \
+            -Dgpg.skip=false \
+            -Dcentral.skipPublishing=false \
+            -pl jpostman-annotations,jpostman-vault,jpostman-github,jpostman-kubernetes,jpostman-vault,jpostman-codegen,jpostman-api-schema
 
           # To publish all modules instead:
           mvn --batch-mode clean deploy \

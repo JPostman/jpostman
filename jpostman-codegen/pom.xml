@@ -12,8 +12,6 @@
 
 	<artifactId>jpostman-codegen</artifactId>
 	<packaging>jar</packaging>
-	<!-- Update jpostman.codegen.version in parent  -->
-	<version>1.0.1</version>
 
     <name>JPostman Codegen</name>
     <description>CLI and builder utilities for generating JPostman annotation source snippets.</description>

@@ -13,7 +13,7 @@
 	<artifactId>jpostman-annotations</artifactId>
 	<packaging>jar</packaging>
 	<!-- Update jpostman.annotations.version in parent  -->
-	<version>3.0.0</version>
+	<version>3.0.1</version>
 
 	<name>JPostman Annotations</name>
 	<description>Annotation-based execution support for JPostman JUnit and TestNG modules.</description>

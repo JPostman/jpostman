@@ -12,8 +12,6 @@
 
 	<artifactId>jpostman-api-schema</artifactId>
 	<packaging>jar</packaging>
-	<!-- Update jpostman.api-schema.version in parent  -->
-	<version>1.1.1</version>
 
 	<name>JPostman API Schema</name>
 	<description>Pure Java library for importing, transforming, and exporting OpenAPI, Postman Collection, and GraphQL API schemas.</description>
