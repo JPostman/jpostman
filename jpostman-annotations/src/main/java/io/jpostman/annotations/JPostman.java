@@ -1321,12 +1321,32 @@ public final class JPostman {
 		JPostmanInfo params(Object... values);
 
 		/**
+		 * Adds secret global build-time template parameters. These values resolve
+		 * existing placeholders across auth, headers, URL/path, query, and body without
+		 * adding new component fields. Secret values remain masked in diagnostic
+		 * output.
+		 *
+		 * @param values key/value entries
+		 * @return updated info
+		 */
+		JPostmanInfo sparams(Object... values);
+
+		/**
 		 * Adds global build-time template parameters from an existing map.
 		 *
 		 * @param values value map
 		 * @return updated info
 		 */
 		JPostmanInfo params(Map<String, ?> values);
+
+		/**
+		 * Adds secret global build-time template parameters from an existing map.
+		 * Secret values remain masked in diagnostic output.
+		 *
+		 * @param values value map
+		 * @return updated info
+		 */
+		JPostmanInfo sparams(Map<String, ?> values);
 
 		/**
 		 * Adds query values.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.3
+
+### Added
+
+- Added `JPostman.Info.sparams(...)` overloads for defining secure build-time template parameters by key/value or map.
+
+### Fixed
+
+- Fixed `JPostman.Test.print(true)` ignoring values assigned through current `info.body(...)`, `info.params(...)`, headers, query, path, and authentication helpers.
+- Fixed secure parameters supplied through `info.sparams(...)` not being exposed by the compact `JPostman.Info` API.
+
 ## 4.1.2
 
 ### Added

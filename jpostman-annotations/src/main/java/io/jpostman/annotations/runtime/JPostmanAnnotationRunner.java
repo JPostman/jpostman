@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import io.jpostman.ApiExecutor;
 import io.jpostman.Collection;
@@ -1398,7 +1399,13 @@ public final class JPostmanAnnotationRunner<C> {
 
 			try {
 				C requestContext = resolver.context(contextNamespace);
-				Object value = invokeAnnotated(testInstance, dependencyMethod, requestContext, dependencyInfo);
+				final C printBaseContext = requestContext;
+				final JPostmanInfo liveInfo = dependencyInfo;
+				Supplier<C> printTrueContext = () -> prepareRequest(printBaseContext,
+						resolver.collection(contextNamespace), annotation, liveInfo, contextNamespace, contextFolder,
+						contextRequest);
+				Object value = invokeAnnotated(testInstance, dependencyMethod, requestContext, dependencyInfo,
+						printTrueContext);
 				verifyRequestResponse(testInstance, requestContext, dependencyInfo);
 				cacheDependencyResult(resolver, contextNamespace, dependencyMethod, dependencyInfo, cache, value);
 				add(report, dependencyInfo);
@@ -3571,7 +3578,11 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private Object contextArg(Class<?> type, C ctx) {
-		return JPostman.Test.class.isAssignableFrom(type) ? JPostmanTestProxy.wrap(ctx) : ctx;
+		return contextArg(type, ctx, null);
+	}
+
+	private Object contextArg(Class<?> type, C ctx, Supplier<?> activeContextSupplier) {
+		return JPostman.Test.class.isAssignableFrom(type) ? JPostmanTestProxy.wrap(ctx, activeContextSupplier) : ctx;
 	}
 
 	private boolean isInfoParameter(Class<?> type) {
@@ -3579,6 +3590,11 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private Object invokeAnnotated(Object testInstance, Method method, C ctx, JPostmanInfo info) throws Exception {
+		return invokeAnnotated(testInstance, method, ctx, info, null);
+	}
+
+	private Object invokeAnnotated(Object testInstance, Method method, C ctx, JPostmanInfo info,
+			Supplier<?> activeContextSupplier) throws Exception {
 		/*
 		 * Request helpers run their method body before execution, so trace logging here
 		 * is useful. Response helpers are executed first and logged after the response
@@ -3589,23 +3605,48 @@ public final class JPostmanAnnotationRunner<C> {
 			debug(testInstance, info, annotationLog(method));
 		}
 		Class<?>[] types = method.getParameterTypes();
+
+		// Supports an annotated helper with no injected arguments:
+		// void helper()
 		if (types.length == 0) {
 			return invoke(testInstance, method);
 		}
+
+		// Supports a helper that receives only the framework context:
+		// void helper(TestNgContext test) or void helper(JPostman.Test test)
+		// JPostman.Test is proxied with activeContextSupplier so print(true) can use
+		// the latest request prepared from the current JPostmanInfo values.
 		if (types.length == 1 && isContextParameter(types[0])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx));
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier));
 		}
+
+		// Supports a helper that receives only annotation execution information:
+		// void helper(JPostman.Info info) or void helper(JPostmanInfo info)
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
 		}
-		if (types.length == 2 && isInfoParameter(types[1])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx), info);
+
+		// Supports context plus annotation execution information:
+		// void helper(TestNgContext test, JPostman.Info info)
+		if (types.length == 2 && isContextParameter(types[0]) && isInfoParameter(types[1])) {
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier), info);
 		}
-		if (types.length == 2) {
-			return invoke(testInstance, method, contextArg(types[0], ctx), info.method);
+
+		// Supports context plus the current annotated Java method name:
+		// void helper(TestNgContext test, String method)
+		if (types.length == 2 && isContextParameter(types[0]) && String.class.isAssignableFrom(types[1])) {
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier), info.method);
 		}
-		Object contextArg = contextArg(types[0], ctx);
-		return invoke(testInstance, method, contextArg, info.method, info.request);
+
+		// Supports all three injected values: context, method name, and request name:
+		// void helper(TestNgContext test, String method, String request)
+		if (types.length == 3 && isContextParameter(types[0]) && String.class.isAssignableFrom(types[1])
+				&& String.class.isAssignableFrom(types[2])) {
+			Object contextArg = contextArg(types[0], ctx, activeContextSupplier);
+			return invoke(testInstance, method, contextArg, info.method, info.request);
+		}
+
+		throw JPostmanErrors.usage(info, "Unsupported annotated method parameters: " + method.toGenericString());
 	}
 
 	private Object invoke(Object testInstance, Method method, Object... args) throws Exception {

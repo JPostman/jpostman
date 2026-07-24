@@ -144,8 +144,20 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
 		if ("print".equals(name) && JPostmanOutputs.isInstalled()) {
-			Method logMethod = findTargetMethod(target, "log", args);
-			Object text = invokeTarget(logMethod, target, args);
+			boolean resolve = args != null && args.length == 1 && Boolean.TRUE.equals(args[0]);
+			Object printTarget = target;
+
+			// Resolve the latest annotation-prepared context only for print(true).
+			// print(false) must continue to use the original proxy target.
+			if (resolve && activeContextSupplier != null) {
+				Object active = activeContextSupplier.get();
+				if (active != null) {
+					printTarget = active;
+				}
+			}
+
+			Method logMethod = findTargetMethod(printTarget, "log", args);
+			Object text = invokeTarget(logMethod, printTarget, args);
 			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
 			return null;
 		}
@@ -159,8 +171,17 @@ final class JPostmanTestProxy implements InvocationHandler {
 			}
 		}
 
-		Method targetMethod = findTargetMethod(target, name, args);
-		Object result = invokeTarget(targetMethod, target, args);
+		Object invocationTarget = target;
+		if ("print".equals(name) && args != null && args.length == 1 && Boolean.TRUE.equals(args[0])
+				&& activeContextSupplier != null) {
+			Object active = activeContextSupplier.get();
+			if (active != null) {
+				invocationTarget = active;
+			}
+		}
+
+		Method targetMethod = findTargetMethod(invocationTarget, name, args);
+		Object result = invokeTarget(targetMethod, invocationTarget, args);
 		if (("request".equals(name) || "response".equals(name)) && result != null) {
 			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
 		}

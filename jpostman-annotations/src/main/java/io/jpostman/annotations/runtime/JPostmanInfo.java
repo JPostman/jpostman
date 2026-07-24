@@ -1214,10 +1214,32 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		return this;
 	}
 
+	/**
+	 * Adds secret global build-time template parameters using alternating key/value
+	 * pairs. The values resolve only matching existing placeholders and are tracked
+	 * as secrets for masking and secure request metadata.
+	 */
+	public JPostmanInfo sparams(Object... values) {
+		consumeAddMode();
+		put(track(params), valuesMap(true, values));
+		return this;
+	}
+
 	/** Adds global build-time template parameters from an existing map. */
 	public JPostmanInfo params(Map<String, ?> values) {
 		consumeAddMode();
 		put(track(params), valuesMap(false, values));
+		return this;
+	}
+
+	/**
+	 * Adds secret global build-time template parameters from an existing map. The
+	 * values resolve only matching existing placeholders and are tracked as
+	 * secrets.
+	 */
+	public JPostmanInfo sparams(Map<String, ?> values) {
+		consumeAddMode();
+		put(track(params), valuesMap(true, values));
 		return this;
 	}
 
@@ -1459,7 +1481,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Returns raw values that were added through sbody/squery/sheaders/spath/sauth.
+	 * Returns raw values that were added through
+	 * sbody/squery/sheaders/spath/sauth/sparams.
 	 */
 	public Map<String, Object> secretValues() {
 		Map<String, Object> result = new LinkedHashMap<>();
@@ -1471,6 +1494,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		collectSecrets(result, headersAdd);
 		collectSecrets(result, path);
 		collectSecrets(result, auth);
+		collectSecrets(result, params);
 		return result;
 	}
 
