@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.1.1
+
+### Changed
+
+- Improved JSON serialization of raw template values.
+
 ## 3.0.0
 
 ### Added

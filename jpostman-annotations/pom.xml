@@ -7,7 +7,7 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>4.1.0</version>
+		<version>4.1.1</version>
 	</parent>
 
 	<licenses>
@@ -21,7 +21,7 @@
 	<artifactId>jpostman-annotations</artifactId>
 	<packaging>jar</packaging>
 	<!-- Update jpostman.annotations.version in parent  -->
-	<version>4.1.0</version>
+	<version>4.1.1</version>
 
 	<name>JPostman Annotations</name>
 	<description>Annotation-based execution support for JPostman JUnit and TestNG modules.</description>
@@ -31,22 +31,22 @@
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-junit</artifactId>
-			<version>${jpostman.version}</version>
+			<version>${project.parent.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-testng</artifactId>
-			<version>${jpostman.version}</version>
+			<version>${project.parent.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-core</artifactId>
-			<version>${jpostman.version}</version>
+			<version>${project.parent.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>jpostman-secure</artifactId>
-			<version>${jpostman.version}</version>
+			<version>${project.parent.version}</version>
 		</dependency>
 	</dependencies>
 </project>

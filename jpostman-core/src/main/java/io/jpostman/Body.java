@@ -1,5 +1,6 @@
 package io.jpostman;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -190,6 +191,17 @@ public class Body {
 				},
 				// BUILD
 				() -> {
+					boolean hadMutations = !pendingMutations.isEmpty();
+					applyRawTemplateMutations(workingRaw, workingParsed, pendingMutations);
+
+					// A local body update is the final resolution step for this body. Any
+					// remaining placeholders therefore resolve to empty text, preserving the
+					// historical behavior of fragments such as [{{new_item}}] -> [].
+					if (hadMutations && workingParsed[0] == null) {
+						workingRaw[0] = Params.substituteVars(workingRaw[0], Map.of());
+						workingParsed[0] = parse(workingRaw[0]);
+					}
+
 					applyPendingMutations(workingRaw, workingParsed, pendingMutations);
 					JsonElement result = workingParsed[0] == null ? null : workingParsed[0].deepCopy();
 					String resultRaw = result == null ? workingRaw[0] : result.toString();
@@ -207,6 +219,61 @@ public class Body {
 			return new JsonObject();
 		}
 		return parsed;
+	}
+
+	/**
+	 * Applies queued set mutations directly to matching raw body placeholders
+	 * before JSON parsing. This supports placeholders that represent complete JSON
+	 * fragments, for example {@code "items": [{{new_item}}]}.
+	 */
+	private static void applyRawTemplateMutations(String[] workingRaw, JsonElement[] workingParsed,
+			List<BodyMutation> pendingMutations) {
+		if (workingParsed[0] != null || pendingMutations.isEmpty() || workingRaw[0] == null) {
+			return;
+		}
+
+		for (BodyMutation mutation : new ArrayList<>(pendingMutations)) {
+			if (mutation.addIfMissing) {
+				continue;
+			}
+
+			String tokenPattern = "\\{\\{\\s*" + java.util.regex.Pattern.quote(mutation.key) + "\\s*\\}\\}";
+			if (!java.util.regex.Pattern.compile(tokenPattern).matcher(workingRaw[0]).find()) {
+				continue;
+			}
+
+			workingRaw[0] = workingRaw[0].replaceAll(tokenPattern,
+					java.util.regex.Matcher.quoteReplacement(rawTemplateValue(mutation.value)));
+			pendingMutations.remove(mutation);
+		}
+
+		workingParsed[0] = parse(workingRaw[0]);
+	}
+
+	/** Converts a body value to raw JSON-template text. */
+	private static String rawTemplateValue(Object value) {
+		if (value == null) {
+			return "";
+		}
+		if (value instanceof Iterable<?>) {
+			List<String> values = new ArrayList<>();
+			for (Object item : (Iterable<?>) value) {
+				values.add(GSON.toJson(item));
+			}
+			return String.join(",", values);
+		}
+		if (value.getClass().isArray()) {
+			List<String> values = new ArrayList<>();
+			for (int i = 0; i < Array.getLength(value); i++) {
+				values.add(GSON.toJson(Array.get(value, i)));
+			}
+			return String.join(",", values);
+		}
+		if (value instanceof Map<?, ?> || value instanceof JsonElement || value instanceof Number
+				|| value instanceof Boolean) {
+			return GSON.toJson(value);
+		}
+		return String.valueOf(value);
 	}
 
 	/** Applies queued body field changes to the current JSON object body. */
@@ -302,7 +369,7 @@ public class Body {
 		}
 		return pretty(parsed);
 	}
-	
+
 	/**
 	 * Formats a parsed JSON value for display.
 	 *

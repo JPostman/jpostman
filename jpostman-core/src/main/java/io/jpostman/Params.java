@@ -1,10 +1,12 @@
 package io.jpostman;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.ArrayList;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -12,9 +14,6 @@ import com.github.jknack.handlebars.EscapingStrategy;
 import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Template;
 import com.google.gson.Gson;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
@@ -261,6 +260,58 @@ public class Params<T> {
 	}
 
 	/**
+	 * Creates a mutable JSON-ready list from the supplied values.
+	 *
+	 * <p>
+	 * The returned value remains a normal typed Java {@link List}. When passed as a
+	 * value to {@link #json(Object...)}, it is serialized as a JSON array.
+	 * </p>
+	 *
+	 * @param values list values
+	 * @param <T>    value type
+	 * @return mutable list containing the supplied values
+	 */
+	@SafeVarargs
+	public static <T> List<T> jsonList(T... values) {
+		return asList(values);
+	}
+
+	/**
+	 * Creates a mutable ordered JSON-ready map from alternating String keys and
+	 * typed values.
+	 *
+	 * <p>
+	 * The returned value remains a normal typed Java {@link Map}. When passed as a
+	 * value to {@link #json(Object...)}, it is serialized as a JSON object.
+	 * </p>
+	 *
+	 * @param values alternating String keys and values
+	 * @param <T>    value type
+	 * @return mutable ordered map
+	 * @throws IllegalArgumentException when values are not key/value pairs or a key
+	 *                                  is not a String
+	 */
+	@SuppressWarnings("unchecked")
+	public static <T> Map<String, T> jsonMap(Object... values) {
+		if (values == null || values.length == 0) {
+			return new LinkedHashMap<>();
+		}
+		if (values.length % 2 != 0) {
+			throw new IllegalArgumentException("Values must be provided as key/value pairs.");
+		}
+
+		Map<String, T> result = new LinkedHashMap<>();
+		for (int i = 0; i < values.length; i += 2) {
+			Object rawKey = values[i];
+			if (!(rawKey instanceof String)) {
+				throw new IllegalArgumentException("Key must be String. Found: " + rawKey);
+			}
+			result.put((String) rawKey, (T) values[i + 1]);
+		}
+		return result;
+	}
+
+	/**
 	 * Resolves variables using local key/value pairs, then produces the final
 	 * object.
 	 *
@@ -282,8 +333,8 @@ public class Params<T> {
 		return end(toMap(true, values));
 	}
 
-	private static Object convertValue(Object value, boolean stringifyStrings) {
-		return stringifyStrings && value instanceof String ? GSON.toJson(value) : value;
+	private static Object convertValue(Object value, boolean json) {
+		return json ? GSON.toJson(value) : value;
 	}
 
 	/**

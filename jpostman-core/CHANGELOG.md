@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.1
+
+### Added
+
+- Added `Params.jsonList(...)` helper for passing JSON array fragments into raw body templates.
+- Added `Params.jsonMap(...)` helper for passing JSON object fragments into raw body templates.
+- Added comprehensive regression and branch coverage for raw body template processing.
+
 ## 1.2.6
 
 ### Added

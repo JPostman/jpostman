@@ -2,6 +2,7 @@ package io.jpostman;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -13,6 +14,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,6 +23,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpServer;
 
@@ -327,12 +330,12 @@ public class TestCoverage {
 		// values as-is.
 		Map<String, ?> result2 = Params.asJson("key3", "value", "key4",
 				Params.asMap("key5", true, "key6", 12.34, "key7", null));
-		assertEquals(result2.toString(), "{key3=\"value\", key4={key5=true, key6=12.34, key7=null}}");
+		assertEquals(result2.toString(), "{key3=\"value\", key4={\"key5\":true,\"key6\":12.34}}");
 
 		// copy: merges maps into a new ordered map; later maps are appended and
 		// override duplicate keys.
 		assertEquals(Params.copy(result1, result2).toString(),
-				"{key1=value, key2=[1, 2, 3], key3=\"value\", key4={key5=true, key6=12.34, key7=null}}");
+				"{key1=value, key2=[1, 2, 3], key3=\"value\", key4={\"key5\":true,\"key6\":12.34}}");
 
 		// copy: ignores null maps.
 		assertEquals(Params.copy(result1, null).toString(), "{key1=value, key2=[1, 2, 3]}");
@@ -1268,6 +1271,51 @@ public class TestCoverage {
 	}
 
 	@Test
+	public void testJsonListReturnsTypedList() {
+		List<String> values = Params.jsonList("item1", "item2");
+
+		assertEquals(values, List.of("item1", "item2"));
+		values.add("item3");
+		assertEquals(values, List.of("item1", "item2", "item3"));
+
+		assertEquals(0, Params.jsonMap().size());
+		assertEquals(0, Params.<String>jsonMap((Object[]) null).size());
+		assertThrows(IllegalArgumentException.class, () -> Params.jsonMap(1, "hello"));
+	}
+
+	@Test
+	public void testJsonMapReturnsTypedOrderedMap() {
+		Map<String, Integer> values = Params.jsonMap("first", 1, "second", 2);
+
+		assertEquals(values.get("first"), Integer.valueOf(1));
+		assertEquals(values.get("second"), Integer.valueOf(2));
+		assertEquals(new ArrayList<>(values.keySet()), List.of("first", "second"));
+	}
+
+	@Test
+	public void testPartLevelJsonSerializesJsonListAndJsonMap() throws Exception {
+		Collection col = Collection.load(JsonParser
+				.parseString("{\"item\":[{\"name\":\"Structured Json Template\",\"request\":{\"method\":\"POST\","
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"items\\\":{{items}},\\\"meta\\\":{{meta}}}\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}")
+				.getAsJsonObject());
+
+		Request req = col
+				.getRequest("Structured Json Template").builder().body().json("items",
+						Params.jsonList("item1", "item2"), "meta", Params.<Object>jsonMap("count", 2, "active", true))
+				.build();
+
+		assertEquals(req.getBody().getRaw(),
+				"{\"items\":[\"item1\",\"item2\"],\"meta\":{\"count\":2,\"active\":true}}");
+		assertNotNull(req.getBody().getParsed());
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Values must be provided as key/value pairs\\.")
+	public void testJsonMapRejectsOddKeyValuePairs() {
+		Params.jsonMap("first", 1, "second");
+	}
+
+	@Test
 	public void testPartLevelMapAliasSupportsPrimitiveBodyValues() throws Exception {
 		Collection col = Collection
 				.load(JsonParser.parseString("{\"item\":[{\"name\":\"Primitive Body\",\"request\":{\"method\":\"POST\","
@@ -1782,4 +1830,140 @@ public class TestCoverage {
 		context.warn("=== {} ==", "WARN");
 		context.error("=== {} ==", "ERROR");
 	}
+
+	// -------------------------------------------------------------------------
+	// Test Body raw JSON-template branch coverage
+	// -------------------------------------------------------------------------
+
+	@Test
+	public void testBodyRawTemplateSkipsWhenBodyIsAlreadyParsed() {
+		Body updated = new Body("raw", "{\"value\":\"old\"}", "json").builder().set("value", "new").end();
+
+		assertEquals(updated.getParsed().getAsJsonObject().get("value").getAsString(), "new");
+	}
+
+	@Test
+	public void testBodyRawTemplateSkipsWhenThereAreNoMutations() {
+		Body unchanged = new Body("raw", "{\"items\":[{{items}}]}", "json").builder().end();
+
+		assertEquals(unchanged.getRaw(), "{\"items\":[{{items}}]}");
+		assertNull(unchanged.getParsed());
+	}
+
+	@Test
+	public void testBodyRawTemplateSkipsWhenRawBodyIsNull() {
+		Body updated = new Body("raw", null, "json").builder().set("value", "ignored").end();
+
+		assertNull(updated.getRaw());
+		assertNull(updated.getParsed());
+	}
+
+	@Test
+	public void testBodyRawTemplateIgnoresAddMutationDuringRawPass() {
+		Body body = new Body("raw", "{\"items\":[{{items}}]}", "json");
+		Body updated = body.builder().set("items", List.of()).add("extra", "value").end();
+		assertEquals(updated.getParsed(), JsonParser.parseString("{\"items\":[],\"extra\":\"value\"}"));
+	}
+
+	@Test
+	public void testBodyRawTemplateLeavesMissingSetMutationPending() {
+		Body source = new Body("raw", "{\"items\":[{{items}}]}", "json");
+
+		assertThrows(IllegalArgumentException.class, () -> source.builder().set("missing", "value").end());
+	}
+
+	@Test
+	public void testBodyRawTemplateNullValueProducesEmptyFragment() {
+		JsonObject json = resolveRawTemplate("{\"value\":[{{token}}]}", null);
+		assertTrue(json.getAsJsonArray("value").isEmpty());
+	}
+
+	@Test
+	public void testBodyRawTemplateIterableProducesCommaSeparatedJsonValues() {
+		JsonObject json = resolveRawTemplate("{\"value\":[{{token}}]}", List.of("a", "b"));
+
+		assertEquals(json.getAsJsonArray("value").size(), 2);
+		assertEquals(json.getAsJsonArray("value").get(0).getAsString(), "a");
+		assertEquals(json.getAsJsonArray("value").get(1).getAsString(), "b");
+	}
+
+	@Test
+	public void testBodyRawTemplateObjectArrayProducesCommaSeparatedJsonValues() {
+		JsonObject json = resolveRawTemplate("{\"value\":[{{token}}]}", new String[] { "a", "b" });
+
+		assertEquals(json.getAsJsonArray("value").size(), 2);
+		assertEquals(json.getAsJsonArray("value").get(0).getAsString(), "a");
+		assertEquals(json.getAsJsonArray("value").get(1).getAsString(), "b");
+	}
+
+	@Test
+	public void testBodyRawTemplatePrimitiveArrayUsesReflectionArrayAccess() {
+		JsonObject json = resolveRawTemplate("{\"value\":[{{token}}]}", new int[] { 1, 2 });
+
+		assertEquals(json.getAsJsonArray("value").get(0).getAsInt(), 1);
+		assertEquals(json.getAsJsonArray("value").get(1).getAsInt(), 2);
+	}
+
+	@Test
+	public void testBodyRawTemplateMapIsSerializedAsJson() {
+		JsonObject json = resolveRawTemplate("{\"value\":{{token}}}", Map.of("name", "mouse"));
+		assertEquals(json.getAsJsonObject("value").get("name").getAsString(), "mouse");
+	}
+
+	@Test
+	public void testBodyRawTemplateJsonElementIsSerializedAsJson() {
+		JsonObject element = JsonParser.parseString("{\"name\":\"keyboard\"}").getAsJsonObject();
+		JsonObject json = resolveRawTemplate("{\"value\":{{token}}}", element);
+
+		assertEquals(json.getAsJsonObject("value").get("name").getAsString(), "keyboard");
+	}
+
+	@Test
+	public void testBodyRawTemplateNumberIsSerializedWithoutQuotes() {
+		JsonObject json = resolveRawTemplate("{\"value\":{{token}}}", 42);
+		assertEquals(json.get("value").getAsInt(), 42);
+	}
+
+	@Test
+	public void testBodyRawTemplateBooleanIsSerializedWithoutQuotes() {
+		JsonObject json = resolveRawTemplate("{\"value\":{{token}}}", true);
+		assertTrue(json.get("value").getAsBoolean());
+	}
+
+	@Test
+	public void testBodyRawTemplateOrdinaryObjectFallsBackToStringValue() {
+		Object value = new Object() {
+			@Override
+			public String toString() {
+				// Return a valid JSON string literal because the placeholder is unquoted.
+				return "\"custom-value\"";
+			}
+		};
+		JsonObject updated = resolveRawTemplate("{\"token\":{{token}}}", value);
+		assertEquals(updated, JsonParser.parseString("{\"token\":\"custom-value\"}"));
+	}
+
+	@Test
+	public void testBodyRawTemplateReplacementSafelyHandlesDollarAndBackslash() {
+		Object value = new Object() {
+			@Override
+			public String toString() {
+				/*
+				 * A valid JSON string literal containing: - a dollar sign - one escaped
+				 * backslash
+				 */
+				return "\"$5\\\\folder\"";
+			}
+		};
+		JsonObject updated = resolveRawTemplate("{\"token\":{{token}}}", value);
+		assertEquals(updated, JsonParser.parseString("{\"token\":\"$5\\\\folder\"}"));
+		assertEquals(updated.get("token").getAsString(), "$5\\folder");
+	}
+
+	private static JsonObject resolveRawTemplate(String raw, Object value) {
+		Body updated = new Body("raw", raw, "json").builder().set("token", value).end();
+
+		return updated.getParsed().getAsJsonObject();
+	}
+
 }
