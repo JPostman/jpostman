@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.1.2
+
+### Added
+
+- Added `info.params(...)` for defining build-time template parameters shared across auth, headers, URL/path, query, and request bodies without adding new component fields.
+- Added explicit resolve-only placeholder keys for component methods, for example `info.body("{{name}}", value)`.
+
+### Changed
+
+- Plain keys passed to `info.body(...)`, `info.auth(...)`, `info.headers(...)`, `info.query(...)`, and `info.path(...)` retain the existing add/set behavior for backward compatibility.
+- Placeholder-form keys now resolve existing template variables only and are never added as new fields.
+- Component-specific values override matching global `info.params(...)` values.
+
+### Fixed
+
+- Fixed backward-compatibility issues where body values intended only for placeholder resolution could be added as new JSON fields.
+- Fixed raw JSON fragment parameters, including values created by `Params.jsonList(...)`, so they can be resolved through either `{{key}}` component keys or global `info.params(...)`.
+
 ## 4.1.1
 
 ### Changed

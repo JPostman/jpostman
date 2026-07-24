@@ -61,7 +61,7 @@
 	</scm>
 
 	<properties>
-		<jpostman.annotations.version>4.1.1</jpostman.annotations.version>
+		<jpostman.annotations.version>4.1.2</jpostman.annotations.version>
 
 		<java.version>11</java.version>
 		<maven.compiler.release>${java.version}</maven.compiler.release>

@@ -238,17 +238,38 @@ public interface JPostmanFramework<C> {
 		Map<String, String> urlParams = built.getUrl() == null || built.getUrl().getParams() == null ? Map.of()
 				: built.getUrl().getParams();
 
+		// Global params resolve configured placeholders only and never add fields.
+		applyParams(builder.url(), urlParams, info.params);
+		applyParams(builder.headers(), headerParams, info.params);
+		applyParams(builder.body(), bodyParams, info.params);
+
+		// Component-specific values retain legacy add/set behavior. Wrapped keys such
+		// as {{token}} explicitly mean resolve-only and are never added.
 		applySetOrAdd(builder.url(), urlParams, info.query);
 		applySetOrAdd(builder.headers(), headerParams, info.headers);
 		applySetOrAdd(builder.body(), bodyParams, info.body);
 		applySetOrAdd(builder.url(), urlParams, info.path);
-		applyAuth(request, builder, info.auth);
+		applyAuth(request, builder, mergedParams(info.params, info.auth));
 
 		applyAdd(builder.url(), info.queryAdd);
 		applyAdd(builder.headers(), info.headersAdd);
 		applyAdd(builder.body(), info.bodyAdd);
 
 		return builder.build();
+	}
+
+	private static void applyParams(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
+			Map<String, Object> values) {
+		if (step == null || values == null || values.isEmpty() || configuredParams == null
+				|| configuredParams.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			String key = placeholderKey(entry.getKey());
+			if (!key.isBlank() && configuredParams.containsKey(key)) {
+				step.set(key, executableValue(entry.getValue()));
+			}
+		}
 	}
 
 	private static void applySetOrAdd(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
@@ -259,18 +280,50 @@ public interface JPostmanFramework<C> {
 
 		Map<String, String> params = configuredParams == null ? Map.of() : configuredParams;
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
-			String key = entry.getKey();
-			if (key == null || key.isBlank()) {
+			String originalKey = entry.getKey();
+			if (originalKey == null || originalKey.isBlank()) {
 				continue;
 			}
 
+			boolean resolveOnly = isPlaceholderKey(originalKey);
+			String key = placeholderKey(originalKey);
 			Object value = executableValue(entry.getValue());
-			if (params.containsKey(key)) {
+			if (resolveOnly || params.containsKey(key)) {
 				step.set(key, value);
 			} else {
 				step.add(key, value);
 			}
 		}
+	}
+
+	private static boolean isPlaceholderKey(String key) {
+		if (key == null) {
+			return false;
+		}
+		String value = key.trim();
+		return value.length() >= 4 && value.startsWith("{{") && value.endsWith("}}");
+	}
+
+	private static String placeholderKey(String key) {
+		if (key == null) {
+			return "";
+		}
+		String value = key.trim();
+		return isPlaceholderKey(value) ? value.substring(2, value.length() - 2).trim() : value;
+	}
+
+	private static Map<String, Object> mergedParams(Map<String, Object> params, Map<String, Object> overrides) {
+		if ((params == null || params.isEmpty()) && (overrides == null || overrides.isEmpty())) {
+			return Map.of();
+		}
+		java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+		if (params != null) {
+			result.putAll(params);
+		}
+		if (overrides != null) {
+			result.putAll(overrides);
+		}
+		return result;
 	}
 
 	private static void applyAuth(Request request, Request.RequestBuilder builder, Map<String, Object> auth) {
@@ -302,11 +355,17 @@ public interface JPostmanFramework<C> {
 	}
 
 	private static Object firstAuthValue(Map<String, Object> auth, String... keys) {
-		for (String key : keys) {
-			Object value = auth.get(key);
-			Object raw = executableValue(value);
-			if (raw != null && !String.valueOf(raw).isBlank()) {
-				return value;
+		for (Map.Entry<String, Object> entry : auth.entrySet()) {
+			String candidate = placeholderKey(entry.getKey());
+			for (String key : keys) {
+				if (!key.equals(candidate)) {
+					continue;
+				}
+				Object value = entry.getValue();
+				Object raw = executableValue(value);
+				if (raw != null && !String.valueOf(raw).isBlank()) {
+					return value;
+				}
 			}
 		}
 		return null;
