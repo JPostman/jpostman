@@ -946,6 +946,42 @@ public final class JPostman {
 		Info info();
 
 		/**
+		 * Returns the current request log after resolving values collected by the
+		 * active annotation helper. Equivalent to {@code log(true)}.
+		 *
+		 * @return resolved request log
+		 */
+		default String log() {
+			return log(true);
+		}
+
+		/**
+		 * Returns the current request log.
+		 *
+		 * @param resolve {@code true} to apply the current annotation info before
+		 *                logging, or {@code false} to use the stored unresolved request
+		 * @return request log
+		 */
+		String log(boolean resolve);
+
+		/**
+		 * Prints the current request after resolving values collected by the active
+		 * annotation helper. Equivalent to {@code print(true)}.
+		 */
+		default void print() {
+			print(true);
+		}
+
+		/**
+		 * Prints the current request.
+		 *
+		 * @param resolve {@code true} to apply the current annotation info before
+		 *                printing, or {@code false} to print the stored unresolved
+		 *                request
+		 */
+		void print(boolean resolve);
+
+		/**
 		 * Returns fluent request-name rules for a {@link Runner} test body.
 		 *
 		 * @return runner request rules

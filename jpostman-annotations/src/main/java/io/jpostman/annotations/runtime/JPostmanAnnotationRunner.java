@@ -1399,6 +1399,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 			try {
 				C requestContext = resolver.context(contextNamespace);
+				dependencyInfo.liveParams((key, value) -> framework.plain(requestContext, key, value));
 				final C printBaseContext = requestContext;
 				final JPostmanInfo liveInfo = dependencyInfo;
 				Supplier<C> printTrueContext = () -> prepareRequest(printBaseContext,

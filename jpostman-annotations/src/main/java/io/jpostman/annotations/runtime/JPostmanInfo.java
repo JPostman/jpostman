@@ -142,6 +142,11 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	private Map<String, Object> lastValueTarget;
 
 	/**
+	 * Optional live parameter sink used while a request-helper method is running.
+	 */
+	private BiConsumer<String, Object> liveParamConsumer;
+
+	/**
 	 * Path variable values applied to the request when supported by the request
 	 * builder.
 	 */
@@ -1210,7 +1215,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo params(Object... values) {
 		consumeAddMode();
-		put(track(params), valuesMap(false, values));
+		Map<String, Object> mapped = valuesMap(false, values);
+		put(track(params), mapped);
+		applyLiveParams(mapped);
 		return this;
 	}
 
@@ -1228,7 +1235,9 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	/** Adds global build-time template parameters from an existing map. */
 	public JPostmanInfo params(Map<String, ?> values) {
 		consumeAddMode();
-		put(track(params), valuesMap(false, values));
+		Map<String, Object> mapped = valuesMap(false, values);
+		put(track(params), mapped);
+		applyLiveParams(mapped);
 		return this;
 	}
 
@@ -1241,6 +1250,22 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		consumeAddMode();
 		put(track(params), valuesMap(true, values));
 		return this;
+	}
+
+	JPostmanInfo liveParams(BiConsumer<String, Object> consumer) {
+		this.liveParamConsumer = consumer;
+		return this;
+	}
+
+	private void applyLiveParams(Map<String, Object> values) {
+		if (liveParamConsumer == null || values == null || values.isEmpty()) {
+			return;
+		}
+		for (Map.Entry<String, Object> entry : values.entrySet()) {
+			if (entry.getKey() != null && !entry.getKey().isBlank()) {
+				liveParamConsumer.accept(entry.getKey(), JPostmanCacheValueConverter.unwrap(entry.getValue()));
+			}
+		}
 	}
 
 	/** Returns true when request customization values were added. */

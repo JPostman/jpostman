@@ -1,5 +1,7 @@
 package io.jpostman.annotations.runtime;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -8,9 +10,13 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.JPostman;
+import io.jpostman.Request;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanOutputs;
 
@@ -46,6 +52,8 @@ import io.jpostman.annotations.JPostmanOutputs;
  *            {@code JUnitContext}
  */
 public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runtime<C> {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(JPostmanRuntime.class);
 
 	private final JPostman.Context context;
 	private final String namespace;
@@ -167,6 +175,101 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 */
 	public JPostmanInfo info() {
 		return infoSupplier == null ? null : infoSupplier.get();
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public void print(boolean resolve) {
+		String text = log(resolve);
+		if (!JPostmanOutputs.write(text)) {
+			LOGGER.trace(text);
+		}
+	}
+
+	/** {@inheritDoc} */
+	@Override
+	public String log(boolean resolve) {
+		C active = ctx();
+		if (active == null) {
+			return "";
+		}
+
+		Object secureRequest = invokeNoArgs(active, "request");
+		if (secureRequest == null) {
+			return "";
+		}
+
+		if (!resolve) {
+			return invokeLog(secureRequest, false);
+		}
+
+		JPostmanInfo currentInfo = info();
+		if (currentInfo == null || !currentInfo.hasRequestValues()) {
+			return invokeLog(secureRequest, true);
+		}
+
+		Object raw = invokeNoArgs(secureRequest, "request");
+		if (!(raw instanceof Request)) {
+			return invokeLog(secureRequest, true);
+		}
+
+		Request original = (Request) raw;
+		Request resolved = JPostmanFramework.applyRequestValues(original, currentInfo);
+
+		try {
+			invokeRequest(active, resolved);
+			Object loggable = invokeNoArgs(active, "request");
+			return invokeLog(loggable, true);
+		} finally {
+			invokeRequest(active, original);
+		}
+	}
+
+	private static Object invokeNoArgs(Object target, String methodName) {
+		try {
+			Method method = target.getClass().getMethod(methodName);
+			return method.invoke(target);
+		} catch (InvocationTargetException e) {
+			throw propagate(e.getCause());
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Unable to call " + methodName + "() on " + target.getClass().getName(), e);
+		}
+	}
+
+	private static void invokeRequest(Object target, Request request) {
+		try {
+			Method method = target.getClass().getMethod("request", Request.class);
+			method.invoke(target, request);
+		} catch (InvocationTargetException e) {
+			throw propagate(e.getCause());
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Unable to install request on " + target.getClass().getName(), e);
+		}
+	}
+
+	private static String invokeLog(Object target, boolean resolve) {
+		if (target == null) {
+			return "";
+		}
+		try {
+			Method method = target.getClass().getMethod("log", boolean.class);
+			Object result = method.invoke(target, resolve);
+			return result == null ? "" : result.toString();
+		} catch (InvocationTargetException e) {
+			throw propagate(e.getCause());
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Unable to log request from " + target.getClass().getName(), e);
+		}
+	}
+
+	private static RuntimeException propagate(Throwable cause) {
+		if (cause instanceof RuntimeException) {
+			return (RuntimeException) cause;
+		}
+		if (cause instanceof Error) {
+			throw (Error) cause;
+		}
+		return new IllegalStateException(cause);
 	}
 
 	/** {@inheritDoc} */

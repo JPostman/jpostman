@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.1.4
+
+### Added
+
+- Added `JPostman.Test.log(boolean)` and `JPostman.Test.print(boolean)` overloads so callers can choose resolved or unresolved request output.
+- Added live parameter propagation so values assigned through `info.params(...)` and `info.sparams(...)` immediately update the active request during annotation execution.
+
+### Changed
+
+- Changed `JPostman.Test.log()` and `JPostman.Test.print()` to delegate to the new boolean overloads while preserving existing default behavior.
+- Changed annotation output routing to forward formatted request output through the installed `JPostmanOutput` sink before falling back to the configured logger.
+
+### Fixed
+
+- Fixed `JPostman.Test.log()` to include request changes made through `info.body(...)`, `info.params(...)`, `info.sparams(...)`, headers, query, path, and authentication helpers during the current execution.
+- Fixed `JPostman.Test.print()` to use the same formatted output as `log()` for consistent request rendering across output sinks and logging.
+
 ## 4.1.3
 
 ### Added

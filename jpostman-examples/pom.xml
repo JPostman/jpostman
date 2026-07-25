@@ -28,6 +28,7 @@
 		<dependency>
 			<groupId>io.github.jpostman</groupId>
 			<artifactId>jpostman-annotations</artifactId>
+			<version>${jpostman.annotations.version}</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
