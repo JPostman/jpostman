@@ -18,9 +18,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.jpostman.Params;
+import io.jpostman.Request;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanOutputs;
+import io.jpostman.secure.SecureValue;
 
 /**
  * Runtime information shared across a JPostman annotation execution chain.
@@ -163,6 +165,17 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * and auth without adding new component fields.
 	 */
 	public final Map<String, Object> params;
+
+	/** Source collection request used to create the executable request. */
+	private Request sourceRequest;
+
+	void sourceRequest(Request request) {
+		this.sourceRequest = request;
+	}
+
+	Request sourceRequest() {
+		return sourceRequest;
+	}
 
 	/** Timestamp when the execution chain info was created. */
 	public final long created;
@@ -1490,7 +1503,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String key = entry.getKey();
 			Object value = entry.getValue();
-			result.put(key, shouldMask(key, value, sensitiveSection) ? "********" : value);
+			result.put(key, shouldMask(key, value, sensitiveSection) ? SecureValue.DEFAULT_MASK : value);
 		}
 		return result;
 	}
@@ -1604,6 +1617,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			builder.append("\n  path=").append(masked(path, false));
 		if (auth != null && auth.size() > 0)
 			builder.append("\n  auth=").append(masked(auth, true));
+		if (params != null && params.size() > 0)
+			builder.append("\n  params=").append(masked(params, false));
 		if (includeAll) {
 			builder.append("\n  created=").append(date(created));
 			append(builder, "started", date(started));

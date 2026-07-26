@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.5
+### Added
+
+- Added `params` to `JPostmanInfo.log(...)` output to simplify debugging of runtime parameter resolution.
+
+### Fixed
+
+- Fixed dependency execution where unresolved placeholder cleanup prevented later request mutations from being applied.
+- Fixed URL path parameter resolution when using `info.params(...)`.
+- Fixed secure runtime logging to prevent resolved sensitive values from appearing in request output.
+
 ## 4.1.4
 
 ### Added

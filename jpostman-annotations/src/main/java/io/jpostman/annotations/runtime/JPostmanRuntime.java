@@ -2,7 +2,11 @@ package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -19,6 +23,7 @@ import io.jpostman.JPostman;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanOutputs;
+import io.jpostman.secure.SecureValue;
 
 /**
  * Runtime view injected by {@link JPostmanContext}.
@@ -199,18 +204,36 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 			return "";
 		}
 
+		JPostmanInfo currentInfo = info();
 		if (!resolve) {
-			return invokeLog(secureRequest, false);
+			Request unresolved = currentInfo == null ? null : currentInfo.sourceRequest();
+			if (unresolved == null) {
+				return invokeLog(secureRequest, false);
+			}
+
+			Object raw = invokeNoArgs(secureRequest, "request");
+			Request installed = raw instanceof Request ? (Request) raw : null;
+			try {
+				// The active context normally contains the executable request, whose build
+				// has already cleaned unresolved values. Temporarily install the untouched
+				// collection template solely for log/print(false).
+				invokeRequest(active, unresolved);
+				Object unresolvedLoggable = invokeNoArgs(active, "request");
+				return invokeLog(unresolvedLoggable, false);
+			} finally {
+				if (installed != null) {
+					invokeRequest(active, installed);
+				}
+			}
 		}
 
-		JPostmanInfo currentInfo = info();
 		if (currentInfo == null || !currentInfo.hasRequestValues()) {
-			return invokeLog(secureRequest, true);
+			return maskSecureValues(invokeLog(secureRequest, true), currentInfo);
 		}
 
 		Object raw = invokeNoArgs(secureRequest, "request");
 		if (!(raw instanceof Request)) {
-			return invokeLog(secureRequest, true);
+			return maskSecureValues(invokeLog(secureRequest, true), currentInfo);
 		}
 
 		Request original = (Request) raw;
@@ -219,7 +242,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		try {
 			invokeRequest(active, resolved);
 			Object loggable = invokeNoArgs(active, "request");
-			return invokeLog(loggable, true);
+			return maskSecureValues(invokeLog(loggable, true), currentInfo);
 		} finally {
 			invokeRequest(active, original);
 		}
@@ -245,6 +268,36 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException("Unable to install request on " + target.getClass().getName(), e);
 		}
+	}
+
+	private static String maskSecureValues(String text, JPostmanInfo info) {
+		if (text == null || text.isEmpty() || info == null) {
+			return text == null ? "" : text;
+		}
+
+		Map<String, Object> secrets = info.secretValues();
+		if (secrets.isEmpty()) {
+			return text;
+		}
+
+		List<String> values = new ArrayList<>();
+		for (Object value : secrets.values()) {
+			Object revealed = JPostmanInfo.reveal(value);
+			if (revealed == null) {
+				continue;
+			}
+			String secret = String.valueOf(revealed);
+			if (!secret.isBlank() && !values.contains(secret)) {
+				values.add(secret);
+			}
+		}
+
+		values.sort(Comparator.comparingInt(String::length).reversed());
+		String masked = text;
+		for (String value : values) {
+			masked = masked.replace(value, SecureValue.DEFAULT_MASK);
+		}
+		return masked;
 	}
 
 	private static String invokeLog(Object target, boolean resolve) {

@@ -208,6 +208,9 @@ public interface JPostmanFramework<C> {
 	 * @return context with the customized request applied
 	 */
 	default C request(C context, Request request, JPostmanInfo info) {
+		if (info != null) {
+			info.sourceRequest(request);
+		}
 		C result = request(context, applyRequestValues(request, info));
 		applySecureRequestMetadata(result, info);
 		return result;
@@ -228,27 +231,40 @@ public interface JPostmanFramework<C> {
 			return request;
 		}
 
-		Request built = request.builder().build();
 		Request.RequestBuilder builder = request.builder();
 
-		Map<String, String> bodyParams = built.getBody() == null || built.getBody().params() == null ? Map.of()
-				: built.getBody().params();
-		Map<String, String> headerParams = built.getHeader() == null || built.getHeader().getParams() == null ? Map.of()
-				: built.getHeader().getParams();
-		Map<String, String> urlParams = built.getUrl() == null || built.getUrl().getParams() == null ? Map.of()
-				: built.getUrl().getParams();
+		/*
+		 * Read configured parameters from the original unresolved request. Building an
+		 * intermediate request here finalizes unresolved values and can remove
+		 * placeholders that a dependency supplies later through info.params(...). The
+		 * original request remains the authoritative template until all dependency
+		 * values have been applied.
+		 */
+		Map<String, String> bodyParams = request.getBody() == null || request.getBody().params() == null ? Map.of()
+				: request.getBody().params();
+		Map<String, String> headerParams = request.getHeader() == null || request.getHeader().getParams() == null
+				? Map.of()
+				: request.getHeader().getParams();
+		Map<String, String> urlQueryParams = request.getUrl() == null || request.getUrl().getParams() == null ? Map.of()
+				: request.getUrl().getParams();
+		Map<String, String> requestTokenParams = request.params() == null ? Map.of() : request.params();
 
-		// Global params resolve configured placeholders only and never add fields.
-		applyParams(builder.url(), urlParams, info.params);
-		applyParams(builder.headers(), headerParams, info.params);
-		applyParams(builder.body(), bodyParams, info.params);
+		/*
+		 * Global params are request variables, not component field names. Resolve them
+		 * locally in every request part before build() performs final unresolved
+		 * cleanup. This handles URL paths, query values, headers and raw/JSON bodies
+		 * uniformly.
+		 */
+		applyResolve(builder.url(), requestTokenParams, info.params);
+		applyResolve(builder.headers(), requestTokenParams, info.params);
+		applyResolve(builder.body(), requestTokenParams, info.params);
 
 		// Component-specific values retain legacy add/set behavior. Wrapped keys such
 		// as {{token}} explicitly mean resolve-only and are never added.
-		applySetOrAdd(builder.url(), urlParams, info.query);
+		applySetOrAdd(builder.url(), urlQueryParams, info.query);
 		applySetOrAdd(builder.headers(), headerParams, info.headers);
 		applySetOrAdd(builder.body(), bodyParams, info.body);
-		applySetOrAdd(builder.url(), urlParams, info.path);
+		applySetOrAdd(builder.url(), requestTokenParams, info.path);
 		applyAuth(request, builder, mergedParams(info.params, info.auth));
 
 		applyAdd(builder.url(), info.queryAdd);
@@ -258,17 +274,22 @@ public interface JPostmanFramework<C> {
 		return builder.build();
 	}
 
-	private static void applyParams(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
+	private static void applyResolve(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
 			Map<String, Object> values) {
 		if (step == null || values == null || values.isEmpty() || configuredParams == null
 				|| configuredParams.isEmpty()) {
 			return;
 		}
+
+		java.util.LinkedHashMap<String, Object> resolved = new java.util.LinkedHashMap<>();
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String key = placeholderKey(entry.getKey());
 			if (!key.isBlank() && configuredParams.containsKey(key)) {
-				step.set(key, executableValue(entry.getValue()));
+				resolved.put(key, executableValue(entry.getValue()));
 			}
+		}
+		if (!resolved.isEmpty()) {
+			step.end(resolved);
 		}
 	}
 

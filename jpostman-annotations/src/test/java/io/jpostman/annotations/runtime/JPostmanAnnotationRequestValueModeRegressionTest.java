@@ -16,6 +16,7 @@ import com.google.gson.JsonParser;
 import io.jpostman.Collection;
 import io.jpostman.Params;
 import io.jpostman.Request;
+import io.jpostman.secure.SecureValue;
 
 /**
  * Regression coverage for JPostmanInfo request-value application modes.
@@ -281,6 +282,190 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 				"Masking metadata must retain the secret independently of request serialization.");
 	}
 
+	@Test
+	public void dependencyParamsResolvePathQueryHeadersBodyAndAuthBeforeUnresolvedCleanup() throws Exception {
+		Request request = requestWithUnresolvedValuesInEveryRequestSection();
+		JPostmanInfo dependencyInfo = new JPostmanInfo("request", "testReq", "", "My Request");
+
+		dependencyInfo.params("hierarchy", "parent", "interval", "daily", "limit", 20, "token", "header-token",
+				"oauth2", "access-token");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, dependencyInfo);
+
+		assertTrue(updated.log().contains("/consumption/parent?limit=20"), updated::log);
+		assertEquals("20", updated.getUrl().get("limit"));
+		assertEquals("header-token", updated.getHeader().get("X-Token"));
+		assertEquals("Bearer access-token", updated.getHeader().get("Authorization"));
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("daily", body.get("interval").getAsString());
+	}
+
+	@Test
+	public void originalTemplateStillExposesAllParamsAfterOneResolvedCopyIsBuilt() throws Exception {
+		Request original = requestWithUnresolvedValuesInEveryRequestSection();
+		JPostmanInfo firstDependency = new JPostmanInfo("request", "firstDependency", "", "My Request");
+		firstDependency.params("hierarchy", "parent");
+
+		Request firstResolvedCopy = JPostmanFramework.applyRequestValues(original, firstDependency);
+		assertTrue(firstResolvedCopy.log().contains("/consumption/parent"), firstResolvedCopy::log);
+
+		JPostmanInfo completeDependencyChain = new JPostmanInfo("response", "testRes", "", "My Request");
+		completeDependencyChain.params("hierarchy", "parent", "interval", "daily", "limit", 20, "token", "header-token",
+				"oauth2", "access-token");
+
+		Request finalRequest = JPostmanFramework.applyRequestValues(original, completeDependencyChain);
+
+		assertTrue(finalRequest.log().contains("/consumption/parent?limit=20"), finalRequest::log);
+		assertEquals("header-token", finalRequest.getHeader().get("X-Token"));
+		assertEquals("Bearer access-token", finalRequest.getHeader().get("Authorization"));
+		assertEquals("daily", finalRequest.getBody().getParsed().getAsJsonObject().get("interval").getAsString());
+	}
+
+	@Test
+	public void runtimePrintFalseKeepsEveryUnresolvedPowerDailyPlaceholder() throws Exception {
+		Request unresolved = requestWithPowerDailyUnresolvedBody();
+		JPostmanInfo info = new JPostmanInfo("executor", "defaultExecutor", "My Folder", "My Request");
+		info.params("hierarchy", "parent", "interval", "parent");
+		info.sourceRequest(unresolved);
+
+		Request executable = JPostmanFramework.applyRequestValues(unresolved, info);
+		RuntimeRequestContext active = new RuntimeRequestContext(executable);
+		JPostmanRuntime<RuntimeRequestContext> runtime = new JPostmanRuntime<>(null, "", ignored -> active,
+				() -> active, () -> info);
+
+		String raw = runtime.log(false);
+
+		assertTrue(raw.contains("/v1/{{hierarchy}}"), raw);
+		assertTrue(raw.contains("\"fromDate\": \"{{fromDate}}\""), raw);
+		assertTrue(raw.contains("\"toDate\": \"{{toDate}}\""), raw);
+
+		// Rendering the unresolved form must not replace the executable request held by
+		// the active context.
+		assertEquals(executable, active.request().request());
+	}
+
+	@Test
+	public void runtimePrintTrueMasksSecureValueAcrossPathQueryAuthHeadersAndBody() throws Exception {
+		String token = "eyJhbGciOiJIUzI1NiJ9.payload.signature";
+		Request unresolved = requestWithSameSecretInEveryRequestSection();
+		JPostmanInfo info = new JPostmanInfo("executor", "defaultExecutor", "", "Secure request");
+
+		// params resolves the token throughout the request. Marking the same value
+		// secure
+		// through sheaders must mask every occurrence in the final resolved log.
+		info.params("pathToken", token, "queryToken", token, "AccessToken", token, "bodyToken", token);
+		info.sheaders("AccessToken", token);
+
+		Request executable = JPostmanFramework.applyRequestValues(unresolved, info);
+		RuntimeRequestContext active = new RuntimeRequestContext(executable);
+		JPostmanRuntime<RuntimeRequestContext> runtime = new JPostmanRuntime<>(null, "", ignored -> active,
+				() -> active, () -> info);
+
+		String resolvedLog = runtime.log(true);
+
+		assertFalse(resolvedLog.contains(token), resolvedLog);
+		assertTrue(resolvedLog.contains("Bearer " + SecureValue.DEFAULT_MASK), resolvedLog);
+		assertTrue(resolvedLog.contains("AccessToken"), resolvedLog);
+		assertTrue(resolvedLog.contains(SecureValue.DEFAULT_MASK), resolvedLog);
+
+		// Masking is presentation-only. The executable request still contains the real
+		// secret required by the HTTP executor.
+		assertEquals(token, executable.getHeader().get("AccessToken"));
+		assertEquals("Bearer " + token, executable.getHeader().get("Authorization"));
+	}
+
+	@Test
+	public void infoLogIncludesParamsAndMasksSensitiveParamValues() {
+		JPostmanInfo info = new JPostmanInfo("request", "testReq", "", "My Request");
+		info.params("hierarchy", "parent", "interval", "daily", "token", "secret-token");
+
+		String log = info.log(false);
+
+		assertTrue(log.contains("params={hierarchy=parent, interval=daily, token=" + SecureValue.DEFAULT_MASK + "}"),
+				log);
+		assertFalse(log.contains("secret-token"), log);
+	}
+
+	private static Request requestWithSameSecretInEveryRequestSection() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Secure request\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"https://example.com/{{pathToken}}?access={{queryToken}}\","
+				+ "\"host\":[\"example\",\"com\"],\"path\":[\"{{pathToken}}\"],"
+				+ "\"query\":[{\"key\":\"access\",\"value\":\"{{queryToken}}\"}]},"
+				+ "\"header\":[{\"key\":\"Authorization\",\"value\":\"Bearer {{AccessToken}}\"}],"
+				+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"token\\\":\\\"{{bodyToken}}\\\"}\","
+				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Secure request");
+	}
+
+	private static Request requestWithPowerDailyUnresolvedBody() throws Exception {
+		String body = "{\n" + "  \"fromDate\": \"{{fromDate}}\",\n" + "  \"toDate\": \"{{toDate}}\"\n" + "}";
+		JsonObject request = new JsonObject();
+		request.addProperty("method", "POST");
+		request.addProperty("url", "{{base_url}}/v1/{{hierarchy}}");
+		JsonArray headers = new JsonArray();
+		headers.add(header("Authorization", "Bearer {{AccessToken}}"));
+		headers.add(header("X-AUTH-APIKEY", "{{apikey}}"));
+		headers.add(header("X-Client-ID", "{{clientId}}"));
+		request.add("header", headers);
+		JsonObject requestBody = new JsonObject();
+		requestBody.addProperty("mode", "raw");
+		requestBody.addProperty("raw", body);
+		JsonObject raw = new JsonObject();
+		raw.addProperty("language", "json");
+		JsonObject options = new JsonObject();
+		options.add("raw", raw);
+		requestBody.add("options", options);
+		request.add("body", requestBody);
+		JsonObject item = new JsonObject();
+		item.addProperty("name", "My Request");
+		item.add("request", request);
+		JsonArray items = new JsonArray();
+		items.add(item);
+		JsonObject collection = new JsonObject();
+		collection.add("item", items);
+		return Collection.load(collection).getRequest("My Request");
+	}
+
+	private static JsonObject header(String key, String value) {
+		JsonObject header = new JsonObject();
+		header.addProperty("key", key);
+		header.addProperty("value", value);
+		return header;
+	}
+
+	public static final class RuntimeRequestContext {
+		private Request request;
+
+		RuntimeRequestContext(Request request) {
+			this.request = request;
+		}
+
+		public RuntimeSecureRequest request() {
+			return new RuntimeSecureRequest(request);
+		}
+
+		public void request(Request request) {
+			this.request = request;
+		}
+	}
+
+	public static final class RuntimeSecureRequest {
+		private final Request request;
+
+		RuntimeSecureRequest(Request request) {
+			this.request = request;
+		}
+
+		public Request request() {
+			return request;
+		}
+
+		public String log(boolean resolve) {
+			return request.log();
+		}
+	}
+
 	private static Request requestWithExistingBodyQueryAndHeader() throws Exception {
 		String json = "{\"item\":[{\"name\":\"Update product\",\"request\":{\"method\":\"POST\","
 				+ "\"url\":{\"raw\":\"https://example.com/products?limit={{limit}}\","
@@ -298,5 +483,16 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 				+ "\"raw\":\"{\\\"title\\\":\\\"{{title}}\\\",\\\"items\\\":[/*Runtime values*/\n{{new_item}}]}\","
 				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
 		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Update product");
+	}
+
+	private static Request requestWithUnresolvedValuesInEveryRequestSection() throws Exception {
+		String json = "{\"item\":[{\"name\":\"My Request\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"https://example.com/consumption/{{hierarchy}}?limit={{limit}}\","
+				+ "\"host\":[\"example\",\"com\"],\"path\":[\"consumption\",\"{{hierarchy}}\"],"
+				+ "\"query\":[{\"key\":\"limit\",\"value\":\"{{limit}}\"}]},"
+				+ "\"header\":[{\"key\":\"X-Token\",\"value\":\"{{token}}\"}],"
+				+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"interval\\\":\\\"{{interval}}\\\"}\","
+				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("My Request");
 	}
 }
