@@ -1272,15 +1272,16 @@ public class TestCoverage {
 
 	@Test
 	public void testJsonListReturnsTypedList() {
-		List<String> values = Params.jsonList("item1", "item2");
+		String values = Params.jsonList("item1", "item2");
+		String compareValues = "\"" + String.join("\", \"", List.of("item1", "item2")) + "\"";
+		assertEquals(values, compareValues);
 
-		assertEquals(values, List.of("item1", "item2"));
-		values.add("item3");
-		assertEquals(values, List.of("item1", "item2", "item3"));
+		assertEquals(Params.jsonList((Object[]) null), "");
+		assertEquals(Params.jsonList(), "");
 
-		assertEquals(0, Params.jsonMap().size());
-		assertEquals(0, Params.<String>jsonMap((Object[]) null).size());
-		assertThrows(IllegalArgumentException.class, () -> Params.jsonMap(1, "hello"));
+		assertEquals(Params.jsonList((java.util.Collection<Object>) null), "");
+		assertEquals(Params.jsonList(List.of()), "");
+		assertEquals(Params.jsonList(List.of("item1", 2, true, 12.5)), "\"item1\", 2, true, 12.5");
 	}
 
 	@Test
@@ -1290,6 +1291,19 @@ public class TestCoverage {
 		assertEquals(values.get("first"), Integer.valueOf(1));
 		assertEquals(values.get("second"), Integer.valueOf(2));
 		assertEquals(new ArrayList<>(values.keySet()), List.of("first", "second"));
+
+		assertTrue(Params.jsonMap((Object[]) null).isEmpty());
+		assertTrue(Params.jsonMap().isEmpty());
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Values must be provided as key/value pairs\\.")
+	public void jsonMapRejectsOddNumberOfValues() {
+		Params.jsonMap("key1", "value1", "key2");
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Key must be String\\. Found: 123")
+	public void jsonMapRejectsNonStringKey() {
+		Params.jsonMap(123, "value");
 	}
 
 	@Test
@@ -1300,19 +1314,12 @@ public class TestCoverage {
 						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}")
 				.getAsJsonObject());
 
-		Request req = col
-				.getRequest("Structured Json Template").builder().body().json("items",
-						Params.jsonList("item1", "item2"), "meta", Params.<Object>jsonMap("count", 2, "active", true))
-				.build();
+		Request req = col.getRequest("Structured Json Template").builder().body().json("items",
+				Params.asList("item1", "item2"), "meta", Params.<Object>jsonMap("count", 2, "active", true)).build();
 
 		assertEquals(req.getBody().getRaw(),
 				"{\"items\":[\"item1\",\"item2\"],\"meta\":{\"count\":2,\"active\":true}}");
 		assertNotNull(req.getBody().getParsed());
-	}
-
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Values must be provided as key/value pairs\\.")
-	public void testJsonMapRejectsOddKeyValuePairs() {
-		Params.jsonMap("first", 1, "second");
 	}
 
 	@Test

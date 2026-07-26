@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.0
+
+### Added
+
+- Added `Params.jsonList(T... values)` for generating JSON array element fragments suitable for raw body templates.
+- Added `Params.jsonList(Collection<T>)` overload for serializing existing collections into JSON array element fragments.
+
+
 ## 4.1.1
 
 ### Added

@@ -260,20 +260,47 @@ public class Params<T> {
 	}
 
 	/**
-	 * Creates a mutable JSON-ready list from the supplied values.
+	 * Serializes values as JSON array elements without the surrounding brackets.
 	 *
 	 * <p>
-	 * The returned value remains a normal typed Java {@link List}. When passed as a
-	 * value to {@link #json(Object...)}, it is serialized as a JSON array.
+	 * This is intended for placeholders that are already inside a JSON array, for
+	 * example {@code [{{items}}]}. Strings are quoted and escaped, while numbers,
+	 * booleans, objects, arrays, and {@code null} retain their JSON representation.
 	 * </p>
 	 *
-	 * @param values list values
+	 * @param values values to serialize
 	 * @param <T>    value type
-	 * @return mutable list containing the supplied values
+	 * @return comma-separated JSON values without surrounding brackets
 	 */
 	@SafeVarargs
-	public static <T> List<T> jsonList(T... values) {
-		return asList(values);
+	public static <T> String jsonList(T... values) {
+		if (values == null || values.length == 0) {
+			return "";
+		}
+		return jsonList(asList(values));
+	}
+
+	/**
+	 * Serializes a collection as JSON array elements without the surrounding
+	 * brackets.
+	 *
+	 * @param values values to serialize
+	 * @param <T>    value type
+	 * @return comma-separated JSON values without surrounding brackets
+	 */
+	public static <T> String jsonList(java.util.Collection<T> values) {
+		if (values == null || values.isEmpty()) {
+			return "";
+		}
+
+		StringBuilder result = new StringBuilder();
+		for (T value : values) {
+			if (result.length() > 0) {
+				result.append(", ");
+			}
+			result.append(GSON.toJson(value));
+		}
+		return result.toString();
 	}
 
 	/**
