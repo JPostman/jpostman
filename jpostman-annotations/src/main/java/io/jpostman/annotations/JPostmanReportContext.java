@@ -20,4 +20,10 @@ import io.jpostman.annotations.runtime.JPostmanReport;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
 public @interface JPostmanReportContext {
+
+	/** Diagnostic detail appended after the summary: none, short, full, or fail. */
+	String diagnostic() default "none";
+
+	/** Action after the first failed execution: ignore, skip all, or terminate. */
+	String fail() default "ignore";
 }

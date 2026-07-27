@@ -24,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /**
  * Loads external INI data files declared by {@link JPostmanContext#dataload()}
@@ -279,7 +280,7 @@ public final class JPostmanDataLoader {
 				if (configSource) {
 					String warningKey = configLocation + "|" + source + "|" + location;
 					if (REDUNDANT_DATALOAD_WARNINGS.add(warningKey)) {
-						System.err.println(JPostmanErrors.message(annotation,
+						JPostmanOutputs.write(JPostmanErrors.message(annotation,
 								"Redundant JPostman dataload mapping ignored.",
 								"The same data file is configured more than once.",
 								"Using @JPostmanContext value: dataload=" + location,

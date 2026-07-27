@@ -68,7 +68,9 @@ public final class JPostmanAnnotationEngine {
 		if (testInstance == null) {
 			return;
 		}
+
 		AssertionError assertionFailure = null;
+		java.util.List<JPostmanReport> reports = new java.util.ArrayList<>();
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
 			for (Field field : current.getDeclaredFields()) {
@@ -76,7 +78,7 @@ public final class JPostmanAnnotationEngine {
 				if (JPostmanAnnotations.hasReportContext(field)) {
 					Object value = field.get(testInstance);
 					if (value instanceof JPostmanReport) {
-						((JPostmanReport) value).summary();
+						reports.add((JPostmanReport) value);
 					}
 				}
 				io.jpostman.annotations.JPostmanAssertContext annotation = JPostmanAnnotations.assertContext(field);
@@ -97,6 +99,18 @@ public final class JPostmanAnnotationEngine {
 			}
 			current = current.getSuperclass();
 		}
+
+		if (assertionFailure != null) {
+			Method assertionMethod = lastAssertionMethod(testInstance);
+			if (assertionMethod != null) {
+				recordFinalFailure(testInstance, assertionMethod);
+			}
+		}
+
+		for (JPostmanReport report : reports) {
+			report.summary();
+		}
+
 		if (assertionFailure != null) {
 			throw assertionFailure;
 		}
@@ -160,6 +174,22 @@ public final class JPostmanAnnotationEngine {
 	/** Clears assertion cleanup for the current test body. */
 	public static void endAssertionCleanup() {
 		JPostmanAssertionCleanup.clear();
+	}
+
+	/**
+	 * Returns and clears the first class-scoped soft assertion failure recorded
+	 * while the current test body continued executing.
+	 */
+	public static void verifyExplicitSoftAssertions(Method testMethod) {
+		if (testMethod == null || (JPostmanAnnotations.response(testMethod) == null
+				&& JPostmanAnnotations.runner(testMethod) == null)) {
+			return;
+		}
+		JPostmanAssertionCleanup.verifyExplicitSoft();
+	}
+
+	public static AssertionError takeImmediateAssertionFailure() {
+		return JPostmanAssertionCleanup.takeImmediateFailure();
 	}
 
 	/** Returns the latest test method that used the injected assertion facade. */

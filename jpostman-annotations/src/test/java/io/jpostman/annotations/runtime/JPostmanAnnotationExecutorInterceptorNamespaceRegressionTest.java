@@ -75,7 +75,7 @@ public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 		public void authRequest(JPostman.Test ctx, JPostman.Info info) {
 			authRequestNamespace = info.attr().namespace;
 			info.sauth("oauth2", ctx.cache(CACHE_TOKEN));
-			info.add().headers("METHOD", info.attr().method);
+			info.headers("METHOD", info.attr().method);
 		}
 
 		@JPostman.Response(dependsOn = TOKEN_API, namespace = NAMESPACE, verify = 200)

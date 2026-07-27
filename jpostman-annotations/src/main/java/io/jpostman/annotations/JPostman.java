@@ -292,6 +292,11 @@ public final class JPostman {
 	@Target(FIELD)
 	@Retention(RUNTIME)
 	public @interface ReportContext {
+		/** Diagnostic detail appended after the summary: none, short, full, or fail. */
+		String diagnostic() default "none";
+
+		/** Action after the first failed execution: ignore, skip all, or terminate. */
+		String fail() default "ignore";
 	}
 
 	/**
@@ -1299,14 +1304,6 @@ public final class JPostman {
 		JPostmanInfo.TagRules tags();
 
 		/**
-		 * Makes the next body/query/header customization add a new value instead of
-		 * using the default set/resolve behavior.
-		 *
-		 * @return updated info
-		 */
-		JPostmanInfo add();
-
-		/**
 		 * Converts values in the last body/query/header/path/auth group to JSON literal
 		 * strings.
 		 *
@@ -1551,8 +1548,7 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * This is always a hard failure, including when invoked from a facade returned
-		 * by {@link #soft(boolean)}. The failure is not added to the soft assertion
-		 * collector.
+		 * by {@link #soft()}. The failure is not added to the soft assertion collector.
 		 * </p>
 		 *
 		 * @param message custom failure message; blank values use
@@ -1565,10 +1561,9 @@ public final class JPostman {
 		/**
 		 * Switches this facade to soft assertion mode.
 		 *
-		 * @param log {@code true} to include assertion diagnostic logs
 		 * @return soft assertion facade
 		 */
-		Assert soft(boolean log);
+		Assert soft();
 	}
 
 	/**

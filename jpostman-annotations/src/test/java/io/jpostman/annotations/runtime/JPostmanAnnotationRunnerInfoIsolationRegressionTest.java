@@ -66,7 +66,7 @@ public class JPostmanAnnotationRunnerInfoIsolationRegressionTest {
 		@JPostmanRequest
 		public void shareRunnerHeader(TestNgContext ctx, JPostmanInfo info) {
 			sharedSetupCalls++;
-			info.add().headers("X-Shared", "yes");
+			info.headers("X-Shared", "yes");
 		}
 
 		@JPostmanRunner(dependsOn = "shareRunnerHeader", include = { "Login user and get tokens",
@@ -79,13 +79,13 @@ public class JPostmanAnnotationRunnerInfoIsolationRegressionTest {
 
 		@JPostmanExecutor
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
-			assertEquals("yes", info.headersAdd.get("X-Shared"));
-			assertFalse(info.headersAdd.containsKey("X-Request-Marker"),
-					"A previous runner request mutated this info map: " + info.headersAdd);
+			assertEquals("yes", info.headers.get("X-Shared"));
+			assertFalse(info.headers.containsKey("X-Request-Marker"),
+					"A previous runner request mutated this info map: " + info.headers);
 
 			executorRequests.add(info.request);
 			executorMethods.add(new ArrayList<>(info.methods));
-			info.add().headers("X-Request-Marker", info.request);
+			info.headers("X-Request-Marker", info.request);
 
 			return okExecutor("{\"request\":\"" + info.request + "\"}");
 		}

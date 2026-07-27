@@ -26,6 +26,7 @@ import io.jpostman.JPostman;
 import io.jpostman.JPostman.Context;
 import io.jpostman.Params;
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanTestContext;
 
 /**
@@ -427,8 +428,8 @@ final class JPostmanContextRunner<C> {
 				String warningKey = configLocation + "|" + namespace + "|" + key + "|" + annotationLocation;
 
 				if (REDUNDANT_CONTEXT_WARNINGS.add(warningKey)) {
-					System.err.println(
-							JPostmanErrors.message(annotation, "Redundant JPostman " + key + " mapping ignored.",
+					JPostmanOutputs
+							.write(JPostmanErrors.message(annotation, "Redundant JPostman " + key + " mapping ignored.",
 									"The same field is configured in @JPostmanContext and config properties file.",
 									"Using @JPostmanContext value: " + key + "=" + annotationLocation,
 									"Ignored config mapping: " + configLocation + " -> " + propertyName + "="
@@ -554,7 +555,7 @@ final class JPostmanContextRunner<C> {
 				}
 				boolean soft = JPostmanAnnotations.assertContext(field).soft();
 				field.set(testInstance,
-						JPostmanTestProxy.wrapAssert(() -> assertionContext(testInstance, contexts), soft, soft));
+						JPostmanTestProxy.wrapAssert(() -> assertionContext(testInstance, contexts), soft, true));
 			}
 			current = current.getSuperclass();
 		}

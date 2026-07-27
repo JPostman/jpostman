@@ -128,18 +128,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	/** Header values applied to the request. */
 	public final Map<String, Object> headers;
 
-	/** Body values that should be added instead of set/resolved. */
-	public final Map<String, Object> bodyAdd;
-
-	/** Query values that should be added instead of set/resolved. */
-	public final Map<String, Object> queryAdd;
-
-	/** Header values that should be added instead of set/resolved. */
-	public final Map<String, Object> headersAdd;
-
-	/** True when the next body/query/header call should use add semantics. */
-	private boolean addNext;
-
 	/** Last request-value map updated by body/query/header/path/auth helpers. */
 	private Map<String, Object> lastValueTarget;
 
@@ -167,14 +155,45 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public final Map<String, Object> params;
 
 	/** Source collection request used to create the executable request. */
-	private Request sourceRequest;
+	private static final class DiagnosticState {
+		private Request sourceRequest;
+		private String secureRequestLog = "";
+	}
+
+	/** Diagnostic request metadata shared by one annotation execution chain. */
+	private final DiagnosticState diagnosticState;
+
+	/** HTTP status code captured for report diagnostics when available. */
+	private Integer statusCode;
 
 	void sourceRequest(Request request) {
-		this.sourceRequest = request;
+		this.diagnosticState.sourceRequest = request;
 	}
 
 	Request sourceRequest() {
-		return sourceRequest;
+		return diagnosticState.sourceRequest;
+	}
+
+	public JPostmanInfo statusCode(Integer value) {
+		this.statusCode = value;
+		return this;
+	}
+
+	public Integer statusCode() {
+		return statusCode;
+	}
+
+	public JPostmanInfo requestLog(String value) {
+		this.diagnosticState.secureRequestLog = value == null ? "" : value;
+		return this;
+	}
+
+	public String requestLog() {
+		String log = diagnosticState.secureRequestLog;
+		if (log != null && !log.isBlank())
+			return log;
+		Request source = diagnosticState.sourceRequest;
+		return source == null ? "" : String.valueOf(source);
 	}
 
 	/** Timestamp when the execution chain info was created. */
@@ -214,8 +233,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public JPostmanInfo(String annotation, String method, String namespace, String folder, String request) {
 		this(new String[0], "", "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-				System.currentTimeMillis(), null);
+				new LinkedHashMap<>(), System.currentTimeMillis(), null, new DiagnosticState());
 		this.annotation = annotation;
 	}
 
@@ -223,15 +241,13 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			String request) {
 		this(tags, executor, "", method, namespace, folder, request, new ArrayList<>(), new LinkedHashMap<>(),
 				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-				new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-				System.currentTimeMillis(), null);
+				new LinkedHashMap<>(), System.currentTimeMillis(), null, new DiagnosticState());
 	}
 
 	private JPostmanInfo(String[] tags, String executor, String cache, String method, String namespace, String folder,
 			String request, List<String> methods, Map<String, Object> body, Map<String, Object> query,
-			Map<String, Object> headers, Map<String, Object> bodyAdd, Map<String, Object> queryAdd,
-			Map<String, Object> headersAdd, Map<String, Object> path, Map<String, Object> auth,
-			Map<String, Object> params, long created, JPostmanContext context) {
+			Map<String, Object> headers, Map<String, Object> path, Map<String, Object> auth, Map<String, Object> params,
+			long created, JPostmanContext context, DiagnosticState diagnosticState) {
 		this.tags = tags(tags);
 		this.context = context;
 		this.executor = value(executor);
@@ -250,14 +266,11 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		this.body = body;
 		this.query = query;
 		this.headers = headers;
-		this.bodyAdd = bodyAdd;
-		this.queryAdd = queryAdd;
-		this.headersAdd = headersAdd;
-		this.addNext = false;
 		this.path = path;
 		this.auth = auth;
 		this.params = params;
 		this.created = created;
+		this.diagnosticState = diagnosticState == null ? new DiagnosticState() : diagnosticState;
 	}
 
 	/**
@@ -493,8 +506,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo runnerRequest(String requestName) {
 		JPostmanInfo copy = new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, value(requestName),
-				new ArrayList<>(methods), copy(body), copy(query), copy(headers), copy(bodyAdd), copy(queryAdd),
-				copy(headersAdd), copy(path), copy(auth), copy(params), System.currentTimeMillis(), context);
+				new ArrayList<>(methods), copy(body), copy(query), copy(headers), copy(path), copy(auth), copy(params),
+				System.currentTimeMillis(), context, new DiagnosticState());
 		copy.annotation = this.annotation;
 		copy.id = this.id;
 		copy.data = this.data;
@@ -524,7 +537,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo context(JPostmanContext value) {
 		return copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request, methods, body,
-				query, headers, bodyAdd, queryAdd, headersAdd, path, auth, params, created, value));
+				query, headers, path, auth, params, created, value, diagnosticState));
 	}
 
 	/**
@@ -542,7 +555,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo debug(String... values) {
 		JPostmanInfo copy = copyMeta(new JPostmanInfo(this.tags, executor, cache, method, namespace, folder, request,
-				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, params, created, context));
+				methods, body, query, headers, path, auth, params, created, context, diagnosticState));
 		String value = join(values);
 		if (!value.isBlank()) {
 			copy.debug = value;
@@ -568,8 +581,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo withTags(String... values) {
 		return copyMeta(new JPostmanInfo(mergeTags(this.tags, values), executor, cache, method, namespace, folder,
-				request, methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, params, created,
-				context));
+				request, methods, body, query, headers, path, auth, params, created, context, diagnosticState));
 	}
 
 	private JPostmanInfo copyMeta(JPostmanInfo copy) {
@@ -607,8 +619,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo child(String method, String namespace, String folder, String request) {
 		return new JPostmanInfo(this.tags, executor, "", method, first(namespace, this.namespace),
-				first(folder, this.folder), first(request, this.request), methods, body, query, headers, bodyAdd,
-				queryAdd, headersAdd, path, auth, params, created, context).debug(this.debug);
+				first(folder, this.folder), first(request, this.request), methods, body, query, headers, path, auth,
+				params, created, context, diagnosticState).debug(this.debug);
 	}
 
 	/**
@@ -658,8 +670,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			String folder, String request) {
 		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method,
 				first(namespace, this.namespace), first(folder, this.folder), first(request, this.request), methods,
-				body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, params, created, context)
-				.debug(this.debug);
+				body, query, headers, path, auth, params, created, context, diagnosticState).debug(this.debug);
 	}
 
 	/**
@@ -674,8 +685,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public JPostmanInfo childExact(String method, String namespace, String folder, String request) {
 		return new JPostmanInfo(this.tags, executor, "", method, value(namespace), value(folder), value(request),
-				methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth, params, created, context)
-				.debug(this.debug);
+				methods, body, query, headers, path, auth, params, created, context, diagnosticState).debug(this.debug);
 	}
 
 	/**
@@ -723,8 +733,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public JPostmanInfo childExact(String method, String[] tags, String executor, String cache, String namespace,
 			String folder, String request) {
 		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method, value(namespace),
-				value(folder), value(request), methods, body, query, headers, bodyAdd, queryAdd, headersAdd, path, auth,
-				params, created, context).debug(this.debug);
+				value(folder), value(request), methods, body, query, headers, path, auth, params, created, context,
+				diagnosticState).debug(this.debug);
 	}
 
 	/**
@@ -986,24 +996,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Makes the next body/query/header customization use add semantics instead of
-	 * set/resolve semantics.
-	 *
-	 * <p>
-	 * This flag is consumed by the next {@code body(...)}, {@code sbody(...)},
-	 * {@code query(...)}, {@code squery(...)}, {@code headers(...)}, or
-	 * {@code sheaders(...)} call. Later calls return to the default set/resolve
-	 * behavior.
-	 * </p>
-	 *
-	 * @return this info object
-	 */
-	public JPostmanInfo add() {
-		addNext = true;
-		return this;
-	}
-
-	/**
 	 * Converts values in the last body/query/header/path/auth group to JSON literal
 	 * strings.
 	 *
@@ -1041,49 +1033,49 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this info object
 	 */
 	public JPostmanInfo body(Object... values) {
-		put(track(target(body, bodyAdd)), valuesMap(false, values));
+		put(track(body), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request body values using key/value pairs. */
 	public JPostmanInfo sbody(Object... values) {
-		put(track(target(body, bodyAdd)), valuesMap(true, values));
+		put(track(body), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request body values from an existing map. */
 	public JPostmanInfo body(Map<String, ?> values) {
-		put(track(target(body, bodyAdd)), valuesMap(false, values));
+		put(track(body), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request body values from an existing map. */
 	public JPostmanInfo sbody(Map<String, ?> values) {
-		put(track(target(body, bodyAdd)), valuesMap(true, values));
+		put(track(body), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds query string values using key/value pairs. */
 	public JPostmanInfo query(Object... values) {
-		put(track(target(query, queryAdd)), valuesMap(false, values));
+		put(track(query), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret query string values using key/value pairs. */
 	public JPostmanInfo squery(Object... values) {
-		put(track(target(query, queryAdd)), valuesMap(true, values));
+		put(track(query), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds query string values from an existing map. */
 	public JPostmanInfo query(Map<String, ?> values) {
-		put(track(target(query, queryAdd)), valuesMap(false, values));
+		put(track(query), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret query string values from an existing map. */
 	public JPostmanInfo squery(Map<String, ?> values) {
-		put(track(target(query, queryAdd)), valuesMap(true, values));
+		put(track(query), valuesMap(true, values));
 		return this;
 	}
 
@@ -1105,52 +1097,48 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this {@link JPostmanInfo} instance
 	 */
 	public JPostmanInfo headers(Object... values) {
-		put(track(target(headers, headersAdd)), valuesMap(false, values));
+		put(track(headers), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request headers using key/value pairs. */
 	public JPostmanInfo sheaders(Object... values) {
-		put(track(target(headers, headersAdd)), valuesMap(true, values));
+		put(track(headers), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request header values from an existing map. */
 	public JPostmanInfo headers(Map<String, ?> values) {
-		put(track(target(headers, headersAdd)), valuesMap(false, values));
+		put(track(headers), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request header values from an existing map. */
 	public JPostmanInfo sheaders(Map<String, ?> values) {
-		put(track(target(headers, headersAdd)), valuesMap(true, values));
+		put(track(headers), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request path variable values using key/value pairs. */
 	public JPostmanInfo path(Object... values) {
-		consumeAddMode();
 		put(track(path), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request path variable values using key/value pairs. */
 	public JPostmanInfo spath(Object... values) {
-		consumeAddMode();
 		put(track(path), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds request path variable values from an existing map. */
 	public JPostmanInfo path(Map<String, ?> values) {
-		consumeAddMode();
 		put(track(path), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret request path variable values from an existing map. */
 	public JPostmanInfo spath(Map<String, ?> values) {
-		consumeAddMode();
 		put(track(path), valuesMap(true, values));
 		return this;
 	}
@@ -1190,21 +1178,18 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this {@link JPostmanInfo} instance
 	 */
 	public JPostmanInfo auth(Object... values) {
-		consumeAddMode();
 		put(track(auth), valuesMap(false, values));
 		return this;
 	}
 
 	/** Adds secret authentication values using key/value pairs. */
 	public JPostmanInfo sauth(Object... values) {
-		consumeAddMode();
 		put(track(auth), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds auth-related request values from an existing map when supported. */
 	public JPostmanInfo auth(Map<String, ?> values) {
-		consumeAddMode();
 		put(track(auth), valuesMap(false, values));
 		return this;
 	}
@@ -1213,7 +1198,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * Adds secret auth-related request values from an existing map when supported.
 	 */
 	public JPostmanInfo sauth(Map<String, ?> values) {
-		consumeAddMode();
 		put(track(auth), valuesMap(true, values));
 		return this;
 	}
@@ -1227,7 +1211,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * @return this info object
 	 */
 	public JPostmanInfo params(Object... values) {
-		consumeAddMode();
 		Map<String, Object> mapped = valuesMap(false, values);
 		put(track(params), mapped);
 		applyLiveParams(mapped);
@@ -1240,14 +1223,12 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * as secrets for masking and secure request metadata.
 	 */
 	public JPostmanInfo sparams(Object... values) {
-		consumeAddMode();
 		put(track(params), valuesMap(true, values));
 		return this;
 	}
 
 	/** Adds global build-time template parameters from an existing map. */
 	public JPostmanInfo params(Map<String, ?> values) {
-		consumeAddMode();
 		Map<String, Object> mapped = valuesMap(false, values);
 		put(track(params), mapped);
 		applyLiveParams(mapped);
@@ -1260,7 +1241,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 * secrets.
 	 */
 	public JPostmanInfo sparams(Map<String, ?> values) {
-		consumeAddMode();
 		put(track(params), valuesMap(true, values));
 		return this;
 	}
@@ -1283,23 +1263,13 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	/** Returns true when request customization values were added. */
 	public boolean hasRequestValues() {
-		return !body.isEmpty() || !query.isEmpty() || !headers.isEmpty() || !bodyAdd.isEmpty() || !queryAdd.isEmpty()
-				|| !headersAdd.isEmpty() || !path.isEmpty() || !auth.isEmpty() || !params.isEmpty();
+		return !body.isEmpty() || !query.isEmpty() || !headers.isEmpty() || !path.isEmpty() || !auth.isEmpty()
+				|| !params.isEmpty();
 	}
 
 	private Map<String, Object> track(Map<String, Object> target) {
 		lastValueTarget = target;
 		return target;
-	}
-
-	private Map<String, Object> target(Map<String, Object> normal, Map<String, Object> add) {
-		return consumeAddMode() ? add : normal;
-	}
-
-	private boolean consumeAddMode() {
-		boolean result = addNext;
-		addNext = false;
-		return result;
 	}
 
 	private static void put(Map<String, Object> target, Map<String, ?> values) {
@@ -1527,9 +1497,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		collectSecrets(result, body);
 		collectSecrets(result, query);
 		collectSecrets(result, headers);
-		collectSecrets(result, bodyAdd);
-		collectSecrets(result, queryAdd);
-		collectSecrets(result, headersAdd);
 		collectSecrets(result, path);
 		collectSecrets(result, auth);
 		collectSecrets(result, params);
@@ -1540,7 +1507,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	public String[] secretHeaders() {
 		List<String> result = new ArrayList<>();
 		collectSecretHeaders(result, headers);
-		collectSecretHeaders(result, headersAdd);
 		return result.toArray(new String[0]);
 	}
 
@@ -1607,12 +1573,6 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			builder.append("\n  query=").append(masked(query, false));
 		if (headers != null && headers.size() > 0)
 			builder.append("\n  headers=").append(masked(headers, true));
-		if (bodyAdd != null && bodyAdd.size() > 0)
-			builder.append("\n  bodyAdd=").append(masked(bodyAdd, false));
-		if (queryAdd != null && queryAdd.size() > 0)
-			builder.append("\n  queryAdd=").append(masked(queryAdd, false));
-		if (headersAdd != null && headersAdd.size() > 0)
-			builder.append("\n  headersAdd=").append(masked(headersAdd, true));
 		if (path != null && path.size() > 0)
 			builder.append("\n  path=").append(masked(path, false));
 		if (auth != null && auth.size() > 0)

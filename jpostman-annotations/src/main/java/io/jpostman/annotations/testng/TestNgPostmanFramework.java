@@ -99,6 +99,12 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 
 	/** {@inheritDoc} */
 	@Override
+	public Integer responseStatusCode(TestNgContext context) {
+		return context == null || context.response() == null ? null : context.response().statusCode();
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void soft(TestNgContext context, boolean log) {
 		context.soft(log);
 	}
@@ -119,6 +125,9 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 	@Override
 	public void verify(TestNgContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info,
 			String diagnosticLog) {
+		if (info != null && context != null && context.response() != null) {
+			info.statusCode(context.response().statusCode());
+		}
 		Object assertions = soft ? context.soft(false) : context.asserts(false);
 		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog);
 	}

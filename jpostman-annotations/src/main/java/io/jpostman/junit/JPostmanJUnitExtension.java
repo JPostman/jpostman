@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.TestInstancePostProcessor;
 import org.opentest4j.TestAbortedException;
 
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
 import io.jpostman.annotations.runtime.JPostmanAnnotations;
 import io.jpostman.annotations.runtime.JPostmanStackTraceCleaner;
@@ -153,6 +154,7 @@ public final class JPostmanJUnitExtension
 				JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
 				try {
 					invocation.proceed();
+					JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
 					verifySoftResponseAssertions(testMethod);
 				} finally {
 					JPostmanAnnotationEngine.endAssertionCleanup();
@@ -347,11 +349,12 @@ public final class JPostmanJUnitExtension
 			return;
 		}
 
-		System.err.println(failure.getMessage());
+		StringBuilder output = new StringBuilder(String.valueOf(failure.getMessage()));
 		for (StackTraceElement element : failure.getStackTrace()) {
-			System.err.println("\tat " + element);
+			output.append('\n').append("\tat ").append(element);
 		}
-		System.err.println();
+		output.append('\n');
+		JPostmanOutputs.write(output.toString());
 	}
 
 	private boolean printFailures(ExtensionContext context) {
@@ -377,6 +380,7 @@ public final class JPostmanJUnitExtension
 				testMethod.setAccessible(true);
 				testMethod.invoke(testInstance);
 			}
+			JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
 		} catch (InvocationTargetException error) {
 			throw new TestBodyFailureException(error.getCause());
 		} catch (Throwable error) {

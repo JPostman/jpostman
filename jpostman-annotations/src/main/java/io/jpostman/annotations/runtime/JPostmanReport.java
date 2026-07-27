@@ -2,6 +2,7 @@ package io.jpostman.annotations.runtime;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,13 +22,25 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	private boolean summaryPrinted;
 
+	private String diagnostic = "none";
+	private String failAction = "ignore";
+	private boolean skipRemaining;
+
 	private static final Logger log = LoggerFactory.getLogger(JPostmanReport.class);
 
 	/** Latest JPostman execution info. */
 	private JPostmanInfo info;
 
-	/** Timestamp when this report object was created. */
+	/**
+	 * Timestamp when this report object was created, before
+	 * user @BeforeClass/@BeforeAll.
+	 */
 	public final long created = System.currentTimeMillis();
+
+	/**
+	 * Timestamp captured when the class report is completed, after user teardown.
+	 */
+	private long completed;
 
 	/** Passed top-level JPostman executions. */
 	public final List<JPostmanInfo> passed = new ArrayList<>();
@@ -37,6 +50,28 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	/** Skipped top-level JPostman executions. */
 	public final List<JPostmanInfo> skipped = new ArrayList<>();
+
+	/** Applies options declared on @JPostman.ReportContext. */
+	public JPostmanReport configure(String diagnostic, String failAction) {
+		this.diagnostic = option(diagnostic, "diagnostic", "none", "short", "full", "fail");
+		this.failAction = option(failAction, "fail", "ignore", "skip all", "terminate");
+		return this;
+	}
+
+	private String option(String value, String name, String... allowed) {
+		String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replace('_', ' ');
+		for (String candidate : allowed) {
+			if (candidate.equals(normalized))
+				return normalized;
+		}
+		throw new IllegalArgumentException("Invalid @JPostman.ReportContext " + name + " value: " + value
+				+ ". Allowed: " + String.join(", ", allowed));
+	}
+
+	/** Returns true after fail="skip all" has observed its first failure. */
+	public boolean skipRemaining() {
+		return skipRemaining;
+	}
 
 	/**
 	 * Stores the latest execution info without changing status counters.
@@ -99,6 +134,11 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 */
 	public void failed(JPostmanInfo info) {
 		record(failed, info);
+		if ("skip all".equals(failAction)) {
+			skipRemaining = true;
+		} else if ("terminate".equals(failAction)) {
+			System.exit(1);
+		}
 	}
 
 	/**
@@ -189,6 +229,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		passed.clear();
 		failed.clear();
 		skipped.clear();
+		skipRemaining = false;
+		completed = 0L;
+		summaryPrinted = false;
 	}
 
 	/**
@@ -206,13 +249,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * @return sum of positive durations from passed, failed, and skipped entries
 	 */
 	public long duration() {
-		long duration = 0L;
-		for (JPostmanInfo info : all()) {
-			if (info != null && info.duration() > 0L) {
-				duration += info.duration();
-			}
-		}
-		return duration;
+		long end = completed > 0L ? completed : System.currentTimeMillis();
+		return Math.max(0L, end - created);
 	}
 
 	/**
@@ -242,13 +280,91 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	/** Prints {@link #log()} using trace level. */
 	public synchronized void summary() {
-		if (summaryPrinted) {
+		if (summaryPrinted)
 			return;
-		}
+		completed = System.currentTimeMillis();
 		summaryPrinted = true;
-		String text = log();
-		if (!JPostmanOutputs.write(text)) {
+		String text = log() + diagnosticLog();
+		if (!JPostmanOutputs.write(text))
 			log.trace(text);
+	}
+
+	private String diagnosticLog() {
+		if ("none".equals(diagnostic))
+			return "";
+		List<JPostmanInfo> values = "fail".equals(diagnostic) ? failed : all();
+		if (values.isEmpty())
+			return "";
+		StringBuilder out = new StringBuilder("\n\nJPostman diagnostics\n");
+		boolean first = true;
+		for (JPostmanInfo value : values) {
+			if (value == null)
+				continue;
+			if (!first)
+				out.append("\n");
+			first = false;
+			out.append(shortDiagnostic(value));
+			if ("full".equals(diagnostic) || "fail".equals(diagnostic)) {
+				String request = value.requestLog();
+				if (!request.isBlank()) {
+					out.append("\n-------------------------------------------------").append("\n")
+							.append(request.stripTrailing()).append("\n");
+				}
+			}
 		}
+		return out.toString();
+	}
+
+	private String shortDiagnostic(JPostmanInfo info) {
+		StringBuilder out = new StringBuilder(topMethod(info)).append(":  {");
+		List<String> scope = new ArrayList<>();
+		String namespace = value(info.namespace);
+		if (!isDefault(namespace))
+			scope.add("namespace = " + namespace);
+		String folder = value(info.folder);
+		if (!folder.isBlank() && !isDefault(folder))
+			scope.add("folder = " + folder);
+		String request = value(info.request);
+		if (!request.isBlank())
+			scope.add("request = " + request);
+		out.append(String.join(", ", scope)).append("}");
+		if (info.statusCode() != null) {
+			out.append(", statusCode=").append(info.statusCode());
+		}
+		out.append(", duration=").append(JPostmanInfo.formatDuration(info.duration(), false));
+		String chain = methodChain(info);
+		if (!chain.isBlank())
+			out.append("  (").append(chain).append(")");
+		return out.toString();
+	}
+
+	private String topMethod(JPostmanInfo info) {
+		if (info != null && info.methods != null && !info.methods.isEmpty()) {
+			return value(info.methods.get(0));
+		}
+		return info == null ? "" : value(info.method);
+	}
+
+	private String methodChain(JPostmanInfo info) {
+		if (info == null || info.methods == null || info.methods.size() < 2)
+			return "";
+		List<String> chain = new ArrayList<>();
+		for (String item : info.methods) {
+			String method = value(item);
+			if (method.isBlank() || isExecutorMethod(method, info))
+				break;
+			chain.add(method);
+		}
+		return chain.size() < 2 ? "" : String.join(" -> ", chain);
+	}
+
+	private boolean isExecutorMethod(String method, JPostmanInfo info) {
+		String name = value(method);
+		return name.contains("Executor(") || name.endsWith("Executor") || "defaultExecutor".equals(name);
+	}
+
+	private boolean isDefault(String value) {
+		return value == null || value.isBlank() || "<default>".equalsIgnoreCase(value)
+				|| "default".equalsIgnoreCase(value);
 	}
 }

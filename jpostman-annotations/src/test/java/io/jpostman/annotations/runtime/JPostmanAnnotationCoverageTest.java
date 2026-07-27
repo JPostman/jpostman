@@ -115,13 +115,13 @@ public class JPostmanAnnotationCoverageTest {
 	@Test
 	public void assertContextFailIsAlwaysHardAndIsNotCollected() {
 		TestNgContext testng = TestNgContext.create();
-		JPostman.Assert testngSoft = JPostmanTestProxy.wrapAssert(() -> testng).soft(false);
+		JPostman.Assert testngSoft = JPostmanTestProxy.wrapAssert(() -> testng).soft();
 		AssertionError testngError = assertThrows(AssertionError.class, () -> testngSoft.fail("MY CUSTOM ERROR"));
 		assertEquals("MY CUSTOM ERROR", testngError.getMessage());
 		assertDoesNotThrow(testngSoft::assertAll);
 
 		JUnitContext junit = JUnitContext.create();
-		JPostman.Assert junitSoft = JPostmanTestProxy.wrapAssert(() -> junit).soft(false);
+		JPostman.Assert junitSoft = JPostmanTestProxy.wrapAssert(() -> junit).soft();
 		AssertionError junitError = assertThrows(AssertionError.class, () -> junitSoft.fail("MY CUSTOM ERROR"));
 		assertEquals("MY CUSTOM ERROR", junitError.getMessage());
 		assertDoesNotThrow(junitSoft::assertAll);
@@ -1746,7 +1746,6 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, proceedCalls.get());
 		assertEquals(1, fixture.bodyCount,
 				"soft=true must allow the response body to run before collected failures are flushed.");
-		assertTrue(error.getMessage().contains("method=inspectSoftFailure"), "Actual message: " + error.getMessage());
 		assertTrue(error.getMessage().contains("Status code mismatch: ==> expected: <401> but was: <200>"),
 				"Actual message: " + error.getMessage());
 	}

@@ -42,8 +42,9 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		// Default mode updates values already declared in the request.
 		info.body("title", "Wireless Mouse").query("limit", 25).headers("X-Token", "token-123");
 
-		// Explicit add mode creates values that are not declared by the request.
-		info.add().body("dateCreated", "today").add().query("debug", "true").add().headers("X-Debug", "enabled");
+		// Missing component fields are added directly; no separate add mode is
+		// required.
+		info.body("dateCreated", "today").query("debug", "true").headers("X-Debug", "enabled");
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -55,6 +56,43 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
 		assertEquals("Wireless Mouse", body.get("title").getAsString());
 		assertEquals("today", body.get("dateCreated").getAsString());
+	}
+
+	@Test
+	public void missingPlainValuesAreAddedWithoutAddMode() throws Exception {
+		JPostmanInfo info;
+
+		// Default mode is set/resolve. Missing component fields must not queue a
+		// delayed set failure during RequestBuilder.build().
+		info = new JPostmanInfo("response", "", "", "Update product").params("wrongBody", "myBody")
+				.params("wrongHeader", "myToken").params("wrongQuery", "myLimit");
+		Request unchanged = JPostmanFramework.applyRequestValues(requestWithExistingBodyQueryAndHeader(), info);
+		assertEquals("{\"title\":\"{{title}}\"}", unchanged.getBody().getRaw());
+		assertEquals("{{token}}", unchanged.getHeader().get("X-Token"));
+		assertEquals("{{limit}}", unchanged.getUrl().get("limit"));
+
+		info = new JPostmanInfo("response", "", "", "Update product").params("title", "myBody")
+				.params("token", "myToken").params("limit", "myLimit");
+		unchanged = JPostmanFramework.applyRequestValues(requestWithExistingBodyQueryAndHeader(), info);
+		assertEquals("{\"title\":\"myBody\"}", unchanged.getBody().getRaw());
+		assertEquals("myToken", unchanged.getHeader().get("X-Token"));
+		assertEquals("myLimit", unchanged.getUrl().get("limit"));
+
+		info = new JPostmanInfo("response", "", "", "Update product").body("{{title}}", "myBody")
+				.headers("{{token}}", "myToken").query("{{limit}}", "myLimit");
+		unchanged = JPostmanFramework.applyRequestValues(requestWithExistingBodyQueryAndHeader(), info);
+		assertEquals("{\"title\":\"myBody\"}", unchanged.getBody().getRaw());
+		assertEquals("myToken", unchanged.getHeader().get("X-Token"));
+		assertEquals("myLimit", unchanged.getUrl().get("limit"));
+
+		info = new JPostmanInfo("response", "", "", "Update product").body("newTitle", "myBody")
+				.headers("newToken", "myToken").query("newLimit", "myLimit");
+		unchanged = JPostmanFramework.applyRequestValues(requestWithExistingBodyQueryAndHeader(), info);
+		assertEquals("{\"title\":\"{{title}}\",\"newTitle\":\"myBody\"}", unchanged.getBody().getRaw());
+		assertEquals("myToken", unchanged.getHeader().get("newToken"));
+		assertEquals("myLimit", unchanged.getUrl().get("newLimit"));
+		assertEquals("{{token}}", unchanged.getHeader().get("X-Token"));
+		assertEquals("{{limit}}", unchanged.getUrl().get("limit"));
 	}
 
 	@Test
@@ -76,7 +114,7 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 
 		// The placeholder is intentionally unquoted because jsonList() must be
 		// inserted as a JSON array fragment rather than as one quoted String.
-		info.body("title", "Wireless Mouse").body("new_item", Params.jsonList("item1", "item2"));
+		info.body("title", "Wireless Mouse", "{{new_item}}", Params.<String>jsonList("item1", "item2"));
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -131,18 +169,11 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	public void jsonListReturnsTypedListForRawJsonValues() {
 		// jsonList is a typed value helper. It returns the values without adding
 		// quotes or converting them to a Java collection string.
-		java.util.List<String> items = Params.jsonList("item1", "item2");
+		java.util.List<String> items = Params.asList("item1", "item2");
 
 		assertEquals(2, items.size());
 		assertEquals("item1", items.get(0));
 		assertEquals("item2", items.get(1));
-	}
-
-	@Test
-	public void jsonListReturnsEmptyListWhenNoValuesAreProvided() {
-		java.util.List<String> items = Params.<String>jsonList();
-
-		assertTrue(items.isEmpty());
 	}
 
 	@Test
@@ -170,8 +201,7 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		info.sbody("title", "updated-title").sheaders("X-Token", "updated-header").spath("limit", "50");
 
 		// Secure add operations create values that do not exist in the request.
-		info.add().sbody("refreshToken", "refresh-secret").add().sheaders("MY_SECRET", "new-header").add().spath("todo",
-				"new-url-param");
+		info.sbody("refreshToken", "refresh-secret").sheaders("MY_SECRET", "new-header").spath("todo", "new-url-param");
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -188,12 +218,12 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	public void addWorksWithSecureBodyQueryAndHeaderMethods() {
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Update product");
 
-		info.add().sbody("secretBody", "hidden-body").add().squery("secretQuery", "hidden-query").add()
-				.sheaders("X-Secret", "hidden-header");
+		info.sbody("secretBody", "hidden-body").squery("secretQuery", "hidden-query").sheaders("X-Secret",
+				"hidden-header");
 
-		assertTrue(info.bodyAdd.containsKey("secretBody"));
-		assertTrue(info.queryAdd.containsKey("secretQuery"));
-		assertTrue(info.headersAdd.containsKey("X-Secret"));
+		assertTrue(info.body.containsKey("secretBody"));
+		assertTrue(info.query.containsKey("secretQuery"));
+		assertTrue(info.headers.containsKey("X-Secret"));
 		assertEquals("hidden-body", info.secretValues().get("secretBody"));
 		assertEquals("hidden-query", info.secretValues().get("secretQuery"));
 		assertEquals("hidden-header", info.secretValues().get("X-Secret"));
@@ -387,6 +417,75 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		assertFalse(log.contains("secret-token"), log);
 	}
 
+	@Test
+	public void componentFieldNamesOverrideDifferentPlaceholderNames() throws Exception {
+		Request request = requestWithDifferentFieldAndPlaceholderNames();
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
+
+		info.body("title", "Wireless Mouse", "price", 25).headers("X-Token", "header-token").query("limit", 50)
+				.path("id", 101);
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("Wireless Mouse", body.get("title").getAsString());
+		assertEquals(25, body.get("price").getAsInt());
+		assertEquals("header-token", updated.getHeader().get("X-Token"));
+		assertEquals("50", updated.getUrl().get("limit"));
+		assertTrue(updated.log().contains("/products/101?limit=50"), updated.log());
+	}
+
+	@Test
+	public void secureComponentFieldNamesOverrideDifferentPlaceholderNames() throws Exception {
+		Request request = requestWithDifferentFieldAndPlaceholderNames();
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
+
+		info.sbody("title", "Wireless Mouse", "price", 25).sheaders("X-Token", "header-token").squery("limit", 50)
+				.spath("id", 101).sauth("oauth2", "secret-token");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("Wireless Mouse", body.get("title").getAsString());
+		assertEquals(25, body.get("price").getAsInt());
+		assertEquals("header-token", updated.getHeader().get("X-Token"));
+		assertEquals("Bearer secret-token", updated.getHeader().get("Authorization"));
+		assertEquals("50", updated.getUrl().get("limit"));
+		assertTrue(updated.log().contains("/products/101?limit=50"), updated.log());
+	}
+
+	@Test
+	public void wrappedKeysStillResolvePlaceholderNamesWithoutAddingFields() throws Exception {
+		Request request = requestWithDifferentFieldAndPlaceholderNames();
+		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
+
+		info.body("{{productTitle}}", "Wireless Mouse", "{{productPrice}}", 25)
+				.headers("{{headerToken}}", "header-token").query("{{pageLimit}}", 50).path("{{id}}", 101);
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("Wireless Mouse", body.get("title").getAsString());
+		assertEquals(25, body.get("price").getAsInt());
+		assertFalse(body.has("productTitle"));
+		assertFalse(body.has("productPrice"));
+		assertEquals("header-token", updated.getHeader().get("X-Token"));
+		assertEquals("50", updated.getUrl().get("limit"));
+		assertTrue(updated.log().contains("/products/101?limit=50"), updated.log());
+	}
+
+	private static Request requestWithDifferentFieldAndPlaceholderNames() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Create product\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"https://example.com/products/{{id}}?limit={{pageLimit}}\","
+				+ "\"host\":[\"example\",\"com\"],\"path\":[\"products\",\"{{id}}\"],"
+				+ "\"variable\":[{\"key\":\"productId\",\"value\":\"{{id}}\"}],"
+				+ "\"query\":[{\"key\":\"limit\",\"value\":\"{{pageLimit}}\"}]},"
+				+ "\"header\":[{\"key\":\"X-Token\",\"value\":\"{{headerToken}}\"}],"
+				+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"title\\\":\\\"{{productTitle}}\\\",\\\"price\\\":{{productPrice}}}\","
+				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Create product");
+	}
+
 	private static Request requestWithSameSecretInEveryRequestSection() throws Exception {
 		String json = "{\"item\":[{\"name\":\"Secure request\",\"request\":{\"method\":\"POST\","
 				+ "\"url\":{\"raw\":\"https://example.com/{{pathToken}}?access={{queryToken}}\","
@@ -399,7 +498,7 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	}
 
 	private static Request requestWithPowerDailyUnresolvedBody() throws Exception {
-		String body = "{\n" + "  \"fromDate\": \"{{fromDate}}\",\n" + "  \"toDate\": \"{{toDate}}\"\n" + "}";
+		String body = "{\n  \"fromDate\": \"{{fromDate}}\",\n  \"toDate\": \"{{toDate}}\"\n}";
 		JsonObject request = new JsonObject();
 		request.addProperty("method", "POST");
 		request.addProperty("url", "{{base_url}}/v1/{{hierarchy}}");

@@ -94,7 +94,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	static JPostman.Assert wrapAssert(Supplier<?> activeContextSupplier, boolean soft, boolean classScopedSoft) {
-		return wrapAssert(null, activeContextSupplier, soft, classScopedSoft);
+		return wrapAssert(null, activeContextSupplier, soft, classScopedSoft, classScopedSoft);
 	}
 
 	static boolean isAssertProxy(Object value) {
@@ -111,6 +111,11 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier, boolean soft,
 			boolean classScopedSoft) {
+		return wrapAssert(target, activeContextSupplier, soft, classScopedSoft, classScopedSoft);
+	}
+
+	private static JPostman.Assert wrapAssert(Object target, Supplier<?> activeContextSupplier, boolean soft,
+			boolean classScopedSoft, boolean classScoped) {
 		if (isAssertProxy(target)) {
 			return (JPostman.Assert) target;
 		}
@@ -118,12 +123,12 @@ final class JPostmanTestProxy implements InvocationHandler {
 		/*
 		 * Keep assertion objects returned by the underlying context behind the JPostman
 		 * facade even when they already implement JPostman.Assert. A raw object
-		 * returned from soft(true) would otherwise bypass Runner request-scoped
-		 * collection and class-soft lifecycle rules.
+		 * returned from soft() would otherwise bypass Runner request-scoped collection
+		 * and class-soft lifecycle rules.
 		 */
 		return (JPostman.Assert) Proxy.newProxyInstance(JPostman.Assert.class.getClassLoader(),
 				new Class<?>[] { JPostman.Assert.class },
-				new JPostmanAssertProxy(target, activeContextSupplier, soft, classScopedSoft));
+				new JPostmanAssertProxy(target, activeContextSupplier, soft, classScopedSoft, classScoped));
 	}
 
 	@Override
@@ -242,14 +247,18 @@ final class JPostmanTestProxy implements InvocationHandler {
 		private final Supplier<?> activeContextSupplier;
 		private final boolean soft;
 		private final boolean classScopedSoft;
+		private final boolean classScoped;
 		private volatile Object lastActiveContext;
+		private volatile Object lastAssertionTarget;
+		private volatile Method lastClassScopedAssertionMethod;
 
 		private JPostmanAssertProxy(Object target, Supplier<?> activeContextSupplier, boolean soft,
-				boolean classScopedSoft) {
+				boolean classScopedSoft, boolean classScoped) {
 			this.target = target;
 			this.activeContextSupplier = activeContextSupplier;
 			this.soft = soft;
 			this.classScopedSoft = classScopedSoft;
+			this.classScoped = classScoped;
 		}
 
 		@Override
@@ -267,9 +276,27 @@ final class JPostmanTestProxy implements InvocationHandler {
 				Object value = assertionTarget();
 				return value == other || (value != null && value.equals(other));
 			}
-			if ("soft".equals(name) && method.getParameterCount() == 1) {
-				Object soft = invokeContext("soft", args);
-				return wrapAssert(soft, activeContextSupplier, true, classScopedSoft);
+			if ("soft".equals(name) && method.getParameterCount() == 0) {
+				/*
+				 * soft() is an explicit runtime switch and is independent of the
+				 * 
+				 * @JPostman.AssertContext annotation value. Therefore both of these must use
+				 * the same context-owned soft collector:
+				 *
+				 * asserts.soft() jpostman.ctx().asserts().soft()
+				 *
+				 * The returned facade is method/request-scoped and is verified by the same
+				 * lifecycle used by jpostman.ctx().asserts().soft().
+				 */
+				Object soft = softAssertionTarget();
+				/*
+				 * An explicit soft() call creates a normal method/request-scoped soft
+				 * collector, regardless of whether the injected field was hard or class-soft.
+				 * This matches jpostman.ctx().asserts().soft().
+				 */
+				JPostman.Assert facade = wrapAssert(soft, activeContextSupplier, true, false, false);
+				JPostmanAssertionCleanup.registerExplicitSoft(facade);
+				return facade;
 			}
 			if ("fail".equals(name) && method.getParameterCount() == 1) {
 				Object message = args == null || args.length == 0 ? null : args[0];
@@ -288,22 +315,49 @@ final class JPostmanTestProxy implements InvocationHandler {
 			 * existing specialized verification path.
 			 */
 			if (target == null && isVerifyMethod(name) && !JPostmanRuntimeRunner.active()) {
-				String contextMethod = "assertAll".equals(name) ? "verify" : name;
-				Object context = resolveContext();
-
 				/*
-				 * A class may inject @JPostman.AssertContext and call verify() from
-				 * 
-				 * @AfterAll/@AfterClass without having executed any assertions. In that case no
-				 * active or remembered assertion context exists, and there is nothing to flush.
-				 * Treat verify()/assertAll() as a successful no-op.
+				 * A hard/default AssertContext has no deferred assertion lifecycle. Its
+				 * assertions throw at the call site, exactly like TestNG Assert.assertTrue.
+				 * Therefore verify() must be a no-op for the hard facade. In particular, do not
+				 * verify the context assertion object created for the failed call: some
+				 * framework contexts also carry automatic response verification state, which
+				 * would incorrectly produce a second @AfterClass status-code failure.
 				 */
-				if (context == null) {
-					return adaptAssertReturn(proxy, method, null, soft);
+				if (!soft && classScoped) {
+					return adaptAssertReturn(proxy, method, null, false);
 				}
 
-				Object result = invokeContext(context, contextMethod, args);
-				return adaptAssertReturn(proxy, method, result, soft);
+				/*
+				 * Soft AssertContext verification flushes the assertion object that was
+				 * actually used by this facade. If no assertion call occurred, verification is
+				 * a no-op.
+				 */
+				Object assertion = lastAssertionTarget;
+				if (assertion == null) {
+					return adaptAssertReturn(proxy, method, null, true);
+				}
+				String verifyMethod = "assertAll".equals(name) ? "verify" : name;
+				Method targetMethod = findTargetMethod(assertion, verifyMethod, args);
+				Method assertionMethod = lastClassScopedAssertionMethod;
+				try {
+					Object result = invokeTarget(targetMethod, assertion, args);
+					return adaptAssertReturn(proxy, method, result, true);
+				} catch (AssertionError error) {
+					if (classScopedSoft) {
+						throw withAssertionMethod(error, assertionMethod);
+					}
+					throw error;
+				} finally {
+					/*
+					 * Class-scoped verification consumes the collector even when assertAll()
+					 * throws. A later automatic fallback must therefore see an empty facade instead
+					 * of reporting the same failures a second time.
+					 */
+					if (classScopedSoft) {
+						lastAssertionTarget = null;
+						lastClassScopedAssertionMethod = null;
+					}
+				}
 			}
 
 			if (soft && !classScopedSoft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
@@ -318,7 +372,21 @@ final class JPostmanTestProxy implements InvocationHandler {
 			Method targetMethod = findTargetMethod(value, name, args);
 			if (!isVerifyMethod(name) && !"soft".equals(name)) {
 				JPostmanAssertionCleanup.markCurrentMethod();
+				if (classScopedSoft) {
+					Method currentMethod = JPostmanAssertionCleanup.currentMethod();
+					if (currentMethod != null) {
+						lastClassScopedAssertionMethod = currentMethod;
+					}
+				}
 			}
+			/*
+			 * A class-scoped soft AssertContext collects every failure until class
+			 * verification. It must not attribute or throw the first failure during the
+			 * test method. This is intentionally different from an explicit soft()
+			 * collector, which is method-scoped and verified after the current response or
+			 * runner method.
+			 */
+
 			AssertionError localSoftFailure = soft && !classScopedSoft && JPostmanRuntimeRunner.active()
 					? localSoftFailure(targetMethod, args, value)
 					: null;
@@ -351,11 +419,70 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return adaptAssertReturn(proxy, method, result, soft);
 		}
 
+		private AssertionError withAssertionMethod(AssertionError error, Method origin) {
+			if (error == null || origin == null || error.getMessage() == null || error.getMessage().isBlank()) {
+				return error;
+			}
+
+			String prefix = origin.getDeclaringClass().getSimpleName() + "." + origin.getName() + ": ";
+			StringBuilder message = new StringBuilder();
+			for (String line : error.getMessage().split("\\R", -1)) {
+				String trimmed = line.trim();
+				if (trimmed.isEmpty()) {
+					continue;
+				}
+				if ("The following asserts failed:".equals(trimmed)) {
+					message.append(trimmed);
+				} else {
+					message.append("\n\t").append(prefix).append(trimmed);
+				}
+			}
+
+			AssertionError enriched = new AssertionError(message.toString());
+			enriched.setStackTrace(error.getStackTrace());
+			for (Throwable suppressed : error.getSuppressed()) {
+				enriched.addSuppressed(suppressed);
+			}
+			return enriched;
+		}
+
 		private Object assertionTarget() throws Throwable {
 			if (target != null) {
+				lastAssertionTarget = target;
 				return target;
 			}
-			return soft ? invokeContext("soft", new Object[] { Boolean.FALSE }) : invokeContext("asserts", null);
+
+			/*
+			 * A class-scoped soft AssertContext owns its collector. Keep that collector
+			 * bound to this proxy so another injected hard AssertContext cannot replace it
+			 * by calling context.asserts(false). Hard facades are intentionally resolved
+			 * for every active request so they continue to follow the current response.
+			 */
+			if (soft && classScopedSoft && lastAssertionTarget != null) {
+				return lastAssertionTarget;
+			}
+
+			Object assertion = soft ? softAssertionTarget() : invokeContext("asserts", new Object[] { Boolean.FALSE });
+			lastAssertionTarget = assertion;
+			return assertion;
+		}
+
+		private Object softAssertionTarget() throws Throwable {
+			/*
+			 * The context soft(boolean) method creates/returns the actual soft assertion
+			 * collector. Do not call asserts(false) afterwards: that selects the hard
+			 * assertion facade again and makes statusCode(...) fail immediately.
+			 *
+			 * The false argument selects the normal (non-secure) response. Therefore both
+			 * of these use the exact same collector:
+			 *
+			 * injectedAsserts.soft() jpostman.ctx().asserts().soft()
+			 */
+			Object assertion = invokeContext("soft", new Object[] { Boolean.FALSE });
+			if (assertion == null) {
+				throw new IllegalStateException("JPostman soft(false) returned no assertion collector");
+			}
+			return assertion;
 		}
 
 		private Object resolveContext() {
@@ -466,7 +593,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	private static AssertionError booleanFailure(Object target, Object[] args, boolean expected, boolean actual) {
-		String message = args.length > 1 && args[1] != null ? String.valueOf(args[1]).trim() : "Assertion failed";
+		String defaultMessage = expected ? "Condition should be true" : "Condition should be false";
+		String message = args.length > 1 && args[1] != null && !String.valueOf(args[1]).isBlank()
+				? String.valueOf(args[1]).trim()
+				: defaultMessage;
 		String text = testNgStyle(target) ? message + " expected [" + expected + "] but found [" + actual + "]"
 				: message + " ==> expected: <" + expected + "> but was: <" + actual + ">";
 		return new AssertionError(text);

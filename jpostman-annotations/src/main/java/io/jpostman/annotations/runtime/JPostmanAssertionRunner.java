@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 import io.jpostman.annotations.JPostmanContext;
+import io.jpostman.annotations.JPostmanOutputs;
 
 /**
  * Loads and applies assertion rules configured by @JPostmanContext/config.
@@ -131,7 +132,7 @@ final class JPostmanAssertionRunner<C> {
 			if (previous != null) {
 				String warningKey = configLocation + "|" + source + "|" + location;
 				if (REDUNDANT_ASSERTION_WARNINGS.add(warningKey)) {
-					System.err.println(JPostmanErrors.message(info, "Redundant JPostman assertions mapping ignored.",
+					JPostmanOutputs.write(JPostmanErrors.message(info, "Redundant JPostman assertions mapping ignored.",
 							"The same assertion file is configured more than once.",
 							"Using " + previous + "=" + location,
 							"Ignored config mapping: " + configLocation + " -> " + source + "=" + location));

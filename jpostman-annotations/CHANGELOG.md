@@ -1,5 +1,27 @@
 # Changelog
 
+## 4.2.0
+
+### Added
+
+- Added automatic class-level verification for `@JPostman.AssertContext(soft = true)` in TestNG and JUnit.
+- Added automatic verification of runtime soft assertions created through `asserts.soft()` and `asserts.soft(true)`.
+- Added assertion-origin tracking so deferred assertion failures identify the test method that created each failure.
+- Added automatic `JPostman.Report.summary()` execution after test-class completion.
+- Added TestNG configuration-failure reporting for automatic class-level assertion verification.
+- Added regression coverage for class-soft assertions, runtime soft assertions, manual verification, automatic verification, lifecycle ordering, duplicate failure prevention, and report-summary finalization.
+
+### Changed
+
+- Changed deferred assertion messages to include the originating class and method in the form `ClassName::methodName`.
+- Changed TestNG automatic class verification to run after user-defined `@AfterClass` methods complete.
+- Changed TestNG lifecycle handling so a user-defined `@AfterClass` method may call `softAsserts.verify()` before JPostman performs automatic fallback verification.
+
+### Fixed
+
+- Fixed class-soft assertions being verified too early when a test class defines an `@AfterClass` method.
+- Fixed JPostman automatic verification running before user teardown verification.
+
 ## 4.1.5
 ### Added
 

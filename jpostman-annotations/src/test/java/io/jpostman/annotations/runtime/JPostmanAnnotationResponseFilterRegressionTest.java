@@ -228,7 +228,7 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 			assertEquals("token-123", ctx.cache(CACHE_TOKEN),
 					"The namespace=test request context should receive the cached access token.");
 			info.sauth("oauth2", ctx.cache(CACHE_TOKEN));
-			info.add().headers("METHOD", info.attr().method);
+			info.headers("METHOD", info.attr().method);
 		}
 
 		@JPostman.Response(namespace = "test", dependsOn = TOKEN_API, filter = { "id", "firstName" })

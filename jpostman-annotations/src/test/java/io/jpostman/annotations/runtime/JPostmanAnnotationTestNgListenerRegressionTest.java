@@ -67,8 +67,6 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		assertEquals(ITestResult.FAILURE, status.get(),
 				"The collected soft verification must be flushed after the same method body exits.");
 		assertNotNull(throwable.get());
-		assertTrue(throwable.get().getMessage().contains("method=inspectResponseAfterSoftVerification"),
-				"Actual message: " + throwable.get().getMessage());
 		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [401] but found [200]"),
 				"Actual message: " + throwable.get().getMessage());
 	}

@@ -97,6 +97,12 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 
 	/** {@inheritDoc} */
 	@Override
+	public Integer responseStatusCode(JUnitContext context) {
+		return context == null || context.response() == null ? null : context.response().statusCode();
+	}
+
+	/** {@inheritDoc} */
+	@Override
 	public void soft(JUnitContext context, boolean log) {
 		context.soft(log);
 	}
@@ -117,6 +123,9 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 	@Override
 	public void verify(JUnitContext context, int statusCode, boolean soft, boolean log, JPostmanInfo info,
 			String diagnosticLog) {
+		if (info != null && context != null && context.response() != null) {
+			info.statusCode(context.response().statusCode());
+		}
 		Object assertions = soft ? context.soft(false) : context.asserts(false);
 		JPostmanFramework.statusCode(context, assertions, statusCode, info, soft, log, diagnosticLog);
 	}

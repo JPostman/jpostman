@@ -225,6 +225,21 @@ public interface JPostmanFramework<C> {
 	 */
 	C response(C context, ApiExecutor executor);
 
+	/**
+	 * Returns the active HTTP response status code when available.
+	 *
+	 * @param context framework context
+	 * @return HTTP status code, or {@code null} when no response exists
+	 */
+	default Integer responseStatusCode(C context) {
+		Object response = responseObject(context);
+		if (response == null) {
+			return null;
+		}
+		int status = actualStatusCodeFromResponse(response);
+		return status >= 0 ? status : null;
+	}
+
 	/** Applies request values collected in {@link JPostmanInfo} to a request. */
 	static Request applyRequestValues(Request request, JPostmanInfo info) {
 		if (request == null || info == null || !info.hasRequestValues()) {
@@ -259,17 +274,20 @@ public interface JPostmanFramework<C> {
 		applyResolve(builder.headers(), requestTokenParams, info.params);
 		applyResolve(builder.body(), requestTokenParams, info.params);
 
-		// Component-specific values retain legacy add/set behavior. Wrapped keys such
-		// as {{token}} explicitly mean resolve-only and are never added.
-		applySetOrAdd(builder.url(), urlQueryParams, info.query);
-		applySetOrAdd(builder.headers(), headerParams, info.headers);
-		applySetOrAdd(builder.body(), bodyParams, info.body);
-		applySetOrAdd(builder.url(), requestTokenParams, info.path);
+		// Component-specific values target the visible field name first. When an
+		// existing field contains a differently named {{placeholder}}, resolve that
+		// placeholder instead of queuing a structural set against an unresolved body.
+		applySetOrAdd(builder.url(), urlQueryParams, info.query,
+				key -> request.getUrl() != null && request.getUrl().get(key) != null,
+				key -> componentPlaceholder(request.getUrl() == null ? null : request.getUrl().get(key)), true);
+		applySetOrAdd(builder.headers(), headerParams, info.headers,
+				key -> request.getHeader() != null && request.getHeader().get(key) != null,
+				key -> componentPlaceholder(request.getHeader() == null ? null : request.getHeader().get(key)), true);
+		applySetOrAdd(builder.body(), bodyParams, info.body, key -> bodyContainsKey(request, key),
+				key -> bodyFieldPlaceholder(request, key), true);
+		applySetOrAdd(builder.url(), requestTokenParams, info.path, key -> pathFieldPlaceholder(request, key) != null,
+				key -> pathFieldPlaceholder(request, key), true);
 		applyAuth(request, builder, mergedParams(info.params, info.auth));
-
-		applyAdd(builder.url(), info.queryAdd);
-		applyAdd(builder.headers(), info.headersAdd);
-		applyAdd(builder.body(), info.bodyAdd);
 
 		return builder.build();
 	}
@@ -294,27 +312,165 @@ public interface JPostmanFramework<C> {
 	}
 
 	private static void applySetOrAdd(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
-			Map<String, Object> values) {
+			Map<String, Object> values, java.util.function.Predicate<String> fieldExists,
+			java.util.function.Function<String, String> fieldPlaceholder, boolean addMissingPlainKeys) {
 		if (step == null || values == null || values.isEmpty()) {
 			return;
 		}
 
 		Map<String, String> params = configuredParams == null ? Map.of() : configuredParams;
+		java.util.LinkedHashMap<String, Object> resolved = new java.util.LinkedHashMap<>();
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String originalKey = entry.getKey();
 			if (originalKey == null || originalKey.isBlank()) {
 				continue;
 			}
 
-			boolean resolveOnly = isPlaceholderKey(originalKey);
+			boolean wrapped = isPlaceholderKey(originalKey);
 			String key = placeholderKey(originalKey);
 			Object value = executableValue(entry.getValue());
-			if (resolveOnly || params.containsKey(key)) {
-				step.set(key, value);
-			} else {
+
+			// Explicit {{name}} always means parameter resolution, never field creation.
+			if (wrapped) {
+				resolved.put(key, value);
+				continue;
+			}
+
+			boolean exists = fieldExists != null && fieldExists.test(key);
+			if (exists) {
+				String placeholder = fieldPlaceholder == null ? null : fieldPlaceholder.apply(key);
+				if (placeholder != null && !placeholder.isBlank() && !placeholder.equals(key)) {
+					resolved.put(placeholder, value);
+				} else {
+					step.set(key, value);
+				}
+				continue;
+			}
+
+			// A plain configured parameter keeps the legacy dual behavior: resolve all
+			// {{key}} occurrences and expose the named component value as well.
+			if (params.containsKey(key)) {
+				resolved.put(key, value);
 				step.add(key, value);
+			} else if (addMissingPlainKeys) {
+				String placeholder = fieldPlaceholder == null ? null : fieldPlaceholder.apply(key);
+				if (placeholder != null && !placeholder.isBlank()) {
+					resolved.put(placeholder, value);
+				} else {
+					step.add(key, value);
+				}
 			}
 		}
+		if (!resolved.isEmpty()) {
+			step.end(resolved);
+		}
+	}
+
+	private static String pathFieldPlaceholder(Request request, String key) {
+		if (request == null || request.getUrl() == null || key == null || key.isBlank()) {
+			return null;
+		}
+		String direct = componentPlaceholder(request.getUrl().get(key));
+		if (direct != null) {
+			return direct;
+		}
+		// Postman URL variables may use an alias key (for example productId) whose
+		// value is a different path placeholder ({{id}}). Keep this lookup reflective
+		// so it remains compatible with older jpostman-core URL implementations.
+		for (String methodName : new String[] { "getVariable", "variable" }) {
+			try {
+				java.lang.reflect.Method method = request.getUrl().getClass().getMethod(methodName, String.class);
+				Object value = method.invoke(request.getUrl(), key);
+				String placeholder = componentPlaceholder(value == null ? null : String.valueOf(value));
+				if (placeholder != null) {
+					return placeholder;
+				}
+			} catch (ReflectiveOperationException ignored) {
+				// Try a collection-style URL API below.
+			}
+		}
+		for (String methodName : new String[] { "getVariables", "variables" }) {
+			try {
+				java.lang.reflect.Method method = request.getUrl().getClass().getMethod(methodName);
+				String placeholder = placeholderFromVariableContainer(method.invoke(request.getUrl()), key);
+				if (placeholder != null) {
+					return placeholder;
+				}
+			} catch (ReflectiveOperationException ignored) {
+				// Try the next compatible URL API name.
+			}
+		}
+		return null;
+	}
+
+	private static String placeholderFromVariableContainer(Object variables, String key) {
+		if (variables instanceof Map<?, ?>) {
+			Object value = ((Map<?, ?>) variables).get(key);
+			return componentPlaceholder(value == null ? null : String.valueOf(value));
+		}
+		if (variables instanceof Iterable<?>) {
+			for (Object variable : (Iterable<?>) variables) {
+				if (variable == null) {
+					continue;
+				}
+				try {
+					Object variableKey = variable.getClass().getMethod("getKey").invoke(variable);
+					if (!key.equals(String.valueOf(variableKey))) {
+						continue;
+					}
+					Object value = variable.getClass().getMethod("getValue").invoke(variable);
+					return componentPlaceholder(value == null ? null : String.valueOf(value));
+				} catch (ReflectiveOperationException ignored) {
+					// Ignore unknown variable container entries.
+				}
+			}
+		}
+		return null;
+	}
+
+	private static String componentPlaceholder(String value) {
+		if (value == null) {
+			return null;
+		}
+		java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*\\}\\}")
+				.matcher(value);
+		return matcher.find() ? matcher.group(1).trim() : null;
+	}
+
+	private static String bodyFieldPlaceholder(Request request, String key) {
+		if (request == null || request.getBody() == null || key == null || key.isBlank()) {
+			return null;
+		}
+		String raw = request.getBody().getRaw();
+		if (raw == null) {
+			return null;
+		}
+		String quotedKey = java.util.regex.Pattern.quote(key);
+		java.util.regex.Pattern pattern = java.util.regex.Pattern
+				.compile("[\"']" + quotedKey + "[\"']\\s*:\\s*(?:[\"']\\s*)?\\{\\{\\s*([^{}]+?)\\s*\\}\\}");
+		java.util.regex.Matcher matcher = pattern.matcher(raw);
+		return matcher.find() ? matcher.group(1).trim() : null;
+	}
+
+	private static boolean bodyContainsKey(Request request, String key) {
+		if (request == null || request.getBody() == null || key == null || key.isBlank()) {
+			return false;
+		}
+		try {
+			com.google.gson.JsonElement parsed = request.getBody().getParsed();
+			if (parsed != null && parsed.isJsonObject() && parsed.getAsJsonObject().has(key)) {
+				return true;
+			}
+		} catch (RuntimeException ignored) {
+			// Unquoted placeholders can make the unresolved raw body invalid JSON.
+		}
+
+		String raw = request.getBody().getRaw();
+		if (raw == null || raw.isBlank()) {
+			return false;
+		}
+		String quoted = java.util.regex.Pattern.quote(key);
+		return java.util.regex.Pattern.compile("[\"']" + quoted + "[\"']\\s*:").matcher(raw).find();
 	}
 
 	private static boolean isPlaceholderKey(String key) {
@@ -400,18 +556,6 @@ public interface JPostmanFramework<C> {
 		}
 	}
 
-	private static void applyAdd(Request.RequestBuilder.ParamStep step, Map<String, Object> values) {
-		if (step == null || values == null || values.isEmpty()) {
-			return;
-		}
-		for (Map.Entry<String, Object> entry : values.entrySet()) {
-			String key = entry.getKey();
-			if (key != null && !key.isBlank()) {
-				step.add(key, executableValue(entry.getValue()));
-			}
-		}
-	}
-
 	/**
 	 * Converts secret/cache wrapper values into ordinary Java values only at the
 	 * executable request boundary. JPostmanInfo retains the wrappers so masking and
@@ -427,9 +571,6 @@ public interface JPostmanFramework<C> {
 		}
 		Map<String, Object> secrets = info.secretValues();
 		String[] secretHeaders = info.secretHeaders();
-		if ((secrets == null || secrets.isEmpty()) && (secretHeaders == null || secretHeaders.length == 0)) {
-			return;
-		}
 		try {
 			Object secureRequest = context.getClass().getMethod("request").invoke(context);
 			if (secureRequest == null) {
@@ -450,8 +591,36 @@ public interface JPostmanFramework<C> {
 					// Older secure modules may not expose SecureRequest.headers(String...).
 				}
 			}
+			String requestLog = secureRequestLog(secureRequest);
+			if (!requestLog.isBlank())
+				info.requestLog(requestLog);
 		} catch (ReflectiveOperationException | RuntimeException ignored) {
 			// Context implementation does not expose a secure request view.
+		}
+	}
+
+	private static String secureRequestLog(Object secureRequest) {
+		if (secureRequest == null)
+			return "";
+
+		// Prefer the resolved logging overload when the secure request implementation
+		// exposes it. Unlike print(), log() only returns text and therefore cannot leak
+		// diagnostic capture into the active console/output sink.
+		try {
+			Object logged = secureRequest.getClass().getMethod("log", boolean.class).invoke(secureRequest, true);
+			if (logged != null)
+				return String.valueOf(logged);
+		} catch (NoSuchMethodException ignored) {
+			// Fall through to the legacy no-argument SecureRequest.log().
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			return "";
+		}
+
+		try {
+			Object logged = secureRequest.getClass().getMethod("log").invoke(secureRequest);
+			return logged == null ? "" : String.valueOf(logged);
+		} catch (ReflectiveOperationException | RuntimeException ignored) {
+			return "";
 		}
 	}
 
@@ -1051,42 +1220,33 @@ public interface JPostmanFramework<C> {
 
 	static void statusCode(Object context, Object assertions, int statusCode, JPostmanInfo info, boolean soft,
 			boolean log, String diagnosticLog) {
-		String message = statusCodePrefix(info);
-		if (soft && log) {
-			int actualStatusCode = actualStatusCode(context);
-			String diagnostic = value(diagnosticLog).trim();
-			if (actualStatusCode >= 0 && actualStatusCode != statusCode && !diagnostic.isBlank()) {
-				message = statusCodeMessage(info, statusCode, actualStatusCode, diagnostic);
-			}
+		int capturedStatusCode = info != null && info.statusCode() != null ? info.statusCode().intValue()
+				: actualStatusCode(context);
+		if (info != null && capturedStatusCode >= 0) {
+			info.statusCode(capturedStatusCode);
 		}
+		// Capture the HTTP status only for diagnostics/reporting. Do not build or
+		// pass a custom mismatch message here. The assertion implementation owns the
+		// comparison and must preserve the expected value of the assertion that
+		// actually failed, especially when an existing soft collector is flushed by a
+		// later framework verification.
 		try {
-			invokeStatusCode(assertions, statusCode, message);
+			invokeStatusCode(assertions, statusCode);
 		} catch (AssertionError e) {
-			String detail = log ? appendDiagnostic(e.getMessage(), diagnosticLog) : value(e.getMessage());
+			String detail = value(e.getMessage());
+			if (info != null) {
+				String location = JPostmanErrors.suffix(info);
+				if (!location.isBlank() && !detail.contains(location)) {
+					detail = location + JPostmanErrors.ENDL + detail;
+				}
+			}
+			if (log) {
+				detail = appendDiagnostic(detail, diagnosticLog);
+			}
 			AssertionError error = new AssertionError(endWithNewLine(detail), e);
 			copySuppressed(e, error);
 			throw error;
 		}
-	}
-
-	private static String statusCodePrefix(JPostmanInfo info) {
-		if (info == null) {
-			return "";
-		}
-		return JPostmanErrors.suffix(info) + "\nStatus code mismatch:";
-	}
-
-	private static String statusCodeMessage(JPostmanInfo info, int expected, int actual, String diagnosticLog) {
-		StringBuilder message = new StringBuilder();
-		message.append(JPostmanErrors.suffix(info));
-		message.append(JPostmanErrors.ENDL);
-		message.append("Status code mismatch: expected [").append(expected).append("] but found [").append(actual)
-				.append("]");
-		String diagnostic = value(diagnosticLog).trim();
-		if (!diagnostic.isBlank()) {
-			message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append(diagnostic);
-		}
-		return endWithNewLine(message.toString());
 	}
 
 	private static String appendDiagnostic(String message, String diagnosticLog) {
@@ -1100,6 +1260,10 @@ public interface JPostmanFramework<C> {
 
 	private static int actualStatusCode(Object context) {
 		Object response = responseObject(context);
+		return actualStatusCodeFromResponse(response);
+	}
+
+	private static int actualStatusCodeFromResponse(Object response) {
 		if (response == null) {
 			return -1;
 		}
@@ -1144,14 +1308,14 @@ public interface JPostmanFramework<C> {
 		return value == null ? "" : value;
 	}
 
-	private static boolean invokeStatusCode(Object assertions, int statusCode, String message) {
+	private static boolean invokeStatusCode(Object assertions, int statusCode) {
 		if (assertions == null) {
 			return false;
 		}
 		Class<?> type = assertions.getClass();
 		try {
-			Method method = type.getMethod("statusCode", int.class, String.class);
-			method.invoke(assertions, statusCode, message);
+			Method method = type.getMethod("statusCode", int.class);
+			method.invoke(assertions, statusCode);
 			return true;
 		} catch (NoSuchMethodException e) {
 			return false;

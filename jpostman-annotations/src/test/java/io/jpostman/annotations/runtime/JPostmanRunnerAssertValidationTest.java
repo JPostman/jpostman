@@ -349,49 +349,49 @@ public class JPostmanRunnerAssertValidationTest {
 	}
 
 	@Test
-	public void injectedAssertVerifyDelegatesToActiveContextWithoutReplacingSoftAssertions() {
+	public void injectedHardAssertVerifyIsNoOp() {
 		ResetAwareAssertContext context = new ResetAwareAssertContext();
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context);
 
 		asserts.verify();
 
-		assertEquals(1, context.verifyCalls);
+		assertEquals(0, context.verifyCalls);
 		assertEquals(0, context.assertsCalls);
-		assertFalse(context.softPending);
+		assertTrue(context.softPending);
 	}
 
 	@Test
-	public void injectedAssertVerifyStatusDelegatesToActiveContextAndUsesRequestedStatus() {
+	public void injectedHardAssertVerifyStatusIsNoOp() {
 		ResetAwareAssertContext context = new ResetAwareAssertContext();
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context);
 
 		asserts.verify(201);
 
-		assertEquals(1, context.verifyCalls);
-		assertEquals(201, context.statusCode);
+		assertEquals(0, context.verifyCalls);
+		assertEquals(-1, context.statusCode);
 		assertEquals(0, context.assertsCalls);
-		assertFalse(context.softPending);
+		assertTrue(context.softPending);
 	}
 
 	@Test
-	public void injectedAssertVerifyUsesLastActiveContextDuringClassTeardown() {
+	public void injectedHardAssertVerifyRemainsNoOpAfterSoftFacadeCreation() {
 		ResetAwareAssertContext context = new ResetAwareAssertContext();
 		AtomicReference<ResetAwareAssertContext> active = new AtomicReference<>(context);
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(active::get);
 
-		asserts.soft(false);
+		asserts.soft();
 		active.set(null);
 		asserts.verify();
 
-		assertEquals(1, context.verifyCalls);
+		assertEquals(0, context.verifyCalls);
 		assertEquals(0, context.assertsCalls);
-		assertFalse(context.softPending);
+		assertTrue(context.softPending);
 	}
 
 	@Test
 	public void localSoftFacadePrefersRunnerFailureOverContextVerifyNoise() {
 		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> new TestNgNoisySoftContext());
-		JPostman.Assert soft = asserts.soft(false);
+		JPostman.Assert soft = asserts.soft();
 
 		JPostmanRuntimeRunner.begin(java.util.List.of("Get all products"));
 		try {

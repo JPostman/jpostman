@@ -104,6 +104,10 @@ public final class JPostmanAnnotationRunner<C> {
 	public void run(Object testInstance, Method testMethod) throws Exception {
 		validateExecutors(testInstance);
 		JPostmanReport report = injectReportContext(testInstance);
+		if (report != null && report.skipRemaining()) {
+			throw JPostmanErrors.skip(framework, null, "JPostman test skipped.",
+					"@JPostman.ReportContext(fail = \"skip all\") stopped remaining tests after the first failure.");
+		}
 		PreparedContexts<C> prepared = contextRunner.prepareForRun(testInstance);
 		contextRunner.activate(testInstance, prepared);
 		contextRunner.injectLoadedContexts(testInstance, prepared);
@@ -1671,6 +1675,7 @@ public final class JPostmanAnnotationRunner<C> {
 			info.start();
 			try {
 				ctx = framework.response(ctx, (ApiExecutor) result);
+				captureResponseStatus(ctx, info);
 				ctx = applyFilter(ctx, annotation.filter());
 			} finally {
 				info.end();
@@ -2084,6 +2089,7 @@ public final class JPostmanAnnotationRunner<C> {
 			info.start();
 			try {
 				ctx = framework.response(ctx, (ApiExecutor) result);
+				captureResponseStatus(ctx, info);
 				ctx = applyFilter(ctx, annotation.filter());
 			} finally {
 				info.end();
@@ -2140,6 +2146,7 @@ public final class JPostmanAnnotationRunner<C> {
 			info.start();
 			try {
 				ctx = framework.response(ctx, (ApiExecutor) result);
+				captureResponseStatus(ctx, info);
 				ctx = applyFilter(ctx, annotation.filter());
 			} finally {
 				info.end();
@@ -2369,6 +2376,16 @@ public final class JPostmanAnnotationRunner<C> {
 	private void enableSoft(Object testInstance, C ctx, JPostmanInfo info, boolean soft, String annotationLog) {
 		if (soft) {
 			framework.soft(ctx, failureDiagnostics(testInstance, annotationLog, info));
+		}
+	}
+
+	private void captureResponseStatus(C ctx, JPostmanInfo info) {
+		if (info == null) {
+			return;
+		}
+		Integer statusCode = framework.responseStatusCode(ctx);
+		if (statusCode != null) {
+			info.statusCode(statusCode);
 		}
 	}
 
@@ -2685,6 +2702,9 @@ public final class JPostmanAnnotationRunner<C> {
 					report = new JPostmanReport();
 					field.set(testInstance, report);
 				}
+				io.jpostman.annotations.JPostmanReportContext options = JPostmanAnnotations.reportContext(field);
+				if (options != null)
+					report.configure(options.diagnostic(), options.fail());
 				if (result == null) {
 					result = report;
 				}
