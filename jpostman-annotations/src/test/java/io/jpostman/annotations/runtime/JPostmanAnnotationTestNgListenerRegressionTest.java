@@ -177,6 +177,53 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		assertEquals(null, throwable.get());
 	}
 
+	/**
+	 * Verifies the real TestNG IHookable runner lifecycle with a request
+	 * dependency, a cached executor-backed response dependency, report recording,
+	 * and mixed runner response codes in the order 200 -> 201 -> 200. An explicit
+	 * runner verify value of zero must suppress every automatic status-code check,
+	 * including callback cleanup between the 201 and following 200 request.
+	 */
+	@Test
+	public void runnerVerifyZeroAllowsMixedStatusesAcrossTestNgCallbacksAndReportsDependencies() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		MixedStatusRunnerDependencyFixture fixture = new MixedStatusRunnerDependencyFixture();
+		Method method = MixedStatusRunnerDependencyFixture.class.getDeclaredMethod("products");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(ITestResult.SUCCESS, status.get(),
+				"verify = 0 must not apply the context default to the intermediate 201 response.");
+		assertEquals(null, throwable.get());
+		assertEquals(3, fixture.bodyCalls, "The TestNG test body should run after each of the three runner requests.");
+		assertEquals(List.of("Folder request one", "Folder request two", "Folder request three"), fixture.bodyRequests);
+		assertEquals(1, fixture.loginMethodCalls,
+				"The cached executor-backed response dependency should execute only once.");
+		assertEquals(3, fixture.productRequestHelperCalls);
+		assertEquals(1, fixture.loginExecutorCalls);
+		assertEquals(3, fixture.productExecutorCalls);
+
+		JPostmanReport report = (JPostmanReport) fixture.report;
+		assertEquals(4, report.total(), "One login dependency plus three runner requests should be reported.");
+		assertEquals(4, report.passed.size());
+		assertEquals(0, report.failed.size());
+		assertEquals(0, report.skipped.size());
+		assertEquals(1, report.all().stream().filter(info -> "getLogin".equals(info.method)).count());
+		assertEquals(3, report.all().stream().filter(
+				info -> "@JPostmanRunner".equals(info.annotation) && info.request != null && !info.request.isBlank())
+				.count());
+		assertTrue(
+				report.all().stream()
+						.noneMatch(info -> "@JPostmanRunner".equals(info.annotation)
+								&& (info.request == null || info.request.isBlank())),
+				"The listener must not create a blank zero-duration parent runner record.");
+		assertTrue(report.passed.stream().anyMatch(info -> Integer.valueOf(201).equals(info.statusCode())),
+				"The 201 runner response should be reported as passed when verify = 0.");
+	}
+
 	@Test
 	public void successfulFrameworkOwnedRunnerTransitionsStartedResultToSuccess() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
@@ -387,6 +434,69 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			executorCalls++;
 			return okExecutor("{\"id\":" + executorCalls + ",\"request\":\"" + info.request + "\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class MixedStatusRunnerDependencyFixture {
+
+		@JPostman.Context(config = "classpath:annotation-test-runner-per-request.properties", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		@JPostman.ReportContext(diagnostic = "short")
+		private JPostman.Report report;
+
+		private int bodyCalls;
+		private final List<String> bodyRequests = new ArrayList<>();
+		private int loginMethodCalls;
+		private int productRequestHelperCalls;
+		private int loginExecutorCalls;
+		private int productExecutorCalls;
+
+		@JPostman.Response(request = "Root request one", cache = "token")
+		public String getLogin(TestNgContext ctx) {
+			loginMethodCalls++;
+			return ctx.path("accessToken");
+		}
+
+		@JPostman.Request(dependsOn = "getLogin")
+		public void productRequest(TestNgContext ctx, JPostman.Info info) {
+			productRequestHelperCalls++;
+			assertEquals("token-123", ctx.cache("token"));
+			info.sauth("oauth2", ctx.cache("token"));
+		}
+
+		@JPostman.Runner(namespace = "product", folder = "Product", verify = 0, dependsOn = "productRequest")
+		@org.testng.annotations.Test
+		public void products() {
+			bodyCalls++;
+			bodyRequests.add(jpostman.info().attr().request);
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String requestName = ctx.request().log();
+			if (!"product".equals(info.namespace) && requestName.contains("Root request one")) {
+				loginExecutorCalls++;
+				return () -> new ApiResponse(200, "{\"accessToken\":\"token-123\"}",
+						"{\"accessToken\":\"token-123\"}".getBytes(), Map.of());
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request one")) {
+				productExecutorCalls++;
+				return () -> new ApiResponse(200, "{\"source\":\"product-one\"}",
+						"{\"source\":\"product-one\"}".getBytes(), Map.of());
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request two")) {
+				productExecutorCalls++;
+				return () -> new ApiResponse(201, "{\"source\":\"product-two\"}",
+						"{\"source\":\"product-two\"}".getBytes(), Map.of());
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request three")) {
+				productExecutorCalls++;
+				return () -> new ApiResponse(200, "{\"source\":\"product-three\"}",
+						"{\"source\":\"product-three\"}".getBytes(), Map.of());
+			}
+			throw new AssertionError("Unexpected request: namespace=" + info.namespace + ", request=" + requestName);
 		}
 	}
 

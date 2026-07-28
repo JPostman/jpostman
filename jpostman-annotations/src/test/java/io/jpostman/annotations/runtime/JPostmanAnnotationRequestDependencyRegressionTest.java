@@ -42,6 +42,46 @@ public class JPostmanAnnotationRequestDependencyRegressionTest {
 		assertEquals("product", fixture.product.path("source"));
 	}
 
+	/**
+	 * Verifies the complete runner dependency/report lifecycle. An explicit runner
+	 * verify value of zero must disable status verification for every runner
+	 * response, including after a request helper executes a cached response
+	 * dependency. The response dependency is a real executor-backed request and is
+	 * therefore reported once; cache hits are not reported again.
+	 */
+	@Test
+	public void runnerVerifyZeroSkipsAllStatusChecksAndReportsResponseDependency() throws Exception {
+		RunnerDependencyReportFixture fixture = new RunnerDependencyReportFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "products");
+
+		JPostmanReport result = (JPostmanReport) fixture.report;
+		assertEquals(1, fixture.loginMethodCalls,
+				"The cached response dependency should execute and be reported only once.");
+		assertEquals(3, fixture.productRequestHelperCalls,
+				"The request helper should run once for each product runner request.");
+		assertEquals(1, fixture.loginExecutorCalls);
+		assertEquals(3, fixture.productExecutorCalls);
+
+		assertEquals(4, result.total(), "One login dependency plus three runner requests should be reported.");
+		assertEquals(4, result.passed.size());
+		assertEquals(0, result.failed.size());
+		assertEquals(0, result.skipped.size());
+		assertEquals(1, result.all().stream().filter(info -> "getLogin".equals(info.method)).count(),
+				"The executor-backed response dependency should be a report result.");
+		assertEquals(3, result.all().stream().filter(
+				info -> "@JPostmanRunner".equals(info.annotation) && info.request != null && !info.request.isBlank())
+				.count());
+		assertTrue(
+				result.all().stream()
+						.noneMatch(info -> "@JPostmanRunner".equals(info.annotation)
+								&& (info.request == null || info.request.isBlank())),
+				"A concrete runner execution must not create a blank zero-duration parent report record.");
+		assertTrue(result.passed.stream().anyMatch(info -> Integer.valueOf(201).equals(info.statusCode())),
+				"verify = 0 must allow the 201 runner response even when the context default is 200.");
+	}
+
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
@@ -104,6 +144,61 @@ public class JPostmanAnnotationRequestDependencyRegressionTest {
 			if ("product".equals(info.namespace) && requestName.contains("Get current auth user")) {
 				productExecutorCalls++;
 				return okExecutor(200, "{\"source\":\"product\",\"id\":1}");
+			}
+			throw new AssertionError("Unexpected request: namespace=" + info.namespace + ", request=" + requestName);
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RunnerDependencyReportFixture {
+
+		@JPostman.Context(config = "classpath:annotation-test-runner-per-request.properties", verifyStatusCode = 200)
+		private JPostman.Runtime<TestNgContext> jpostman;
+
+		@JPostman.ReportContext(diagnostic = "short")
+		private JPostman.Report report;
+
+		private int loginMethodCalls;
+		private int productRequestHelperCalls;
+		private int loginExecutorCalls;
+		private int productExecutorCalls;
+
+		@JPostman.Response(request = "Root request one", cache = "token")
+		public String getLogin(TestNgContext ctx) {
+			loginMethodCalls++;
+			return ctx.path("accessToken");
+		}
+
+		@JPostman.Request(dependsOn = "getLogin")
+		public void productRequest(TestNgContext ctx, JPostman.Info info) {
+			productRequestHelperCalls++;
+			assertEquals("token-123", ctx.cache("token"));
+			info.sauth("oauth2", ctx.cache("token"));
+		}
+
+		@JPostman.Runner(namespace = "product", folder = "Product", verify = 0, dependsOn = "productRequest")
+		@org.testng.annotations.Test
+		public void products() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String requestName = ctx.request().log();
+			if (!"product".equals(info.namespace) && requestName.contains("Root request one")) {
+				loginExecutorCalls++;
+				return okExecutor(200, "{\"accessToken\":\"token-123\"}");
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request one")) {
+				productExecutorCalls++;
+				return okExecutor(200, "{\"source\":\"product-one\"}");
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request two")) {
+				productExecutorCalls++;
+				return okExecutor(201, "{\"source\":\"product-two\"}");
+			}
+			if ("product".equals(info.namespace) && requestName.contains("Folder request three")) {
+				productExecutorCalls++;
+				return okExecutor(200, "{\"source\":\"product-three\"}");
 			}
 			throw new AssertionError("Unexpected request: namespace=" + info.namespace + ", request=" + requestName);
 		}

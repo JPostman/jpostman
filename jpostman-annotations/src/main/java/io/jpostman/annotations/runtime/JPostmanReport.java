@@ -292,7 +292,22 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		if (info == null) {
 			return false;
 		}
-		return isRunnerRequest(info) || isTopLevel(info);
+		return isRunnerRequest(info) || isExecutedResponseDependency(info) || isTopLevel(info);
+	}
+
+	private boolean isExecutedResponseDependency(JPostmanInfo info) {
+		return info != null && "@JPostmanResponse".equals(value(info.annotation)) && info.methodIndex > 0
+				&& info.statusCode() != null;
+	}
+
+	boolean hasRunnerRequest(String methodName) {
+		String expected = value(methodName);
+		for (JPostmanInfo candidate : all()) {
+			if (isRunnerRequest(candidate) && expected.equals(value(candidate.method))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private boolean isRunnerRequest(JPostmanInfo info) {

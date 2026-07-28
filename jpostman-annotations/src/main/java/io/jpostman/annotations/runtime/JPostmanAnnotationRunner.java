@@ -3,8 +3,10 @@ package io.jpostman.annotations.runtime;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +44,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private final JPostmanRequestDiscovery requestDiscovery;
 	private final Runnable afterRunnerRequestCallback;
 	private final Map<String, ApiExecutor> sessionExecutors = new LinkedHashMap<>();
+	private final Deque<Integer> runnerVerifyScopes = new ArrayDeque<>();
 
 	@FunctionalInterface
 	private interface RunnerBodyCallback<T> {
@@ -192,22 +195,28 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 
 			if (runnerAnnotation != null) {
-				Method reusableRunner = runnerDependencyLauncherMethod(testInstance.getClass(), runnerAnnotation, info);
-				if (reusableRunner != null) {
-					runRunnerDependencyLauncher(testInstance, prepared, testMethod, reusableRunner, runnerAnnotation,
-							info, stack);
-				} else {
-					prepareRunnerScope(testInstance, prepared, runnerAnnotation, info);
-					String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, runnerAnnotation,
+				beginRunnerVerifyScope(runnerAnnotation.verify());
+				try {
+					Method reusableRunner = runnerDependencyLauncherMethod(testInstance.getClass(), runnerAnnotation,
 							info);
-					String[] setupDependencies = runnerAnnotation.lifecycle()
-							? dependencies(runnerAnnotation.dependsOn())
-							: runnerSetupDependencies(testInstance, runnerAnnotation, info);
-					runDependencies(testInstance, prepared, setupDependencies, info.withTags(runnerAnnotation.tags()),
-							stack);
-					executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
-							runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod),
-							runnerAnnotation.lifecycle() ? new String[0] : perRequestDependencies);
+					if (reusableRunner != null) {
+						runRunnerDependencyLauncher(testInstance, prepared, testMethod, reusableRunner,
+								runnerAnnotation, info, stack);
+					} else {
+						prepareRunnerScope(testInstance, prepared, runnerAnnotation, info);
+						String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, runnerAnnotation,
+								info);
+						String[] setupDependencies = runnerAnnotation.lifecycle()
+								? dependencies(runnerAnnotation.dependsOn())
+								: runnerSetupDependencies(testInstance, runnerAnnotation, info);
+						runDependencies(testInstance, prepared, setupDependencies,
+								info.withTags(runnerAnnotation.tags()), stack);
+						executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
+								runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod),
+								runnerAnnotation.lifecycle() ? new String[0] : perRequestDependencies);
+					}
+				} finally {
+					endRunnerVerifyScope();
 				}
 			}
 		} catch (Exception | Error e) {
@@ -215,11 +224,17 @@ public final class JPostmanAnnotationRunner<C> {
 					runnerAnnotation);
 			C latest = latestContext(prepared, info.namespace, current.context);
 			String internalDiagnostic = internalDiagnosticLog(latest);
+			boolean concreteRunnerResult = runnerAnnotation != null && report != null
+					&& report.hasRunnerRequest(info.method);
 			if (isFrameworkSkip(e)) {
-				skipped(report, info);
+				if (!concreteRunnerResult) {
+					skipped(report, info);
+				}
 				JPostmanDebugFile.skipped(testInstance, info, localDebug, internalDiagnostic, e);
 			} else {
-				failed(report, info, latest, e);
+				if (!concreteRunnerResult) {
+					failed(report, info, latest, e);
+				}
 				JPostmanDebugFile.failure(testInstance, info, localDebug, internalDiagnostic, e);
 			}
 			throw e;
@@ -1147,21 +1162,27 @@ public final class JPostmanAnnotationRunner<C> {
 			skipped(report, runnerInfo);
 			throw JPostmanErrors.skip(framework, runnerInfo, runnerSkipLines(annotation, runnerInfo));
 		}
-		if (annotation.lifecycle()) {
-			runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
-					runnerInfo.withTags(annotation.tags()), stack);
-			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, true,
-					runnerUsesBeforeRequestRules(dependencyMethod), new String[0],
-					(ctx, callbackInfo) -> invokeAnnotated(testInstance, dependencyMethod, ctx, callbackInfo));
-			return;
-		}
+		beginRunnerVerifyScope(annotation.verify());
+		try {
+			if (annotation.lifecycle()) {
+				runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
+						runnerInfo.withTags(annotation.tags()), stack);
+				executeRunner(testInstance, resolver, annotation, runnerInfo, stack, true,
+						runnerUsesBeforeRequestRules(dependencyMethod), new String[0],
+						(ctx, callbackInfo) -> invokeAnnotated(testInstance, dependencyMethod, ctx, callbackInfo));
+				return;
+			}
 
-		runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
-			String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, annotation, runnerInfo);
-			runDependencies(testInstance, resolver, runnerSetupDependencies(testInstance, annotation, runnerInfo),
-					runnerInfo.withTags(annotation.tags()), stack);
-			executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false, perRequestDependencies);
-		});
+			runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
+				String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, annotation, runnerInfo);
+				runDependencies(testInstance, resolver, runnerSetupDependencies(testInstance, annotation, runnerInfo),
+						runnerInfo.withTags(annotation.tags()), stack);
+				executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false,
+						perRequestDependencies);
+			});
+		} finally {
+			endRunnerVerifyScope();
+		}
 	}
 
 	private Method runnerDependencyLauncherMethod(Class<?> type, JPostmanRunner annotation, JPostmanInfo info) {
@@ -1411,7 +1432,13 @@ public final class JPostmanAnnotationRunner<C> {
 						contextRequest);
 				Object value = invokeAnnotated(testInstance, dependencyMethod, requestContext, dependencyInfo,
 						printTrueContext);
-				verifyRequestResponse(testInstance, requestContext, dependencyInfo);
+				/*
+				 * @JPostman.Request methods prepare the next request and do not own response
+				 * verification. In particular, a runner with verify = 0 must not have the
+				 * context default re-applied here against the previous runner/dependency
+				 * response. Response, Runner, and Call execution paths verify their own
+				 * responses with the annotation's effective verify value.
+				 */
 				cacheDependencyResult(resolver, contextNamespace, dependencyMethod, dependencyInfo, cache, value);
 				add(report, dependencyInfo);
 			} catch (Exception | Error e) {
@@ -1781,6 +1808,8 @@ public final class JPostmanAnnotationRunner<C> {
 					notifyAfterRunnerRequest(testInstance, notifyAfterRequest, requestIndex, requestName,
 							latestContext(resolver, requestInfo.namespace, ctx), requestInfo, runnerBodyCallback);
 				} catch (Exception | Error e) {
+					C latest = latestContext(resolver, requestInfo.namespace, ctx);
+					failed(report, requestInfo, latest, e);
 					if (!JPostmanRuntimeRunner.isSoftFailure(e)) {
 						throw e;
 					}
@@ -1939,7 +1968,17 @@ public final class JPostmanAnnotationRunner<C> {
 			throw requestSoftFailure;
 		}
 
-		framework.verifyAssertions(ctx);
+		/*
+		 * Do not call framework.verifyAssertions(ctx) here. TestNgContext.asserts()
+		 * creates a new hard assertion facade, and verify() on that fresh facade
+		 * performs the framework default status-code check (200). That incorrectly
+		 * re-verifies runner responses after the annotation-specific verify value has
+		 * already been applied, so Runner(verify = 0) fails on a valid 201 response and
+		 * Runner(verify = 201) can also be rechecked against 200.
+		 *
+		 * Runner-body failures are already collected above through the immediate,
+		 * local-soft, and injected AssertContext paths.
+		 */
 	}
 
 	private boolean allRunnerRequestsHandledByExplicitAnnotations(List<String> requestNames, List<String> skipped) {
@@ -2344,18 +2383,13 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void verifyResponse(Object testInstance, C ctx, JPostmanInfo info, int annotationVerify,
 			String annotationDebug) {
+		if (skipRunnerStatusVerification()) {
+			return;
+		}
 		int statusCode = statusCode(testInstance, annotationVerify, info);
 		if (statusCode >= 1) {
 			framework.verify(ctx, statusCode, false, failureDiagnostics(testInstance, annotationDebug, info), info,
 					failureDiagnosticLog(testInstance, ctx, info, annotationDebug));
-		}
-	}
-
-	private void verifyRequestResponse(Object testInstance, C ctx, JPostmanInfo info) {
-		int statusCode = statusCode(testInstance, -1, info);
-		if (statusCode >= 1 && framework.hasResponse(ctx)) {
-			framework.verify(ctx, statusCode, false, failureDiagnostics(testInstance, "", info), info,
-					failureDiagnosticLog(testInstance, ctx, info, ""));
 		}
 	}
 
@@ -2370,6 +2404,20 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private boolean shouldVerify(int verify) {
 		return verify > 0;
+	}
+
+	private void beginRunnerVerifyScope(int verify) {
+		runnerVerifyScopes.push(Integer.valueOf(verify));
+	}
+
+	private void endRunnerVerifyScope() {
+		if (!runnerVerifyScopes.isEmpty()) {
+			runnerVerifyScopes.pop();
+		}
+	}
+
+	private boolean skipRunnerStatusVerification() {
+		return runnerVerifyScopes.contains(Integer.valueOf(0));
 	}
 
 	private String cacheKey(Method method, String rawCache) {
@@ -2695,6 +2743,15 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 		JPostmanReport report = report(testInstance);
 		if (report == null) {
+			return;
+		}
+		JPostmanRunner runnerAnnotation = JPostmanAnnotations.runner(testMethod);
+		if (runnerAnnotation != null && report.hasRunnerRequest(testMethod.getName())) {
+			/*
+			 * Per-request runner results are already final. The framework-level result for
+			 * the single Java test method must not convert an earlier passed request into a
+			 * failure or create a synthetic parent runner result.
+			 */
 			return;
 		}
 		JPostmanInfo info = report.execution(testMethod.getName());

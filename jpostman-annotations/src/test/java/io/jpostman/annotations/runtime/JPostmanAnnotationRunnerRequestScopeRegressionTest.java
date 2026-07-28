@@ -74,7 +74,8 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 
 		assertEquals(
 				List.of("helper:Folder request one", "executor:Folder request one", "body:Folder request one",
-						"helper:Folder request two", "executor:Folder request two", "body:Folder request two"),
+						"helper:Folder request two", "executor:Folder request two", "body:Folder request two",
+						"helper:Folder request three", "executor:Folder request three", "body:Folder request three"),
 				fixture.events);
 	}
 
@@ -103,7 +104,8 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		assertEquals(1, fixture.lifecycleHelperCalls);
 		assertEquals("", fixture.lifecycleHelperRequest);
 		assertEquals(List.of("lifecycle-helper:<none>", "executor:Folder request one", "body:Folder request one",
-				"executor:Folder request two", "body:Folder request two"), fixture.events);
+				"executor:Folder request two", "body:Folder request two", "executor:Folder request three",
+				"body:Folder request three"), fixture.events);
 	}
 
 	@Test
