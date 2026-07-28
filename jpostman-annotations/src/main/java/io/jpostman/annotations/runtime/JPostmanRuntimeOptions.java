@@ -17,22 +17,14 @@ import io.jpostman.annotations.JPostmanOutputs;
 /** Runtime options resolved from @JPostmanContext and jpostman.properties. */
 final class JPostmanRuntimeOptions {
 
-	enum LogOutput {
+	enum DebugOutput {
 		NONE, REQUEST, RESPONSE, INFO, ALL;
 
-		static EnumSet<LogOutput> from(String... values) {
-			return fromValues(false, values);
-		}
-
-		static EnumSet<LogOutput> fromLogs(String... values) {
-			return fromValues(true, values);
-		}
-
-		private static EnumSet<LogOutput> fromValues(boolean ignoreLogModes, String... values) {
-			EnumSet<LogOutput> result = EnumSet.noneOf(LogOutput.class);
+		static EnumSet<DebugOutput> from(String... values) {
+			EnumSet<DebugOutput> result = EnumSet.noneOf(DebugOutput.class);
 			if (values != null) {
 				for (String value : values) {
-					parseValue(result, ignoreLogModes, value);
+					parseValue(result, value);
 				}
 			}
 			if (result.isEmpty()) {
@@ -42,35 +34,33 @@ final class JPostmanRuntimeOptions {
 			return result;
 		}
 
-		private static void parseValue(EnumSet<LogOutput> result, boolean ignoreLogModes, String value) {
+		private static void parseValue(EnumSet<DebugOutput> result, String value) {
 			if (value == null || value.isBlank()) {
 				return;
 			}
 			for (String part : value.split(",")) {
 				String item = part.trim();
-				if (item.isEmpty()) {
-					continue;
-				}
-				if (ignoreLogModes && LogMode.isMode(item)) {
+				if (item.isEmpty() || DebugMode.DEBUG.name().equalsIgnoreCase(item)
+						|| DebugMode.ERROR.name().equalsIgnoreCase(item)) {
 					continue;
 				}
 				try {
-					result.add(LogOutput.valueOf(item.toUpperCase(Locale.ROOT)));
+					result.add(DebugOutput.valueOf(item.toUpperCase(Locale.ROOT)));
 				} catch (IllegalArgumentException e) {
-					throw new IllegalArgumentException("Unsupported JPostman debug/log output: " + item
-							+ ". Supported values: none, request, response, info, all.", e);
+					throw new IllegalArgumentException("Unsupported JPostman debug output: " + item
+							+ ". Supported values: none, error, request, response, info, all, debug.", e);
 				}
 			}
 		}
 
-		private static void validate(EnumSet<LogOutput> result, String... rawValues) {
+		private static void validate(EnumSet<DebugOutput> result, String... rawValues) {
 			if (result.size() > 1 && result.contains(NONE)) {
 				throw new IllegalArgumentException(
-						"JPostman debug/log output none must be used alone: " + Arrays.toString(rawValues));
+						"JPostman debug output none must be used alone: " + Arrays.toString(rawValues));
 			}
 			if (result.size() > 1 && result.contains(ALL)) {
 				throw new IllegalArgumentException(
-						"JPostman debug/log output all must be used alone: " + Arrays.toString(rawValues));
+						"JPostman debug output all must be used alone: " + Arrays.toString(rawValues));
 			}
 		}
 
@@ -79,7 +69,7 @@ final class JPostmanRuntimeOptions {
 				return false;
 			}
 			try {
-				LogOutput.valueOf(value.trim().toUpperCase(Locale.ROOT));
+				DebugOutput.valueOf(value.trim().toUpperCase(Locale.ROOT));
 				return true;
 			} catch (IllegalArgumentException e) {
 				return false;
@@ -87,11 +77,11 @@ final class JPostmanRuntimeOptions {
 		}
 	}
 
-	enum LogMode {
+	enum DebugMode {
 		NONE, DEBUG, ERROR;
 
-		static LogMode from(String... values) {
-			LogMode result = null;
+		static DebugMode from(String... values) {
+			DebugMode result = null;
 			if (values != null) {
 				for (String value : values) {
 					result = parseValue(result, value, values);
@@ -100,16 +90,9 @@ final class JPostmanRuntimeOptions {
 			return result == null ? NONE : result;
 		}
 
-		static LogMode from(String value, LogMode fallback) {
-			if (value == null || value.isBlank()) {
-				return fallback == null ? NONE : fallback;
-			}
-			return from(value);
-		}
-
 		static void validateLocal(String value) {
-			from(value, NONE);
-			LogOutput.fromLogs(value);
+			from(value);
+			DebugOutput.from(value);
 		}
 
 		static boolean isMode(String value) {
@@ -117,43 +100,46 @@ final class JPostmanRuntimeOptions {
 				return false;
 			}
 			try {
-				LogMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+				DebugMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
 				return true;
 			} catch (IllegalArgumentException e) {
 				return false;
 			}
 		}
 
-		private static LogMode parseValue(LogMode current, String value, String... rawValues) {
+		private static DebugMode parseValue(DebugMode current, String value, String... rawValues) {
 			if (value == null || value.isBlank()) {
 				return current;
 			}
 			for (String part : value.split(",")) {
 				String item = part.trim();
-				if (item.isEmpty() || LogOutput.isOutput(item)) {
+				if (item.isEmpty() || (DebugOutput.isOutput(item) && !DebugOutput.NONE.name().equalsIgnoreCase(item))) {
 					continue;
 				}
 				if (current != null) {
 					throw new IllegalArgumentException(
-							"JPostman logs/log must use one stack mode only: " + Arrays.toString(rawValues));
+							"JPostman debug must use one mode only: " + Arrays.toString(rawValues));
 				}
 				try {
-					current = LogMode.valueOf(item.toUpperCase(Locale.ROOT));
+					current = DebugMode.valueOf(item.toUpperCase(Locale.ROOT));
 				} catch (IllegalArgumentException e) {
-					throw new IllegalArgumentException("Unsupported JPostman logs/log: " + item
+					throw new IllegalArgumentException("Unsupported JPostman debug value: " + item
 							+ ". Supported values: none, error, request, response, info, all, debug.", e);
 				}
 			}
 			return current;
 		}
+
 	}
 
-	private static final class LogModeMarker extends Exception {
+	private static final class DebugModeMarker extends Exception {
 		private static final long serialVersionUID = 1L;
-		private final LogMode mode;
+		private final DebugMode mode;
+		private final boolean diagnostics;
 
-		private LogModeMarker(LogMode mode) {
+		private DebugModeMarker(DebugMode mode, boolean diagnostics) {
 			this.mode = mode;
+			this.diagnostics = diagnostics;
 		}
 
 		@Override
@@ -162,20 +148,17 @@ final class JPostmanRuntimeOptions {
 		}
 	}
 
-	private final LogMode logs;
-	private final EnumSet<LogOutput> failureLogOutput;
-	private final EnumSet<LogOutput> logOutput;
+	private final DebugMode contextMode;
+	private final EnumSet<DebugOutput> contextOutput;
 	private final int defaultStatusCode;
 	private final Class<?> executorClass;
 	private final boolean session;
 
-	private JPostmanRuntimeOptions(LogMode logs, EnumSet<LogOutput> failureLogOutput, EnumSet<LogOutput> logOutput,
-			int defaultStatusCode, Class<?> executorClass, boolean session) {
-		this.logs = logs == null ? LogMode.NONE : logs;
-		this.failureLogOutput = failureLogOutput == null || failureLogOutput.isEmpty() ? EnumSet.of(LogOutput.NONE)
-				: EnumSet.copyOf(failureLogOutput);
-		this.logOutput = logOutput == null || logOutput.isEmpty() ? EnumSet.of(LogOutput.NONE)
-				: EnumSet.copyOf(logOutput);
+	private JPostmanRuntimeOptions(DebugMode contextMode, EnumSet<DebugOutput> contextOutput, int defaultStatusCode,
+			Class<?> executorClass, boolean session) {
+		this.contextMode = contextMode == null ? DebugMode.NONE : contextMode;
+		this.contextOutput = contextOutput == null || contextOutput.isEmpty() ? EnumSet.of(DebugOutput.NONE)
+				: EnumSet.copyOf(contextOutput);
 		this.defaultStatusCode = defaultStatusCode;
 		this.executorClass = executorClass == Void.class ? null : executorClass;
 		this.session = session;
@@ -184,12 +167,10 @@ final class JPostmanRuntimeOptions {
 	static JPostmanRuntimeOptions from(Object testInstance) {
 		JPostmanContext annotation = findContextAnnotation(testInstance);
 		if (annotation == null) {
-			return new JPostmanRuntimeOptions(LogMode.NONE, EnumSet.of(LogOutput.NONE), EnumSet.of(LogOutput.NONE), -1,
-					null, false);
+			return new JPostmanRuntimeOptions(DebugMode.NONE, EnumSet.of(DebugOutput.NONE), -1, null, false);
 		}
 
-		String[] logs = annotation.logs();
-		String[] output = annotation.debug();
+		String[] debug = annotation.debug();
 		int defaultStatusCode = annotation.verifyStatusCode();
 		Class<?> executorClass = annotation.executor();
 		boolean session = annotation.session();
@@ -197,9 +178,7 @@ final class JPostmanRuntimeOptions {
 		try {
 			Properties properties = loadProperties(annotation.config(), testInstance.getClass());
 			String namespace = "";
-			logs = stringValues(property(properties, "logs", namespace), logs);
-			output = stringValues(property(properties, "debug", namespace),
-					stringValues(property(properties, "logOutput", namespace), output));
+			debug = stringValues(property(properties, "debug", namespace), debug);
 			defaultStatusCode = intValue(property(properties, "defaultStatusCode", namespace), defaultStatusCode);
 			executorClass = classValue(property(properties, "executor", namespace), executorClass,
 					testInstance.getClass().getClassLoader(), annotation);
@@ -211,8 +190,8 @@ final class JPostmanRuntimeOptions {
 			throw new IllegalStateException("Unable to load JPostman runtime options from " + annotation.config(), e);
 		}
 
-		return new JPostmanRuntimeOptions(LogMode.from(logs), LogOutput.fromLogs(logs), LogOutput.from(output),
-				defaultStatusCode, executorClass, session);
+		return new JPostmanRuntimeOptions(DebugMode.from(debug), DebugOutput.from(debug), defaultStatusCode,
+				executorClass, session);
 	}
 
 	boolean hasDefaultExecutor() {
@@ -238,49 +217,48 @@ final class JPostmanRuntimeOptions {
 	}
 
 	boolean minimumErrorOutput() {
-		return logs == LogMode.NONE || logs == LogMode.DEBUG;
+		return contextMode != DebugMode.ERROR;
 	}
 
 	boolean errorStackTrace() {
-		return logs == LogMode.ERROR;
+		return contextMode == DebugMode.ERROR;
 	}
 
-	boolean minimumErrorOutput(String localLog) {
-		LogMode mode = logMode(localLog);
-		return mode == LogMode.NONE || mode == LogMode.DEBUG;
+	boolean minimumErrorOutput(String localDebug) {
+		return debugMode(localDebug) != DebugMode.ERROR;
 	}
 
-	void markFailure(Throwable error, String localLog) {
-		if (error == null) {
+	void markFailure(Throwable error, String localDebug) {
+		if (error == null || findMarkedDebugMode(error) != null) {
 			return;
 		}
-		if (findMarkedLogMode(error) != null) {
-			return;
-		}
-		error.addSuppressed(new LogModeMarker(logMode(localLog)));
+		error.addSuppressed(new DebugModeMarker(debugMode(localDebug), failureDiagnostics(localDebug, null)));
 	}
 
 	boolean minimumErrorOutput(Throwable error) {
-		LogMode marked = findMarkedLogMode(error);
-		if (marked != null) {
-			return marked == LogMode.NONE || marked == LogMode.DEBUG;
-		}
-		return minimumErrorOutput();
+		DebugMode marked = findMarkedDebugMode(error);
+		return marked == null ? minimumErrorOutput() : marked != DebugMode.ERROR;
 	}
 
 	boolean failureDiagnostics(Throwable error) {
 		if (hasDiagnosticSuppressed(error)) {
 			return true;
 		}
-		return failureDiagnostics();
+		DebugModeMarker marker = findDebugMarker(error);
+		return marker == null ? failureDiagnostics() : marker.diagnostics;
 	}
 
-	private static LogMode findMarkedLogMode(Throwable error) {
+	private static DebugMode findMarkedDebugMode(Throwable error) {
+		DebugModeMarker marker = findDebugMarker(error);
+		return marker == null ? null : marker.mode;
+	}
+
+	private static DebugModeMarker findDebugMarker(Throwable error) {
 		Throwable current = error;
 		while (current != null) {
 			for (Throwable suppressed : current.getSuppressed()) {
-				if (suppressed instanceof LogModeMarker) {
-					return ((LogModeMarker) suppressed).mode;
+				if (suppressed instanceof DebugModeMarker) {
+					return (DebugModeMarker) suppressed;
 				}
 			}
 			current = current.getCause();
@@ -292,7 +270,7 @@ final class JPostmanRuntimeOptions {
 		Throwable current = error;
 		while (current != null) {
 			for (Throwable suppressed : current.getSuppressed()) {
-				if (suppressed instanceof LogModeMarker) {
+				if (suppressed instanceof DebugModeMarker) {
 					continue;
 				}
 				String message = suppressed == null ? null : suppressed.getMessage();
@@ -309,44 +287,40 @@ final class JPostmanRuntimeOptions {
 		return failureRequest(null, null);
 	}
 
-	boolean failureRequest(String localLog, JPostmanInfo info) {
-		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
-		return outputs.contains(LogOutput.REQUEST) || outputs.contains(LogOutput.ALL);
+	boolean failureRequest(String localDebug, JPostmanInfo info) {
+		EnumSet<DebugOutput> outputs = effectiveOutput(localDebug, info);
+		return outputs.contains(DebugOutput.REQUEST) || outputs.contains(DebugOutput.ALL);
 	}
 
 	boolean failureResponse() {
 		return failureResponse(null, null);
 	}
 
-	boolean failureResponse(String localLog, JPostmanInfo info) {
-		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
-		return outputs.contains(LogOutput.RESPONSE) || outputs.contains(LogOutput.ALL);
+	boolean failureResponse(String localDebug, JPostmanInfo info) {
+		EnumSet<DebugOutput> outputs = effectiveOutput(localDebug, info);
+		return outputs.contains(DebugOutput.RESPONSE) || outputs.contains(DebugOutput.ALL);
 	}
 
-	boolean failureInfo(String localLog, JPostmanInfo info) {
-		EnumSet<LogOutput> outputs = failureDebugOutput(localLog, info);
-		return outputs.contains(LogOutput.INFO) || outputs.contains(LogOutput.ALL);
+	boolean failureInfo(String localDebug, JPostmanInfo info) {
+		EnumSet<DebugOutput> outputs = effectiveOutput(localDebug, info);
+		return outputs.contains(DebugOutput.INFO) || outputs.contains(DebugOutput.ALL);
 	}
 
-	/**
-	 * Returns whether failure diagnostics should append the info block. When the
-	 * normal annotation output already prints INFO/ALL, appending the same
-	 * JPostmanInfo block to the assertion message duplicates console output.
-	 */
-	boolean failureInfoDiagnostic(String localLog, JPostmanInfo info) {
-		if (!failureInfo(localLog, info)) {
+	/** Avoids appending an info block already emitted by the same debug setting. */
+	boolean failureInfoDiagnostic(String localDebug, JPostmanInfo info) {
+		if (!failureInfo(localDebug, info)) {
 			return false;
 		}
-		EnumSet<LogOutput> regular = logOutput(localLog, info);
-		return !regular.contains(LogOutput.INFO) && !regular.contains(LogOutput.ALL);
+		EnumSet<DebugOutput> regular = automaticOutput(localDebug, info);
+		return !regular.contains(DebugOutput.INFO) && !regular.contains(DebugOutput.ALL);
 	}
 
 	boolean failureDiagnostics() {
 		return failureDiagnostics(null, null);
 	}
 
-	boolean failureDiagnostics(String localLog, JPostmanInfo info) {
-		return !failureDebugOutput(localLog, info).contains(LogOutput.NONE);
+	boolean failureDiagnostics(String localDebug, JPostmanInfo info) {
+		return !effectiveOutput(localDebug, info).contains(DebugOutput.NONE);
 	}
 
 	boolean runtimeTraceDebugInfoWarn() {
@@ -357,97 +331,48 @@ final class JPostmanRuntimeOptions {
 		return true;
 	}
 
-	private EnumSet<LogOutput> failureDebugOutput(String localLog, JPostmanInfo info) {
-		return failureOutput(localLog, info);
+	private DebugMode debugMode(String localDebug) {
+		if (inheritsContextDebug(localDebug)) {
+			return contextMode;
+		}
+		return DebugMode.from(localDebug);
 	}
 
-	private LogMode logMode(String localLog) {
-		if (inheritsContextLog(localLog)) {
-			return logs;
-		}
-		return LogMode.from(localLog, logs);
+	EnumSet<DebugOutput> automaticOutput(String localDebug, JPostmanInfo info) {
+		return effectiveOutput(localDebug, info);
 	}
 
-	private EnumSet<LogOutput> failureOutput(String localLog, JPostmanInfo info) {
-		if (inheritsContextLog(localLog)) {
-			return contextFailureOutput(info);
+	private EnumSet<DebugOutput> effectiveOutput(String localDebug, JPostmanInfo info) {
+		if (inheritsContextDebug(localDebug)) {
+			return contextDebugOutput(info);
 		}
-		EnumSet<LogOutput> localOutput = LogOutput.fromLogs(localLog);
-		if (!localOutput.contains(LogOutput.NONE)) {
-			return localOutput;
-		}
-		LogMode mode = LogMode.from(localLog, logs);
-		return mode == LogMode.DEBUG ? debugOutput(info) : EnumSet.of(LogOutput.NONE);
+		EnumSet<DebugOutput> localOutput = DebugOutput.from(localDebug);
+		return localOutput.contains(DebugOutput.NONE) ? EnumSet.of(DebugOutput.NONE) : localOutput;
 	}
 
-	EnumSet<LogOutput> logOutput(String localLog, JPostmanInfo info) {
-		LogMode mode = automaticLogMode(localLog);
-		if (mode != LogMode.DEBUG) {
-			return EnumSet.of(LogOutput.NONE);
-		}
-		EnumSet<LogOutput> localOutput = LogOutput.fromLogs(localLog);
-		return localOutput.contains(LogOutput.NONE) ? debugOutput(info) : localOutput;
-	}
-
-	private LogMode automaticLogMode(String localLog) {
-		if (localLog == null || localLog.isBlank()) {
-			return LogMode.DEBUG;
-		}
-		LogMode parsed = null;
-		for (String part : localLog.split(",")) {
-			String item = part == null ? "" : part.trim();
-			if (item.isEmpty()) {
-				continue;
-			}
-			if (LogMode.isMode(item)) {
-				if (parsed != null) {
-					return LogMode.from(localLog, LogMode.DEBUG);
-				}
-				parsed = LogMode.from(item, LogMode.DEBUG);
-				continue;
-			}
-			if (LogOutput.isOutput(item)) {
-				continue;
-			}
-			if (parsed != null) {
-				return LogMode.from(localLog, LogMode.DEBUG);
-			}
-			parsed = LogMode.from(item, LogMode.DEBUG);
-		}
-		return parsed == null ? LogMode.DEBUG : parsed;
-	}
-
-	EnumSet<LogOutput> debugOutput(JPostmanInfo info) {
+	EnumSet<DebugOutput> contextDebugOutput(JPostmanInfo info) {
 		String local = info == null ? "" : info.debug;
-		return local == null || local.isBlank() ? EnumSet.copyOf(logOutput) : LogOutput.from(local);
+		return local == null || local.isBlank() ? EnumSet.copyOf(contextOutput) : DebugOutput.from(local);
 	}
 
-	private EnumSet<LogOutput> contextFailureOutput(JPostmanInfo info) {
-		if (!failureLogOutput.contains(LogOutput.NONE)) {
-			return EnumSet.copyOf(failureLogOutput);
-		}
-		return logs == LogMode.DEBUG ? debugOutput(info) : EnumSet.of(LogOutput.NONE);
-	}
-
-	private static boolean inheritsContextLog(String localLog) {
-		if (localLog == null || localLog.isBlank()) {
+	private static boolean inheritsContextDebug(String localDebug) {
+		if (localDebug == null || localDebug.isBlank()) {
 			return true;
 		}
-		String normalized = localLog.trim();
-		return "debug".equalsIgnoreCase(normalized);
+		return "debug".equalsIgnoreCase(localDebug.trim());
 	}
 
 	void debug(Object testInstance, JPostmanInfo info) {
 		debug(testInstance, info, "debug");
 	}
 
-	void debug(Object testInstance, JPostmanInfo info, String localLog) {
+	void debug(Object testInstance, JPostmanInfo info, String localDebug) {
 		if (testInstance == null || info == null) {
 			return;
 		}
 
-		EnumSet<LogOutput> outputs = logOutput(localLog, info);
-		if (outputs.contains(LogOutput.INFO) || outputs.contains(LogOutput.ALL)) {
+		EnumSet<DebugOutput> outputs = automaticOutput(localDebug, info);
+		if (outputs.contains(DebugOutput.INFO) || outputs.contains(DebugOutput.ALL)) {
 			printMethodHeader(testInstance, info);
 			info.print(false);
 		}

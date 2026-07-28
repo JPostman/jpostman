@@ -58,61 +58,111 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
-	 * Completes class-scoped JPostman facilities after user class teardown. Soft
-	 * assertion contexts are verified once and an injected report is summarized.
+	 * Completes class-level report facilities after user class teardown. Assertion
+	 * verification is request-scoped and is not performed here.
 	 *
 	 * @param testInstance completed test instance
-	 * @throws Exception when class-level assertion verification fails
 	 */
-	public static void completeTestClass(Object testInstance) throws Exception {
+	public static void completeTestClass(Object testInstance) {
 		if (testInstance == null) {
 			return;
 		}
 
-		AssertionError assertionFailure = null;
-		java.util.List<JPostmanReport> reports = new java.util.ArrayList<>();
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
 			for (Field field : current.getDeclaredFields()) {
 				field.setAccessible(true);
-				if (JPostmanAnnotations.hasReportContext(field)) {
+				if (!JPostmanAnnotations.hasReportContext(field)) {
+					continue;
+				}
+				try {
 					Object value = field.get(testInstance);
 					if (value instanceof JPostmanReport) {
-						reports.add((JPostmanReport) value);
+						((JPostmanReport) value).summary();
 					}
+				} catch (IllegalAccessException e) {
+					throw new IllegalStateException(e);
 				}
+			}
+			current = current.getSuperclass();
+		}
+	}
+
+	/**
+	 * Verifies and clears every injected soft assertion context on the supplied
+	 * test instance. Calling {@link JPostman.Assert#verify()} manually consumes the
+	 * same collector, so this automatic fallback is a no-op when the user already
+	 * verified it.
+	 *
+	 * @param testInstance active test instance
+	 */
+	public static void verifySoftAssertContexts(Object testInstance) {
+		if (testInstance == null) {
+			return;
+		}
+
+		AssertionError failure = null;
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
 				io.jpostman.annotations.JPostmanAssertContext annotation = JPostmanAnnotations.assertContext(field);
-				if (annotation != null && annotation.soft()) {
+				if (annotation == null || !annotation.soft()) {
+					continue;
+				}
+				try {
+					field.setAccessible(true);
 					Object value = field.get(testInstance);
 					if (value instanceof JPostman.Assert) {
-						try {
-							((JPostman.Assert) value).verify();
-						} catch (AssertionError error) {
-							if (assertionFailure == null) {
-								assertionFailure = error;
-							} else {
-								assertionFailure.addSuppressed(error);
-							}
-						}
+						((JPostman.Assert) value).verify();
 					}
+				} catch (AssertionError error) {
+					if (failure == null) {
+						failure = error;
+					} else {
+						failure.addSuppressed(error);
+					}
+				} catch (IllegalAccessException e) {
+					throw new IllegalStateException(e);
 				}
 			}
 			current = current.getSuperclass();
 		}
 
-		if (assertionFailure != null) {
-			Method assertionMethod = lastAssertionMethod(testInstance);
-			if (assertionMethod != null) {
-				recordFinalFailure(testInstance, assertionMethod);
+		if (failure != null) {
+			throw failure;
+		}
+	}
+
+	/**
+	 * Verifies every soft assertion collector owned by the current annotated
+	 * request. Explicit context-created soft facades and injected soft
+	 * {@code AssertContext} fields are both consumed even when one of them fails.
+	 *
+	 * @param testInstance active test instance
+	 * @param testMethod   active test method
+	 */
+	public static void verifyRequestAssertions(Object testInstance, Method testMethod) {
+		AssertionError failure = null;
+		try {
+			verifyExplicitSoftAssertions(testMethod);
+		} catch (AssertionError error) {
+			failure = error;
+		}
+
+		if (testMethod != null && JPostmanAnnotations.response(testMethod) != null) {
+			try {
+				verifySoftAssertContexts(testInstance);
+			} catch (AssertionError error) {
+				if (failure == null) {
+					failure = error;
+				} else {
+					failure.addSuppressed(error);
+				}
 			}
 		}
 
-		for (JPostmanReport report : reports) {
-			report.summary();
-		}
-
-		if (assertionFailure != null) {
-			throw assertionFailure;
+		if (failure != null) {
+			throw failure;
 		}
 	}
 
@@ -162,7 +212,7 @@ public final class JPostmanAnnotationEngine {
 
 	/**
 	 * Registers assertion cleanup for facade assertions executed from the user test
-	 * body. The cleanup uses the current @JPostman.Context logs setting.
+	 * body. The cleanup uses the current @JPostman.Context debug setting.
 	 *
 	 * @param testInstance current test instance
 	 * @param testMethod   current test method
@@ -177,7 +227,7 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
-	 * Returns and clears the first class-scoped soft assertion failure recorded
+	 * Verifies and clears explicit context-created soft assertion facades recorded
 	 * while the current test body continued executing.
 	 */
 	public static void verifyExplicitSoftAssertions(Method testMethod) {
@@ -296,11 +346,116 @@ public final class JPostmanAnnotationEngine {
 
 	/** Records the final framework result after deferred assertions are flushed. */
 	public static void recordFinalFailure(Object testInstance, Method testMethod) {
+		recordFinalFailure(testInstance, testMethod, null);
+	}
+
+	/** Records the final framework failure and applies report failure options. */
+	public static void recordFinalFailure(Object testInstance, Method testMethod, Throwable failure) {
 		try {
-			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).recordFinalFailure(testInstance, testMethod);
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).recordFinalFailure(testInstance, testMethod,
+					failure);
 		} catch (ReflectiveOperationException | RuntimeException ignored) {
 			// Result reporting must never replace the original test failure.
 		}
+	}
+
+	/**
+	 * Records a deferred assertion as a normal failed execution when possible. If
+	 * the report status does not change, records one configuration failure so the
+	 * displayed totals can still absorb it into the failed-test count.
+	 */
+	public static void recordFinalFailureOrConfiguration(Object testInstance, Method testMethod) {
+		java.util.List<JPostmanReport> reports = reports(testInstance);
+		int[] passedBefore = new int[reports.size()];
+		int[] failedBefore = new int[reports.size()];
+		for (int index = 0; index < reports.size(); index++) {
+			passedBefore[index] = reports.get(index).passed.size();
+			failedBefore[index] = reports.get(index).failed.size();
+		}
+
+		if (testMethod != null) {
+			recordFinalFailure(testInstance, testMethod);
+		}
+
+		for (int index = 0; index < reports.size(); index++) {
+			JPostmanReport report = reports.get(index);
+			boolean statusChanged = report.passed.size() != passedBefore[index]
+					|| report.failed.size() != failedBefore[index];
+			if (!statusChanged) {
+				report.configurationFailed();
+			}
+		}
+	}
+
+	/**
+	 * Returns {@code true} when report configuration owns full failure-trace
+	 * output. Framework bridges use this to avoid printing the same error
+	 * immediately and again after the JPostman report summary.
+	 *
+	 * @param testInstance current test instance
+	 * @return {@code true} when {@code @JPostman.ReportContext(fail = "error")} is
+	 *         active
+	 */
+	public static boolean defersFailureTrace(Object testInstance) {
+		for (JPostmanReport report : reports(testInstance)) {
+			if (report.fullErrorTrace()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} when a report context is declared for the test class.
+	 * Once present, the report's {@code diagnostic} and {@code fail} settings own
+	 * all automatic failure output. This prevents JUnit's optional
+	 * {@code printFailures} bridge from printing an immediate duplicate or from
+	 * bypassing {@code fail = "ignore"}.
+	 *
+	 * @param testInstance current test instance
+	 * @return {@code true} when a compact or standalone report context is declared
+	 */
+	public static boolean reportControlsFailureOutput(Object testInstance) {
+		if (testInstance == null) {
+			return false;
+		}
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (JPostmanAnnotations.hasReportContext(field)) {
+					return true;
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return false;
+	}
+
+	private static java.util.List<JPostmanReport> reports(Object testInstance) {
+		java.util.List<JPostmanReport> reports = new java.util.ArrayList<>();
+		if (testInstance == null) {
+			return reports;
+		}
+
+		Class<?> current = testInstance.getClass();
+		while (current != null && current != Object.class) {
+			for (Field field : current.getDeclaredFields()) {
+				if (!JPostmanAnnotations.hasReportContext(field)) {
+					continue;
+				}
+				try {
+					field.setAccessible(true);
+					Object value = field.get(testInstance);
+					if (value instanceof JPostmanReport) {
+						reports.add((JPostmanReport) value);
+					}
+				} catch (ReflectiveOperationException | RuntimeException ignored) {
+					// Report discovery must never replace the original failure.
+				}
+			}
+			current = current.getSuperclass();
+		}
+		return reports;
 	}
 
 	/** Records a final framework skip after annotation execution. */
@@ -334,7 +489,7 @@ public final class JPostmanAnnotationEngine {
 		if (root instanceof AssertionError) {
 			JPostmanCall call = JPostmanAnnotations.call(testMethod);
 			if (call != null && JPostmanRuntimeCall.hasFailureSource()) {
-				return cleanRuntimeFailure(testInstance, testMethod, error, call.log());
+				return cleanRuntimeFailure(testInstance, testMethod, error, call.debug());
 			}
 			return cleanFailure(testInstance, testMethod, error);
 		}
@@ -352,24 +507,26 @@ public final class JPostmanAnnotationEngine {
 	public static AssertionError cleanFailure(Object testInstance, Method testMethod, Throwable error) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(error), options.failureDiagnostics(error));
+				options.minimumErrorOutput(error) && !JPostmanReport.hasFullErrorTrace(error),
+				options.failureDiagnostics(error));
 	}
 
 	/**
-	 * Creates the same configured failure display using a local log override.
+	 * Creates the same configured failure display using a local debug override.
 	 *
 	 * @param testInstance test instance
 	 * @param testMethod   current test method
 	 * @param error        original failure
-	 * @param localLog     local annotation log mode
+	 * @param localDebug   local annotation debug setting
 	 * @return cleaned assertion failure
 	 */
 	public static AssertionError cleanFailure(Object testInstance, Method testMethod, Throwable error,
-			String localLog) {
+			String localDebug) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
-		options.markFailure(error, localLog);
+		options.markFailure(error, localDebug);
 		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(localLog), options.failureDiagnostics(error));
+				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(error),
+				options.failureDiagnostics(error));
 	}
 
 	/**
@@ -379,17 +536,18 @@ public final class JPostmanAnnotationEngine {
 	 * @param testInstance test instance
 	 * @param testMethod   current test method
 	 * @param error        original failure
-	 * @param localLog     local annotation log mode
+	 * @param localDebug   local annotation debug setting
 	 * @return cleaned assertion failure
 	 */
 	public static AssertionError cleanRuntimeFailure(Object testInstance, Method testMethod, Throwable error,
-			String localLog) {
+			String localDebug) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		Throwable stackSource = JPostmanRuntimeCall.failureSource(error);
 		Throwable display = runtimeDisplayError(testMethod, error, stackSource);
-		options.markFailure(display, localLog);
+		options.markFailure(display, localDebug);
 		return JPostmanStackTraceCleaner.cleanRuntimeFailure(testInstance.getClass(), testMethod, display,
-				options.minimumErrorOutput(localLog), options.failureDiagnostics(error));
+				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(display),
+				options.failureDiagnostics(error));
 	}
 
 	private static Throwable runtimeDisplayError(Method testMethod, Throwable error, Throwable stackSource) {
@@ -452,23 +610,23 @@ public final class JPostmanAnnotationEngine {
 	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(error));
+				options.minimumErrorOutput(error) && !JPostmanReport.hasFullErrorTrace(error));
 	}
 
 	/**
-	 * Creates the same configured throwable display using a local log override.
+	 * Creates the same configured throwable display using a local debug override.
 	 *
 	 * @param testInstance test instance
 	 * @param testMethod   current test or configuration method
 	 * @param error        original failure
-	 * @param localLog     local annotation log mode
+	 * @param localDebug   local annotation debug setting
 	 * @return cleaned throwable
 	 */
-	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error, String localLog) {
+	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error, String localDebug) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
-		options.markFailure(error, localLog);
+		options.markFailure(error, localDebug);
 		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(localLog));
+				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(error));
 	}
 
 }

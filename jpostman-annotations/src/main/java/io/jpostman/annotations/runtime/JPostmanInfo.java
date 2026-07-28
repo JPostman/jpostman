@@ -14,9 +14,6 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.jpostman.Params;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostman;
@@ -39,8 +36,6 @@ import io.jpostman.secure.SecureValue;
 public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info {
 
 	private static final String ID_PREFIX = "#";
-
-	private static final Logger log = LoggerFactory.getLogger(JPostmanInfo.class);
 
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 			.withZone(ZoneId.systemDefault());
@@ -158,6 +153,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	private static final class DiagnosticState {
 		private Request sourceRequest;
 		private String secureRequestLog = "";
+		private String secureResponseLog = "";
 	}
 
 	/** Diagnostic request metadata shared by one annotation execution chain. */
@@ -194,6 +190,20 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			return log;
 		Request source = diagnosticState.sourceRequest;
 		return source == null ? "" : String.valueOf(source);
+	}
+
+	/**
+	 * Stores the secure response diagnostic captured for report-on-failure output.
+	 */
+	public JPostmanInfo responseLog(String value) {
+		this.diagnosticState.secureResponseLog = value == null ? "" : value;
+		return this;
+	}
+
+	/** Returns the secure response diagnostic captured for this execution chain. */
+	public String responseLog() {
+		String log = diagnosticState.secureResponseLog;
+		return log == null ? "" : log;
 	}
 
 	/** Timestamp when the execution chain info was created. */
@@ -541,16 +551,16 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
-	 * Creates a copy of this info object with a local log output override.
+	 * Creates a copy of this info object with a local debug output override.
 	 *
 	 * <p>
-	 * Blank values are ignored and keep the current inherited log output value.
+	 * Blank values are ignored and keep the current inherited debug output value.
 	 * Non-blank values override the class-level {@link JPostmanContext#debug()}
 	 * setting for this invocation and its children.
 	 * </p>
 	 *
-	 * @param values local log output modes, or empty to keep the current value
-	 * @return copied info object with the supplied log output override when
+	 * @param values local debug output modes, or empty to keep the current value
+	 * @return copied info object with the supplied debug output override when
 	 *         non-blank
 	 */
 	public JPostmanInfo debug(String... values) {
@@ -1604,10 +1614,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	/** Prints {@link #log(boolean)} using trace level. */
 	public void print(boolean includeAll) {
-		String text = log(includeAll);
-		if (!JPostmanOutputs.write(text)) {
-			log.trace(text);
-		}
+		JPostmanOutputs.writeOrTrace(log(includeAll));
 	}
 
 	public static String formatDuration(long millis, boolean includeHours) {

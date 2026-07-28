@@ -45,10 +45,10 @@ public class JPostmanDebugFileRegressionTest {
 			String captured = Files.readString(output).replace("\r\n", "\n");
 			assertTrue(captured.contains("event=EXECUTION"));
 			assertEquals(1, occurrences(captured, BEGIN_MARKER));
-			assertEquals(1, occurrences(captured, "annotationLog=none"));
+			assertEquals(1, occurrences(captured, "annotationDebug=none"));
 			assertEquals(1, occurrences(captured, "--- COLLECTIONS ---"));
 			assertEquals(1, occurrences(captured, "--- INFO ---"));
-			assertTrue(captured.indexOf("annotationLog=none") > captured.lastIndexOf(END_MARKER));
+			assertTrue(captured.indexOf("annotationDebug=none") > captured.lastIndexOf(END_MARKER));
 			assertTrue(captured.indexOf("--- COLLECTIONS ---") > captured.lastIndexOf(END_MARKER));
 			assertTrue(captured.indexOf("--- INFO ---") > captured.indexOf("method=getUser"));
 			assertTrue(captured.indexOf("--- INFO ---") < captured.indexOf("--- REQUEST_UNRESOLVE ---"));

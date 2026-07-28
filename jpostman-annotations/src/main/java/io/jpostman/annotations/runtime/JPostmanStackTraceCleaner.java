@@ -89,7 +89,8 @@ public final class JPostmanStackTraceCleaner {
 		if (rootMessage == null || rootMessage.isBlank()) {
 			rootMessage = root.getClass().getSimpleName();
 		}
-		message.append(withMethodOrigin(testClass, testMethod, rootMessage));
+		rootMessage = normalizeAssertionMessage(rootMessage);
+		message.append(rootMessage);
 
 		if (includeSuppressed) {
 			// Put secure request/response details directly into the main message.
@@ -98,7 +99,8 @@ public final class JPostmanStackTraceCleaner {
 			for (Throwable suppressed : root.getSuppressed()) {
 				String suppressedMessage = suppressed == null ? null : suppressed.getMessage();
 				if (suppressedMessage != null && !suppressedMessage.isBlank()) {
-					message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append(suppressedMessage);
+					message.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL)
+							.append(normalizeAssertionMessage(suppressedMessage));
 				}
 			}
 		}
@@ -162,55 +164,41 @@ public final class JPostmanStackTraceCleaner {
 		return throwable instanceof TestAbortedException;
 	}
 
-	private static String withMethodOrigin(Class<?> testClass, Method testMethod, String message) {
-		if (message == null || message.isBlank() || testClass == null || testMethod == null) {
+	/**
+	 * Removes implementation exception type prefixes from nested assertion lines
+	 * while preserving the aggregate heading, indentation, and assertion text.
+	 *
+	 * @param message assertion message
+	 * @return normalized user-facing assertion message
+	 */
+	public static String normalizeAssertionMessage(String message) {
+		if (message == null || message.isBlank()) {
 			return message;
 		}
-
-		String origin = testClass.getSimpleName() + "::" + testMethod.getName();
-		if (message.startsWith(origin + ":")) {
-			return message;
-		}
-
+		String[] prefixes = { "org.opentest4j.AssertionFailedError:", "AssertionFailedError:",
+				"java.lang.AssertionError:", "AssertionError:" };
 		String[] lines = message.split("\\R", -1);
-		boolean aggregate = lines.length > 1 || message.startsWith("Multiple Failures");
-		if (!aggregate) {
-			return origin + ": " + message;
-		}
-
-		StringBuilder formatted = new StringBuilder();
-		boolean prefixedChild = false;
-		for (int i = 0; i < lines.length; i++) {
-			String line = lines[i];
-			String trimmed = line.trim();
-			String detail = assertionDetail(trimmed);
-			if (detail != null) {
-				int indentLength = line.indexOf(trimmed);
-				String indent = indentLength <= 0 ? "" : line.substring(0, indentLength);
-				line = indent + origin + ": " + detail;
-				prefixedChild = true;
+		StringBuilder normalized = new StringBuilder();
+		for (int index = 0; index < lines.length; index++) {
+			String line = lines[index];
+			int content = 0;
+			while (content < line.length() && Character.isWhitespace(line.charAt(content))) {
+				content++;
 			}
-			if (i > 0) {
-				formatted.append(System.lineSeparator());
+			String leading = line.substring(0, content);
+			String value = line.substring(content);
+			for (String prefix : prefixes) {
+				if (value.startsWith(prefix)) {
+					value = value.substring(prefix.length()).trim();
+					break;
+				}
 			}
-			formatted.append(line);
-		}
-
-		return prefixedChild ? formatted.toString() : origin + ": " + message;
-	}
-
-	private static String assertionDetail(String line) {
-		if (line == null || line.isBlank()) {
-			return null;
-		}
-		String[] prefixes = { "org.opentest4j.AssertionFailedError:", "java.lang.AssertionError:",
-				"AssertionFailedError:", "AssertionError:" };
-		for (String prefix : prefixes) {
-			if (line.startsWith(prefix)) {
-				return line.substring(prefix.length()).trim();
+			if (index > 0) {
+				normalized.append(System.lineSeparator());
 			}
+			normalized.append(leading).append(value);
 		}
-		return null;
+		return normalized.toString();
 	}
 
 	private static Throwable copyThrowable(Throwable root, String message) {

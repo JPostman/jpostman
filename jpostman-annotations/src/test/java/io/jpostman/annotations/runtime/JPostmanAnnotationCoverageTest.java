@@ -45,8 +45,10 @@ import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.Request;
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
@@ -115,16 +117,20 @@ public class JPostmanAnnotationCoverageTest {
 	@Test
 	public void assertContextFailIsAlwaysHardAndIsNotCollected() {
 		TestNgContext testng = TestNgContext.create();
-		JPostman.Assert testngSoft = JPostmanTestProxy.wrapAssert(() -> testng).soft();
+		JPostman.Assert testngSoft = JPostmanTestProxy.wrapAssert(() -> testng, true, true);
 		AssertionError testngError = assertThrows(AssertionError.class, () -> testngSoft.fail("MY CUSTOM ERROR"));
 		assertEquals("MY CUSTOM ERROR", testngError.getMessage());
-		assertDoesNotThrow(testngSoft::assertAll);
+		assertDoesNotThrow(() -> {
+			testngSoft.verify();
+		});
 
 		JUnitContext junit = JUnitContext.create();
-		JPostman.Assert junitSoft = JPostmanTestProxy.wrapAssert(() -> junit).soft();
+		JPostman.Assert junitSoft = JPostmanTestProxy.wrapAssert(() -> junit, true, true);
 		AssertionError junitError = assertThrows(AssertionError.class, () -> junitSoft.fail("MY CUSTOM ERROR"));
 		assertEquals("MY CUSTOM ERROR", junitError.getMessage());
-		assertDoesNotThrow(junitSoft::assertAll);
+		assertDoesNotThrow(() -> {
+			junitSoft.verify();
+		});
 	}
 
 	/** Verifies null and blank custom messages use a stable default. */
@@ -1140,79 +1146,74 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies the context log/debug API defaults.
+	 * Verifies debug is the only automatic output setting on compact and standalone
+	 * annotations.
 	 */
 	@Test
-	public void logDefaultsUseMinimumFailureOutputAndNoAutomaticDebugOutput() throws Exception {
-		assertArrayEquals(new String[] { "none" },
-				(String[]) JPostman.Context.class.getMethod("logs").getDefaultValue());
-		assertArrayEquals(new String[] { "none" },
-				(String[]) JPostmanContext.class.getMethod("logs").getDefaultValue());
+	public void debugDefaultsReplaceLogsAndLocalLog() throws Exception {
 		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostman.Context.class.getMethod("debug").getDefaultValue());
 		assertArrayEquals(new String[] { "none" },
 				(String[]) JPostmanContext.class.getMethod("debug").getDefaultValue());
-		assertEquals("debug", JPostman.Request.class.getMethod("log").getDefaultValue());
-		assertEquals("debug", JPostmanRequest.class.getMethod("log").getDefaultValue());
-		assertEquals("debug", JPostman.Response.class.getMethod("log").getDefaultValue());
-		assertEquals("debug", JPostmanResponse.class.getMethod("log").getDefaultValue());
-		assertEquals("", JPostman.Runner.class.getMethod("id").getDefaultValue());
-		assertEquals("", JPostmanRunner.class.getMethod("id").getDefaultValue());
-		assertEquals("debug", JPostman.Runner.class.getMethod("log").getDefaultValue());
-		assertEquals("debug", JPostmanRunner.class.getMethod("log").getDefaultValue());
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Context.class.getMethod("logs"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanContext.class.getMethod("logs"));
+
+		assertEquals("debug", JPostman.Request.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostmanRequest.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostman.Response.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostmanResponse.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostman.Runner.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostmanRunner.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostman.Call.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostmanCall.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostman.Executor.class.getMethod("debug").getDefaultValue());
+		assertEquals("debug", JPostmanExecutor.class.getMethod("debug").getDefaultValue());
+
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Request.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanRequest.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Response.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanResponse.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Runner.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanRunner.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Call.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanCall.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostman.Executor.class.getMethod("log"));
+		assertThrows(NoSuchMethodException.class, () -> JPostmanExecutor.class.getMethod("log"));
 	}
 
 	/**
-	 * Verifies debug supports combined request/response/info modes and keeps
-	 * none/all exclusive.
+	 * Verifies debug supports one stack mode plus request/response/info output and
+	 * keeps none/all exclusive.
 	 */
 	@Test
-	public void debugSupportsCombinedModesAndRejectsExclusiveModes() {
-		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> combined = JPostmanRuntimeOptions.LogOutput.from("info",
-				"response");
+	public void debugSupportsOutputAndErrorTraceModes() {
+		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> combined = JPostmanRuntimeOptions.DebugOutput
+				.from("error", "info", "response");
 
-		assertTrue(combined.contains(JPostmanRuntimeOptions.LogOutput.INFO));
-		assertTrue(combined.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
-		assertFalse(combined.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+		assertTrue(combined.contains(JPostmanRuntimeOptions.DebugOutput.INFO));
+		assertTrue(combined.contains(JPostmanRuntimeOptions.DebugOutput.RESPONSE));
+		assertFalse(combined.contains(JPostmanRuntimeOptions.DebugOutput.REQUEST));
+		assertEquals(JPostmanRuntimeOptions.DebugMode.ERROR,
+				JPostmanRuntimeOptions.DebugMode.from("error", "response"));
+		assertEquals(JPostmanRuntimeOptions.DebugMode.DEBUG, JPostmanRuntimeOptions.DebugMode.from("debug"));
 
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("none", "info"));
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.from("all", "response"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("none"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("debug"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("error,response"));
+		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("request,response"));
+
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.DebugMode.from("debug", "error"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.DebugOutput.from("none", "info"));
+		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.DebugOutput.from("all", "response"));
 	}
 
 	/**
-	 * Verifies logs supports stack modes plus request/response failure diagnostics.
+	 * Verifies one context debug setting controls normal output and failure
+	 * diagnostics when local annotations inherit with debug="debug".
 	 */
 	@Test
-	public void logsSupportFailureDiagnosticsAndStackModes() {
-		assertEquals(JPostmanRuntimeOptions.LogMode.NONE, JPostmanRuntimeOptions.LogMode.from("none"));
-		assertEquals(JPostmanRuntimeOptions.LogMode.NONE, JPostmanRuntimeOptions.LogMode.from("request"));
-		assertEquals(JPostmanRuntimeOptions.LogMode.ERROR, JPostmanRuntimeOptions.LogMode.from("error", "response"));
-		assertEquals(JPostmanRuntimeOptions.LogMode.DEBUG, JPostmanRuntimeOptions.LogMode.from("debug"));
-
-		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> failureOutput = JPostmanRuntimeOptions.LogOutput
-				.fromLogs("request", "response");
-		assertTrue(failureOutput.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
-		assertTrue(failureOutput.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
-
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("none"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("debug"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("request,response"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("error,response"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.LogMode.validateLocal("all"));
-
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug", "error"));
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogMode.from("debug,error"));
-		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.LogOutput.fromLogs("request", "all"));
-	}
-
-	/**
-	 * Verifies context logs=request/response controls failure diagnostics even when
-	 * local annotation log keeps its default debug value.
-	 */
-	@Test
-	public void contextLogsRequestResponseControlsFailureDiagnostics() {
-		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new RequestResponseFailureLogsFixture());
+	public void contextDebugControlsFailureDiagnostics() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new RequestResponseDebugFixture());
 
 		assertTrue(options.minimumErrorOutput("debug"));
 		assertTrue(options.failureDiagnostics("debug", null));
@@ -1221,38 +1222,50 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(options.failureInfo("debug", null));
 	}
 
+	/** Verifies debug=error enables the full failure trace. */
+	@Test
+	public void contextDebugErrorEnablesFailureTrace() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new ErrorDebugFixture());
+
+		assertFalse(options.minimumErrorOutput());
+		assertTrue(options.errorStackTrace());
+		assertTrue(options.failureResponse("debug", null));
+	}
+
 	/**
-	 * Verifies log=info prints JPostmanInfo through normal output only and does not
-	 * append the same block again to a failure diagnostic.
+	 * Verifies debug=info prints JPostmanInfo through normal output only and does
+	 * not append the same block again to a failure diagnostic.
 	 */
 	@Test
 	public void infoOutputIsNotDuplicatedInsideFailureDiagnostics() {
-		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new InfoFailureLogsFixture());
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new InfoDebugFixture());
 		JPostmanInfo info = new JPostmanInfo("@JPostmanRunner", "testAuthRunner", "", "Auth",
 				"Refresh auth session/token");
 
 		assertTrue(options.failureInfo("info", info));
-		assertTrue(options.logOutput("info", info).contains(JPostmanRuntimeOptions.LogOutput.INFO));
+		assertTrue(options.automaticOutput("info", info).contains(JPostmanRuntimeOptions.DebugOutput.INFO));
 		assertFalse(options.failureInfoDiagnostic("info", info));
 	}
 
-	static class InfoFailureLogsFixture {
-		@JPostman.Context(config = "", logs = { "none" })
+	static class InfoDebugFixture {
+		@JPostman.Context(config = "")
 		JPostman.Runtime<JPostman.Test> jpostman;
 	}
 
-	static class RequestResponseFailureLogsFixture {
-		@JPostman.Context(config = "", logs = { "request", "response" })
+	static class RequestResponseDebugFixture {
+		@JPostman.Context(config = "", debug = { "request", "response" })
 		JPostman.Runtime<JPostman.Test> jpostman;
 	}
 
-	/**
-	 * Verifies the default context logs=none does not print request/response on
-	 * failure.
-	 */
+	static class ErrorDebugFixture {
+		@JPostman.Context(config = "", debug = { "error", "response" })
+		JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
+	/** Verifies the default debug=none has no failure diagnostics. */
 	@Test
-	public void contextLogsDefaultNoneHasNoFailureDiagnostics() {
-		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new DefaultFailureLogsFixture());
+	public void contextDebugDefaultNoneHasNoFailureDiagnostics() {
+		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new DefaultDebugFixture());
 
 		assertTrue(options.minimumErrorOutput("debug"));
 		assertFalse(options.failureDiagnostics("debug", null));
@@ -1260,40 +1273,38 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(options.failureResponse("debug", null));
 	}
 
-	/**
-	 * Verifies context debug still controls automatic request/response output even
-	 * when context logs defaults to none.
-	 */
+	/** Verifies context debug controls automatic request/response output. */
 	@Test
-	public void contextDebugStillControlsAutomaticAnnotationOutputWhenLogsDefaultNone() {
+	public void contextDebugControlsAutomaticAnnotationOutput() {
 		JPostmanRuntimeOptions requestOptions = JPostmanRuntimeOptions.from(new RequestDebugOutputFixture());
-		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> requestOutput = requestOptions.logOutput("debug", null);
+		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> requestOutput = requestOptions.automaticOutput("debug",
+				null);
 
-		assertTrue(requestOutput.contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
-		assertFalse(requestOutput.contains(JPostmanRuntimeOptions.LogOutput.RESPONSE));
-		assertTrue(requestOptions.logOutput("none", null).contains(JPostmanRuntimeOptions.LogOutput.NONE));
+		assertTrue(requestOutput.contains(JPostmanRuntimeOptions.DebugOutput.REQUEST));
+		assertFalse(requestOutput.contains(JPostmanRuntimeOptions.DebugOutput.RESPONSE));
+		assertTrue(requestOptions.automaticOutput("none", null).contains(JPostmanRuntimeOptions.DebugOutput.NONE));
 
 		JPostmanRuntimeOptions allOptions = JPostmanRuntimeOptions.from(new AllDebugOutputFixture());
-		assertTrue(allOptions.logOutput("debug", null).contains(JPostmanRuntimeOptions.LogOutput.ALL));
-		assertTrue(allOptions.logOutput("request", null).contains(JPostmanRuntimeOptions.LogOutput.REQUEST));
+		assertTrue(allOptions.automaticOutput("debug", null).contains(JPostmanRuntimeOptions.DebugOutput.ALL));
+		assertTrue(allOptions.automaticOutput("request", null).contains(JPostmanRuntimeOptions.DebugOutput.REQUEST));
 	}
 
 	/**
-	 * Verifies context debug output still respects a local annotation log=none.
+	 * Verifies a local annotation debug=none suppresses inherited context output.
 	 */
 	@Test
-	public void contextDebugInfoRespectsLocalLogNone() {
+	public void contextDebugInfoRespectsLocalDebugNone() {
 		InfoDebugOutputFixture fixture = new InfoDebugOutputFixture();
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(fixture);
 		JPostmanInfo info = new JPostmanInfo(new String[0], "", "newProduct", "product", "Product", "Add a new product")
 				.annotation("@JPostmanRequest");
 
-		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> suppressed = options.logOutput("none", info);
-		java.util.EnumSet<JPostmanRuntimeOptions.LogOutput> inherited = options.logOutput("debug", info);
+		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> suppressed = options.automaticOutput("none", info);
+		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> inherited = options.automaticOutput("debug", info);
 
-		assertTrue(suppressed.contains(JPostmanRuntimeOptions.LogOutput.NONE));
-		assertFalse(suppressed.contains(JPostmanRuntimeOptions.LogOutput.INFO));
-		assertTrue(inherited.contains(JPostmanRuntimeOptions.LogOutput.INFO), inherited.toString());
+		assertTrue(suppressed.contains(JPostmanRuntimeOptions.DebugOutput.NONE));
+		assertFalse(suppressed.contains(JPostmanRuntimeOptions.DebugOutput.INFO));
+		assertTrue(inherited.contains(JPostmanRuntimeOptions.DebugOutput.INFO), inherited.toString());
 	}
 
 	static class InfoDebugOutputFixture {
@@ -1311,7 +1322,7 @@ public class JPostmanAnnotationCoverageTest {
 		JPostman.Runtime<JPostman.Test> jpostman;
 	}
 
-	static class DefaultFailureLogsFixture {
+	static class DefaultDebugFixture {
 		@JPostman.Context(config = "")
 		JPostman.Runtime<JPostman.Test> jpostman;
 	}
@@ -1477,6 +1488,10 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals(1, customized.get());
 		assertNotNull(JPostman.Runtime.class.getMethod("call"));
 		assertNotNull(JPostman.Runtime.class.getMethod("call", java.util.function.BiConsumer.class));
+		assertNotNull(JPostman.Runtime.class.getMethod("getCollection"));
+		assertNotNull(JPostman.Runtime.class.getMethod("getCollection", String.class));
+		assertNotNull(JPostman.Runtime.class.getMethod("getEnvironment"));
+		assertNotNull(JPostman.Runtime.class.getMethod("getEnvironment", String.class));
 		assertThrows(NoSuchMethodException.class, () -> JPostman.Runtime.class.getMethod("request"));
 	}
 
@@ -1745,9 +1760,72 @@ public class JPostmanAnnotationCoverageTest {
 
 		assertEquals(1, proceedCalls.get());
 		assertEquals(1, fixture.bodyCount,
-				"soft=true must allow the response body to run before collected failures are flushed.");
-		assertTrue(error.getMessage().contains("Status code mismatch: ==> expected: <401> but was: <200>"),
+				"@AssertContext(soft = true) must allow the response body to finish before verification.");
+		assertTrue(error.getMessage().contains("response soft assertion failed"),
 				"Actual message: " + error.getMessage());
+	}
+
+	/**
+	 * Verifies ReportContext fail="error" owns the full trace and suppresses the
+	 * JUnit bridge's optional immediate print. The report prints it later, after
+	 * the summary.
+	 */
+	@Test
+	public void junitImmediateFailurePrintIsSuppressedWhenReportDefersErrorOutput() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		DeferredReportErrorFixture fixture = new DeferredReportErrorFixture();
+		Method method = DeferredReportErrorFixture.class.getDeclaredMethod("fails");
+		List<String> output = new java.util.ArrayList<>();
+
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			AssertionError error = assertThrows(AssertionError.class,
+					() -> extension.interceptTestMethod(invocation(() -> invokeUnchecked(fixture, method)),
+							reflectiveInvocation(method), extensionContext(fixture)));
+			assertEquals("deferred failure", error.getMessage());
+		}
+
+		assertTrue(JPostmanAnnotationEngine.defersFailureTrace(fixture));
+		assertFalse(String.join("", output).contains("FAILED:"), String.join("", output));
+	}
+
+	/**
+	 * Verifies a declared ReportContext owns automatic failure output even when the
+	 * JUnit bridge has printFailures enabled. In particular, fail="ignore" must not
+	 * print an immediate failure before the report summary.
+	 */
+	@Test
+	public void junitImmediateFailurePrintIsSuppressedWhenReportIgnoresOutput() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		IgnoredReportFailureFixture fixture = new IgnoredReportFailureFixture();
+		Method method = IgnoredReportFailureFixture.class.getDeclaredMethod("fails");
+		List<String> output = new java.util.ArrayList<>();
+
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			AssertionError error = assertThrows(AssertionError.class,
+					() -> extension.interceptTestMethod(invocation(() -> invokeUnchecked(fixture, method)),
+							reflectiveInvocation(method), extensionContext(fixture)));
+			assertEquals("ignored report failure", error.getMessage());
+		}
+
+		assertTrue(JPostmanAnnotationEngine.reportControlsFailureOutput(fixture));
+		assertFalse(String.join("", output).contains("FAILED:"), String.join("", output));
+	}
+
+	/**
+	 * Verifies nested JUnit assertion type prefixes are removed from display text.
+	 */
+	@Test
+	public void assertionMessageNormalizationRemovesOpenTest4jPrefixes() {
+		String message = "Multiple Failures (2 failures)\n"
+				+ "\torg.opentest4j.AssertionFailedError: Condition should be true\n"
+				+ "\torg.opentest4j.AssertionFailedError: Status code mismatch";
+
+		String normalized = JPostmanStackTraceCleaner.normalizeAssertionMessage(message);
+
+		assertTrue(normalized.contains("Multiple Failures (2 failures)"));
+		assertTrue(normalized.contains("\tCondition should be true"));
+		assertTrue(normalized.contains("\tStatus code mismatch"));
+		assertFalse(normalized.contains("org.opentest4j.AssertionFailedError:"));
 	}
 
 	/**
@@ -1776,7 +1854,7 @@ public class JPostmanAnnotationCoverageTest {
 	/**
 	 * Verifies jpostman.ctx().soft() failures are reported per request when
 	 * 
-	 * @JPostman.Runner(soft = true) aggregates TestNG callback failures.
+	 * @JPostman.Runner() aggregates TestNG callback failures.
 	 */
 	@Test
 	public void testNgRunnerSoftTrueRuntimeSoftReportsPerRequestLeafMessages() throws Exception {
@@ -1799,7 +1877,7 @@ public class JPostmanAnnotationCoverageTest {
 	/**
 	 * Verifies @JPostman.AssertContext failures are flattened when
 	 * 
-	 * @JPostman.Runner(soft = true) aggregates JUnit callback failures.
+	 * @JPostman.Runner() aggregates JUnit callback failures.
 	 */
 	@Test
 	public void junitRunnerSoftTrueAssertContextReportsLeafMessages() throws Exception {
@@ -1821,7 +1899,7 @@ public class JPostmanAnnotationCoverageTest {
 	/**
 	 * Verifies @JPostman.AssertContext failures are flattened when
 	 * 
-	 * @JPostman.Runner(soft = true) aggregates TestNG callback failures.
+	 * @JPostman.Runner() aggregates TestNG callback failures.
 	 */
 	@Test
 	public void testNgRunnerSoftTrueAssertContextReportsLeafMessages() throws Exception {
@@ -2895,12 +2973,16 @@ public class JPostmanAnnotationCoverageTest {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
 
+		@io.jpostman.annotations.JPostman.AssertContext(soft = true)
+		private JPostman.Assert asserts;
+
 		private int bodyCount;
 
-		@io.jpostman.annotations.JPostman.Response(request = "Get current auth user", verify = 401, soft = true, log = "none")
+		@io.jpostman.annotations.JPostman.Response(request = "Get current auth user", verify = 200, debug = "none")
 		void inspectSoftFailure() {
 			bodyCount++;
 			assertNotNull(jpostman.ctx().response());
+			asserts.isTrue(false, "response soft assertion failed");
 		}
 
 		@JPostmanExecutor
@@ -2916,7 +2998,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#junitRunnerSoft", verify = 200, soft = true)
+				"Get current auth user" }, executor = "#junitRunnerSoft", verify = 200)
 		void runProducts() {
 			bodyCount++;
 			JPostman.Assert asserts1 = jpostman.ctx().soft();
@@ -2944,7 +3026,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int ended;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200, soft = true)
+				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200)
 		void runProducts() {
 			bodyCount++;
 			JPostman.Assert asserts1 = jpostman.ctx().soft();
@@ -2969,21 +3051,19 @@ public class JPostmanAnnotationCoverageTest {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
 
-		@io.jpostman.annotations.JPostman.AssertContext
+		@io.jpostman.annotations.JPostman.AssertContext(soft = true)
 		private JPostman.Assert asserts;
 
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#junitRunnerSoftAssertContext", verify = 200, soft = true)
+				"Get current auth user" }, executor = "#junitRunnerSoftAssertContext", verify = 200)
 		void runProducts() {
 			bodyCount++;
 			jpostman.runner().has("Login user and get tokens").then(test -> {
 				asserts.isTrue(false, "JUnit assert context soft runner failed 1");
 			}).has("Get current auth user").then(test -> {
 				asserts.isTrue(false, "JUnit assert context soft runner failed 2");
-			}).end(test -> {
-				asserts.verify();
 			});
 		}
 
@@ -2998,21 +3078,19 @@ public class JPostmanAnnotationCoverageTest {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
 
-		@io.jpostman.annotations.JPostman.AssertContext
+		@io.jpostman.annotations.JPostman.AssertContext(soft = true)
 		private JPostman.Assert asserts;
 
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#testNgRunnerSoftAssertContext", verify = 200, soft = true)
+				"Get current auth user" }, executor = "#testNgRunnerSoftAssertContext", verify = 200)
 		void runProducts() {
 			bodyCount++;
 			jpostman.runner().has("Login user and get tokens").then(test -> {
 				asserts.isTrue(false, "TestNG assert context soft runner failed 1");
 			}).has("Get current auth user").then(test -> {
 				asserts.isTrue(false, "TestNG assert context soft runner failed 2");
-			}).end(test -> {
-				asserts.verify();
 			});
 		}
 
@@ -3415,6 +3493,28 @@ public class JPostmanAnnotationCoverageTest {
 		assertNotNull(fixture.jctx);
 		assertNotNull(fixture.jctx.context());
 		assertNotNull(fixture.jctx.getCollection());
+	}
+
+	@io.jpostman.annotations.JPostman.JUnit(printFailures = true)
+	private static final class IgnoredReportFailureFixture {
+		@io.jpostman.annotations.JPostman.ReportContext(fail = "ignore")
+		private io.jpostman.annotations.JPostman.Report report;
+
+		@SuppressWarnings("unused")
+		void fails() {
+			throw new AssertionError("ignored report failure");
+		}
+	}
+
+	@io.jpostman.annotations.JPostman.JUnit(printFailures = true)
+	private static final class DeferredReportErrorFixture {
+		@io.jpostman.annotations.JPostman.ReportContext(fail = { "skipAll", "error" })
+		private io.jpostman.annotations.JPostman.Report report;
+
+		@SuppressWarnings("unused")
+		void fails() {
+			throw new AssertionError("deferred failure");
+		}
 	}
 
 	@io.jpostman.annotations.JPostman.JUnit(printFailures = true)

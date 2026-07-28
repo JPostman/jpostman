@@ -2,6 +2,8 @@ package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Method;
@@ -54,15 +56,46 @@ public class JPostmanAnnotationContextRegressionTest {
 				"Only the non-skipped product response should execute the product request.");
 	}
 
+	/**
+	 * Verifies direct namespace access to the loaded core collection and
+	 * environment without requiring an explicit {@code @JPostman.TestContext} field
+	 * for that namespace.
+	 */
+	@Test
+	public void runtimeReturnsCollectionsAndEnvironmentsAcrossNamespaces() throws Exception {
+		NamespaceResourceFixture fixture = new NamespaceResourceFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		io.jpostman.Collection defaultCollection = fixture.jpostman.getCollection();
+		io.jpostman.Collection nestedCollection = fixture.jpostman.getCollection("nested");
+
+		assertEquals("Annotation Test Collection", defaultCollection.getName());
+		assertEquals("Nested Annotation Test Collection", nestedCollection.getName());
+		assertNotSame(defaultCollection, nestedCollection,
+				"A namespace-specific collection must not return the default collection instance.");
+		assertSame(defaultCollection, fixture.jpostman.getCollection(""));
+		assertSame(defaultCollection, fixture.jpostman.getCollection(null));
+
+		assertEquals("annotation-test", fixture.jpostman.getEnvironment().getName());
+	}
+
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
 	}
 
 	@JPostman.TestNG
+	private static final class NamespaceResourceFixture {
+
+		@JPostman.Context(config = "classpath:jpostman.properties", debug = "none")
+		private JPostman.Runtime<JPostman.Test> jpostman;
+	}
+
+	@JPostman.TestNG
 	private static final class CompactContextTeardownFixture {
 
-		@JPostman.Context(verifyStatusCode = 200, logs = "debug", debug = "none")
+		@JPostman.Context(verifyStatusCode = 200, debug = "none")
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
 		@JPostman.TestContext(active = false)

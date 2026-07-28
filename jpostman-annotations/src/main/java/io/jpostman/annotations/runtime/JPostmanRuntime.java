@@ -14,9 +14,6 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.jpostman.Collection;
 import io.jpostman.Environment;
 import io.jpostman.JPostman;
@@ -58,11 +55,10 @@ import io.jpostman.secure.SecureValue;
  */
 public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runtime<C> {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(JPostmanRuntime.class);
-
 	private final JPostman.Context context;
 	private final String namespace;
 	private final Function<String, C> contextResolver;
+	private final Function<String, JPostman.Context> loadedContextResolver;
 	private final Supplier<C> activeContextResolver;
 	private final Supplier<JPostmanInfo> infoSupplier;
 	private final JPostmanRuntimeRequest<C> requestExecutor;
@@ -79,7 +75,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 */
 	public JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier) {
-		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, null, null);
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, null, null, null);
 	}
 
 	/**
@@ -95,15 +91,24 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
 			Supplier<JPostmanRuntimeOptions> optionsSupplier) {
-		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, optionsSupplier, null);
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, optionsSupplier, null, null);
 	}
 
 	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
 			Supplier<JPostmanRuntimeOptions> optionsSupplier, JPostmanRuntimeRequest<C> requestExecutor) {
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, optionsSupplier, requestExecutor,
+				null);
+	}
+
+	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
+			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
+			Supplier<JPostmanRuntimeOptions> optionsSupplier, JPostmanRuntimeRequest<C> requestExecutor,
+			Function<String, JPostman.Context> loadedContextResolver) {
 		this.context = context;
 		this.namespace = namespace == null ? "" : namespace;
 		this.contextResolver = contextResolver;
+		this.loadedContextResolver = loadedContextResolver;
 		this.activeContextResolver = activeContextResolver;
 		this.infoSupplier = infoSupplier;
 		this.requestExecutor = requestExecutor;
@@ -185,10 +190,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	/** {@inheritDoc} */
 	@Override
 	public void print(boolean resolve) {
-		String text = log(resolve);
-		if (!JPostmanOutputs.write(text)) {
-			LOGGER.trace(text);
-		}
+		JPostmanOutputs.writeOrTrace(log(resolve));
 	}
 
 	/** {@inheritDoc} */
@@ -827,17 +829,68 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	 *
 	 * @return loaded collection
 	 */
+	@Override
 	public Collection getCollection() {
-		return context == null ? null : context.getCollection();
+		return getCollection(namespace);
 	}
 
 	/**
-	 * Returns the loaded environment from the core context.
+	 * Returns the loaded collection for a namespace.
+	 *
+	 * <p>
+	 * A blank namespace resolves the runtime's default namespace. Named namespaces
+	 * are loaded from properties such as {@code collection.product} by the
+	 * annotations context runner.
+	 * </p>
+	 *
+	 * @param namespace namespace to resolve, or blank for the default namespace
+	 * @return loaded namespace collection
+	 */
+	@Override
+	public Collection getCollection(String namespace) {
+		JPostman.Context loaded = loadedContext(namespace);
+		return loaded == null ? null : loaded.getCollection();
+	}
+
+	/**
+	 * Returns the loaded environment from the default core context.
 	 *
 	 * @return loaded environment
 	 */
+	@Override
 	public Environment getEnvironment() {
-		return context == null ? null : context.getEnvironment();
+		return getEnvironment(namespace);
+	}
+
+	/**
+	 * Returns the loaded environment for a namespace.
+	 *
+	 * @param namespace namespace to resolve, or blank for the default namespace
+	 * @return loaded namespace environment, or {@code null} when no environment is
+	 *         configured
+	 */
+	@Override
+	public Environment getEnvironment(String namespace) {
+		JPostman.Context loaded = loadedContext(namespace);
+		return loaded == null ? null : loaded.getEnvironment();
+	}
+
+	private JPostman.Context loadedContext(String requestedNamespace) {
+		String key = requestedNamespace == null ? "" : requestedNamespace.trim();
+		if (key.equals(namespace)) {
+			return context;
+		}
+		if (loadedContextResolver == null) {
+			if (key.isEmpty()) {
+				return context;
+			}
+			throw new IllegalStateException("No JPostman core context resolver is available for namespace: " + key);
+		}
+		JPostman.Context resolved = loadedContextResolver.apply(key);
+		if (resolved == null) {
+			throw new IllegalStateException("No JPostman core context found for namespace: " + key);
+		}
+		return resolved;
 	}
 
 }

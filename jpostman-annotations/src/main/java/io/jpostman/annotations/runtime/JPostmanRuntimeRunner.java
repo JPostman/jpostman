@@ -220,10 +220,20 @@ final class JPostmanRuntimeRunner {
 	}
 
 	static boolean isSoftFailure(Throwable failure) {
+		return softFailureCause(failure) != null;
+	}
+
+	/**
+	 * Returns the request-scoped soft assertion marker from a reflective/framework
+	 * wrapper chain. TestNG may wrap the runner method body in RuntimeException and
+	 * InvocationTargetException; preserving the nested marker keeps that request's
+	 * failure in the runner aggregate.
+	 */
+	static AssertionError softFailureCause(Throwable failure) {
 		Throwable current = failure;
 		for (int depth = 0; current != null && depth < 20; depth++) {
 			if (current instanceof RunnerSoftAssertionError) {
-				return true;
+				return (AssertionError) current;
 			}
 			Throwable next = current instanceof InvocationTargetException
 					? ((InvocationTargetException) current).getCause()
@@ -233,7 +243,7 @@ final class JPostmanRuntimeRunner {
 			}
 			current = next;
 		}
-		return false;
+		return null;
 	}
 
 	static String failureMessage(Throwable failure) {

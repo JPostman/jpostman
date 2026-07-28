@@ -717,11 +717,8 @@ public interface JPostmanFramework<C> {
 	 * Verifies pending soft assertions for the supplied context.
 	 *
 	 * <p>
-	 * Runner status verification uses framework soft assertions when
-	 * {@code @JPostmanRunner(soft = true)} is active. The normal
-	 * {@link #verifyAssertions(Object)} hook checks the hard assertion facade, so
-	 * runner soft aggregation needs this companion hook to flush status/assertion
-	 * failures recorded through {@code context.soft(false)} after each request.
+	 * This compatibility hook flushes failures recorded through a framework
+	 * context's soft assertion facade. Annotation-level soft mode is not used.
 	 * </p>
 	 *
 	 * @param context framework context

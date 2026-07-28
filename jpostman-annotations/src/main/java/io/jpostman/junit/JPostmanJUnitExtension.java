@@ -48,16 +48,9 @@ public final class JPostmanJUnitExtension
 		}
 	}
 
-	/**
-	 * Completes class-scoped assertions and report output after user
-	 * {@code @AfterAll} methods. Deferred class failures use the same configured
-	 * JPostman stack-trace cleaner and {@code printFailures} output as normal test
-	 * failures.
-	 */
+	/** Completes report output after user {@code @AfterAll} methods. */
 	@Override
 	public void afterAll(ExtensionContext context) throws Exception {
-		Throwable failure = null;
-		Object failureInstance = null;
 		try {
 			Object direct = context.getTestInstance().orElse(null);
 			Set<Object> instances = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -71,33 +64,8 @@ public final class JPostmanJUnitExtension
 					}
 				}
 			}
-
 			for (Object instance : instances) {
-				try {
-					JPostmanAnnotationEngine.completeTestClass(instance);
-				} catch (Throwable error) {
-					Method origin = assertionOriginMethod(instance);
-					Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(instance, origin, error);
-					if (failure == null) {
-						failure = cleaned;
-						failureInstance = instance;
-					} else {
-						failure.addSuppressed(cleaned);
-					}
-				}
-			}
-
-			if (failure != null) {
-				printFailure(context, failure);
-				Method failureMethod = assertionOriginMethod(failureInstance);
-				JPostmanAnnotationEngine.recordFinalFailure(failureInstance, failureMethod);
-				if (failure instanceof Exception) {
-					throw (Exception) failure;
-				}
-				if (failure instanceof Error) {
-					throw (Error) failure;
-				}
-				throw new RuntimeException(failure);
+				JPostmanAnnotationEngine.completeTestClass(instance);
 			}
 		} finally {
 			synchronized (prepared) {
@@ -107,27 +75,6 @@ public final class JPostmanJUnitExtension
 			}
 			JUnitContext.clearCurrent();
 		}
-	}
-
-	private Method assertionOriginMethod(Object testInstance) {
-		Method origin = JPostmanAnnotationEngine.lastAssertionMethod(testInstance);
-		return origin == null ? classFailureMethod(testInstance) : origin;
-	}
-
-	private Method classFailureMethod(Object testInstance) {
-		if (testInstance == null) {
-			return null;
-		}
-		Method fallback = null;
-		for (Method method : testInstance.getClass().getDeclaredMethods()) {
-			if (fallback == null) {
-				fallback = method;
-			}
-			if (method.isAnnotationPresent(org.junit.jupiter.api.Test.class)) {
-				return method;
-			}
-		}
-		return fallback;
 	}
 
 	/**
@@ -151,24 +98,20 @@ public final class JPostmanJUnitExtension
 				}
 			} else {
 				JPostmanAnnotationEngine.runJUnit(testInstance, testMethod);
-				JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
-				try {
-					invocation.proceed();
-					JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
-					verifySoftResponseAssertions(testMethod);
-				} finally {
-					JPostmanAnnotationEngine.endAssertionCleanup();
-				}
+				invokeTestBodyAndVerifyRequest(invocation, testInstance, testMethod);
 			}
+			printPassed(extensionContext, testMethod);
 		} catch (Throwable error) {
+			if (!(JPostmanStackTraceCleaner.rootCause(error) instanceof TestAbortedException)) {
+				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod, error);
+			}
 			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, testMethod, error);
 			if (cleaned instanceof TestAbortedException) {
 				JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
-			} else {
-				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
 			}
-			if (!(cleaned instanceof TestAbortedException)) {
-				printFailure(extensionContext, cleaned);
+			if (!(cleaned instanceof TestAbortedException)
+					&& !JPostmanAnnotationEngine.reportControlsFailureOutput(testInstance)) {
+				printFailure(extensionContext, testMethod, cleaned, null);
 			}
 			throw cleaned;
 		} finally {
@@ -184,23 +127,11 @@ public final class JPostmanJUnitExtension
 		return findRunnerDependency(testMethod.getDeclaringClass(), firstDependency(runner)) != null;
 	}
 
-	/**
-	 * Flushes soft response verification after the user body has inspected the
-	 * response and added any manual assertions. The collector is verified in the
-	 * same method invocation, so failures cannot leak into a later test.
-	 */
-	private void verifySoftResponseAssertions(Method testMethod) {
-		io.jpostman.annotations.JPostmanResponse response = JPostmanAnnotations.response(testMethod);
-		if (response != null && response.soft()) {
-			JUnitContext.current().soft(false).assertAll();
-		}
-	}
-
 	private boolean isRunnerDependencyLauncher(io.jpostman.annotations.JPostmanRunner runner) {
 		return runner != null && dependencies(runner).length == 1 && isBlank(runner.namespace())
 				&& isEmpty(runner.folder()) && isBlank(runner.rule()) && isBlank(runner.executor())
 				&& isBlank(runner.data()) && isEmpty(runner.include()) && isEmpty(runner.exclude())
-				&& isEmpty(runner.filter()) && isEmpty(runner.asserts()) && runner.verify() == -1 && !runner.soft()
+				&& isEmpty(runner.filter()) && isEmpty(runner.asserts()) && runner.verify() == -1
 				&& !runner.lifecycle();
 	}
 
@@ -277,7 +208,7 @@ public final class JPostmanJUnitExtension
 			invocation.proceed();
 		} catch (Throwable error) {
 			Throwable cleaned = cleanLifecycleFailure(extensionContext, testInstance, method, error);
-			printFailure(extensionContext, cleaned);
+			printFailure(extensionContext, method, cleaned, "@BeforeAll");
 			throw cleaned;
 		}
 	}
@@ -294,7 +225,7 @@ public final class JPostmanJUnitExtension
 			invocation.proceed();
 		} catch (Throwable error) {
 			Throwable cleaned = cleanLifecycleFailure(extensionContext, testInstance, method, error);
-			printFailure(extensionContext, cleaned);
+			printFailure(extensionContext, method, cleaned, "@AfterAll");
 			throw cleaned;
 		} finally {
 			JUnitContext.clearCurrent();
@@ -310,9 +241,9 @@ public final class JPostmanJUnitExtension
 			JPostmanAnnotationEngine.setupJUnit(testInstance);
 			prepared.add(testInstance);
 		} catch (Throwable error) {
-			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, firstMethod(testInstance),
-					error);
-			printFailure(context, cleaned);
+			Method method = firstMethod(testInstance);
+			Throwable cleaned = JPostmanAnnotationEngine.cleanJUnitFailure(testInstance, method, error);
+			printFailure(context, method, cleaned, "@BeforeAll");
 			if (cleaned instanceof Exception) {
 				throw (Exception) cleaned;
 			}
@@ -344,17 +275,45 @@ public final class JPostmanJUnitExtension
 		return methods.length == 0 ? null : methods[0];
 	}
 
-	private void printFailure(ExtensionContext context, Throwable failure) {
-		if (!printFailures(context)) {
+	private void printPassed(ExtensionContext context, Method method) {
+		if (!printFailures(context) || method == null) {
 			return;
 		}
 
-		StringBuilder output = new StringBuilder(String.valueOf(failure.getMessage()));
-		for (StackTraceElement element : failure.getStackTrace()) {
-			output.append('\n').append("\tat ").append(element);
+		String text = "PASSED: " + context.getRequiredTestClass().getSimpleName() + "." + method.getName() + "\n";
+		JPostmanOutputs.writeOrTrace(text);
+	}
+
+	private void printFailure(ExtensionContext context, Method method, Throwable failure, String lifecycle) {
+		if (!printFailures(context) || failure == null) {
+			return;
 		}
+
+		String className = context.getRequiredTestClass().getSimpleName();
+		String methodName = method == null ? "JPostman automatic assertion verification" : method.getName();
+
+		StringBuilder output = new StringBuilder();
+		if (lifecycle == null || lifecycle.isBlank()) {
+			output.append("FAILED: ");
+		} else {
+			output.append("FAILED CONFIGURATION: ").append(lifecycle).append(' ');
+		}
+
+		output.append(className).append('.').append(methodName).append('\n').append(failure.getClass().getName())
+				.append(": ").append(String.valueOf(failure.getMessage())).append('\n');
+
+		if (method == null) {
+			String source = context.getRequiredTestClass().getSimpleName() + ".java";
+			output.append("\tat ").append(className).append('.').append(methodName).append('(').append(source)
+					.append(")\n");
+		} else {
+			for (StackTraceElement element : failure.getStackTrace()) {
+				output.append("\tat ").append(element).append('\n');
+			}
+		}
+
 		output.append('\n');
-		JPostmanOutputs.write(output.toString());
+		JPostmanOutputs.writeOrTrace(output.toString());
 	}
 
 	private boolean printFailures(ExtensionContext context) {
@@ -369,25 +328,77 @@ public final class JPostmanJUnitExtension
 		return compactAnnotation != null && compactAnnotation.printFailures();
 	}
 
-	private void invokeTestBodyWithAssertionCleanup(Invocation<Void> invocation, Object testInstance, Method testMethod,
-			boolean[] proceeded) {
+	private void invokeTestBodyAndVerifyRequest(Invocation<Void> invocation, Object testInstance, Method testMethod)
+			throws Throwable {
 		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+		Throwable bodyFailure = null;
+		Throwable verificationFailure = null;
 		try {
-			if (proceeded != null && proceeded.length > 0 && !proceeded[0]) {
-				proceeded[0] = true;
+			try {
 				invocation.proceed();
-			} else {
-				testMethod.setAccessible(true);
-				testMethod.invoke(testInstance);
+			} catch (Throwable error) {
+				bodyFailure = error;
 			}
-			JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
-		} catch (InvocationTargetException error) {
-			throw new TestBodyFailureException(error.getCause());
-		} catch (Throwable error) {
-			throw new TestBodyFailureException(error);
+
+			try {
+				JPostmanAnnotationEngine.verifyRequestAssertions(testInstance, testMethod);
+			} catch (Throwable error) {
+				verificationFailure = error;
+			}
 		} finally {
 			JPostmanAnnotationEngine.endAssertionCleanup();
 		}
+
+		if (bodyFailure != null) {
+			if (verificationFailure != null && verificationFailure != bodyFailure) {
+				bodyFailure.addSuppressed(verificationFailure);
+			}
+			throw bodyFailure;
+		}
+		if (verificationFailure != null) {
+			throw verificationFailure;
+		}
+	}
+
+	private void invokeTestBodyWithAssertionCleanup(Invocation<Void> invocation, Object testInstance, Method testMethod,
+			boolean[] proceeded) {
+		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+		Throwable bodyFailure = null;
+		Throwable verificationFailure = null;
+		try {
+			try {
+				if (proceeded != null && proceeded.length > 0 && !proceeded[0]) {
+					proceeded[0] = true;
+					invocation.proceed();
+				} else {
+					testMethod.setAccessible(true);
+					testMethod.invoke(testInstance);
+				}
+			} catch (InvocationTargetException error) {
+				bodyFailure = error.getCause();
+			} catch (Throwable error) {
+				bodyFailure = error;
+			}
+
+			try {
+				JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
+			} catch (Throwable error) {
+				verificationFailure = error;
+			}
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+
+		if (bodyFailure != null) {
+			if (verificationFailure != null && verificationFailure != bodyFailure) {
+				bodyFailure.addSuppressed(verificationFailure);
+			}
+			throw new TestBodyFailureException(bodyFailure);
+		}
+		if (verificationFailure != null) {
+			throw new TestBodyFailureException(verificationFailure);
+		}
+
 	}
 
 	private static final class TestBodyFailureException extends RuntimeException {

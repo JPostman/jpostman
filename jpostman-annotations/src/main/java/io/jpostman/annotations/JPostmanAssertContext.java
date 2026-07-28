@@ -14,10 +14,11 @@ import java.lang.annotation.Target;
 @Retention(RUNTIME)
 public @interface JPostmanAssertContext {
 	/**
-	 * Enables class-scoped soft assertion mode. The collector is verified after all
-	 * tests in the class complete.
+	 * Enables request-scoped soft assertion mode. Pending failures are verified
+	 * automatically after an eligible response or runner request.
 	 *
-	 * @return {@code true} to collect failures and verify them after class teardown
+	 * @return {@code true} to collect failures until manual or automatic
+	 *         verification
 	 */
 	boolean soft() default false;
 }

@@ -27,8 +27,8 @@ import io.jpostman.Request;
  *
  * <p>
  * This channel is intentionally independent from the public annotation debug
- * options. Console output continues to follow {@code debug()} and
- * {@code log()}, while this file receives full diagnostic records whenever the
+ * options. Console output continues to follow the public {@code debug()}
+ * settings, while this file receives full diagnostic records whenever the
  * environment variable is set, including when user debug output is
  * {@code none}.
  * </p>
@@ -58,7 +58,7 @@ final class JPostmanDebugFile {
 			"sun.reflect." };
 	private static final Object WRITE_LOCK = new Object();
 	private static final Map<Throwable, Boolean> CAPTURED_FAILURES = Collections.synchronizedMap(new WeakHashMap<>());
-	private static final Set<String> ANNOTATION_LOGS = Collections.synchronizedSet(new LinkedHashSet<>());
+	private static final Set<String> ANNOTATION_DEBUG = Collections.synchronizedSet(new LinkedHashSet<>());
 	private static final Map<JPostmanInfo, String> PENDING_CALL_RECORDS = Collections
 			.synchronizedMap(new WeakHashMap<>());
 
@@ -70,8 +70,8 @@ final class JPostmanDebugFile {
 	}
 
 	/** Captures shared annotation settings without creating an event block. */
-	static void info(Object testInstance, JPostmanInfo info, String annotationLog) {
-		write("", testInstance, null, annotationLog, "", null);
+	static void info(Object testInstance, JPostmanInfo info, String annotationDebug) {
+		write("", testInstance, null, annotationDebug, "", null);
 	}
 
 	/**
@@ -79,25 +79,25 @@ final class JPostmanDebugFile {
 	 * the runtime call is executed later, the placeholder record is replaced by the
 	 * completed request/response record instead of producing a duplicate block.
 	 */
-	static void call(Object testInstance, JPostmanInfo info, String annotationLog) {
-		write("EXECUTION", testInstance, info, annotationLog, "", null, true);
+	static void call(Object testInstance, JPostmanInfo info, String annotationDebug) {
+		write("EXECUTION", testInstance, info, annotationDebug, "", null, true);
 	}
 
-	static void execution(Object testInstance, JPostmanInfo info, String annotationLog, String diagnostic) {
-		write("EXECUTION", testInstance, info, annotationLog, diagnostic, null, false);
+	static void execution(Object testInstance, JPostmanInfo info, String annotationDebug, String diagnostic) {
+		write("EXECUTION", testInstance, info, annotationDebug, diagnostic, null, false);
 	}
 
-	static void skipped(Object testInstance, JPostmanInfo info, String annotationLog, String diagnostic,
+	static void skipped(Object testInstance, JPostmanInfo info, String annotationDebug, String diagnostic,
 			Throwable error) {
-		writeFailureOnce("SKIPPED", testInstance, info, annotationLog, diagnostic, error);
+		writeFailureOnce("SKIPPED", testInstance, info, annotationDebug, diagnostic, error);
 	}
 
-	static void failure(Object testInstance, JPostmanInfo info, String annotationLog, String diagnostic,
+	static void failure(Object testInstance, JPostmanInfo info, String annotationDebug, String diagnostic,
 			Throwable error) {
-		writeFailureOnce("FAILURE", testInstance, info, annotationLog, diagnostic, error);
+		writeFailureOnce("FAILURE", testInstance, info, annotationDebug, diagnostic, error);
 	}
 
-	private static void writeFailureOnce(String event, Object testInstance, JPostmanInfo info, String annotationLog,
+	private static void writeFailureOnce(String event, Object testInstance, JPostmanInfo info, String annotationDebug,
 			String diagnostic, Throwable error) {
 		if (error != null) {
 			synchronized (CAPTURED_FAILURES) {
@@ -107,15 +107,15 @@ final class JPostmanDebugFile {
 				CAPTURED_FAILURES.put(error, Boolean.TRUE);
 			}
 		}
-		write(event, testInstance, info, annotationLog, diagnostic, error, false);
+		write(event, testInstance, info, annotationDebug, diagnostic, error, false);
 	}
 
-	private static void write(String event, Object testInstance, JPostmanInfo info, String annotationLog,
+	private static void write(String event, Object testInstance, JPostmanInfo info, String annotationDebug,
 			String diagnostic, Throwable error) {
-		write(event, testInstance, info, annotationLog, diagnostic, error, false);
+		write(event, testInstance, info, annotationDebug, diagnostic, error, false);
 	}
 
-	private static void write(String event, Object testInstance, JPostmanInfo info, String annotationLog,
+	private static void write(String event, Object testInstance, JPostmanInfo info, String annotationDebug,
 			String diagnostic, Throwable error, boolean pendingCall) {
 		Path target = path();
 		if (target == null) {
@@ -123,7 +123,7 @@ final class JPostmanDebugFile {
 		}
 
 		try {
-			captureAnnotationLog(annotationLog);
+			captureAnnotationDebug(annotationDebug);
 			String record = event == null || event.isBlank() ? ""
 					: record(event, testInstance, info, diagnostic, error);
 			String replacedRecord = pendingRecord(info, record, pendingCall);
@@ -176,9 +176,9 @@ final class JPostmanDebugFile {
 		return value == null ? "" : value.replace("\r\n", "\n").replace('\r', '\n').strip();
 	}
 
-	private static void captureAnnotationLog(String annotationLog) {
-		if (annotationLog != null && !annotationLog.isBlank()) {
-			ANNOTATION_LOGS.add(annotationLog.trim());
+	private static void captureAnnotationDebug(String annotationDebug) {
+		if (annotationDebug != null && !annotationDebug.isBlank()) {
+			ANNOTATION_DEBUG.add(annotationDebug.trim());
 		}
 	}
 
@@ -272,7 +272,7 @@ final class JPostmanDebugFile {
 				}
 			}
 
-			if (line.startsWith("annotationLog=") || line.startsWith("process=") || line.startsWith("thread=")) {
+			if (line.startsWith("annotationDebug=") || line.startsWith("process=") || line.startsWith("thread=")) {
 				continue;
 			}
 			result.append(line).append(System.lineSeparator());
@@ -283,9 +283,9 @@ final class JPostmanDebugFile {
 	private static String contextFooter() {
 		StringBuilder result = new StringBuilder();
 
-		String annotationLogs = annotationLogs();
-		if (!annotationLogs.isBlank()) {
-			appendBlock(result, "annotationLog=" + annotationLogs);
+		String annotationDebugValues = annotationDebugValues();
+		if (!annotationDebugValues.isBlank()) {
+			appendBlock(result, "annotationDebug=" + annotationDebugValues);
 		}
 
 		Environment environments = ENVIRONMENTS;
@@ -306,9 +306,9 @@ final class JPostmanDebugFile {
 		return result.toString().stripTrailing();
 	}
 
-	private static String annotationLogs() {
-		synchronized (ANNOTATION_LOGS) {
-			return String.join(",", ANNOTATION_LOGS);
+	private static String annotationDebugValues() {
+		synchronized (ANNOTATION_DEBUG) {
+			return String.join(",", ANNOTATION_DEBUG);
 		}
 	}
 
@@ -555,7 +555,7 @@ final class JPostmanDebugFile {
 	static void reset() {
 		ENVIRONMENTS = null;
 		COLLECTIONS.clear();
-		ANNOTATION_LOGS.clear();
+		ANNOTATION_DEBUG.clear();
 		CAPTURED_FAILURES.clear();
 		PENDING_CALL_RECORDS.clear();
 	}

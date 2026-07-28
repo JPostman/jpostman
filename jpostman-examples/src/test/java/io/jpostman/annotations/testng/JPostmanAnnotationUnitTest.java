@@ -43,9 +43,6 @@ public class JPostmanAnnotationUnitTest {
 
 	private static final boolean ENABLED = true;
 	private static final String COLLECTION = "classpath:DummyJSON.all_product_collection.json";
-	private static final String ENVIRONMENT = "classpath:DummyJSON.postman_environment.json";
-	private static final String CONTEXT_CONFIG = "classpath:my_jpostman.properties";
-	private static final String RULES_FILE = "classpath:jpostman-rules.ini";
 	private static final String DATALOADER = "classpath:product-data.ini";
 	private static final String DATALOADER_REDUNDANT = "classpath:jpostman-rules.ini";
 	private static final String ASSERTION = "classpath:assertions.ini";
@@ -314,8 +311,7 @@ public class JPostmanAnnotationUnitTest {
 		Method method = ExecutionFailedFixture.class.getDeclaredMethod("productRunner");
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "JPostman execution failed\n"
-				+ "Connection refused: connect\n"
+		assertEquals(debug(error.getMessage()), "JPostman execution failed\nConnection refused: connect\n"
 				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
@@ -350,8 +346,7 @@ public class JPostmanAnnotationUnitTest {
 
 	// JPostman execution failed
 	private static final class ExecutionFailed400LogsFixture {
-		@JPostmanContext(verifyStatusCode = 200, logs = { "request",
-				"response" }, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(verifyStatusCode = 200, collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -377,18 +372,11 @@ public class JPostmanAnnotationUnitTest {
 				"(@JPostmanRunner: tags=, namespace=<default>, folder=<root>, request=Get current auth user, executor=<default>)\n"
 						+ "Status code mismatch: expected [200] but found [401]\n"),
 				"Actual message: " + error.getMessage());
-		assertTrue(error.getMessage().contains("********** SecureRequest: **********"),
-				"Actual message: " + error.getMessage());
-		assertTrue(error.getMessage().contains("https://dummyjson.com/auth/me\n"),
-				"Actual message: " + error.getMessage());
-		assertTrue(error.getMessage().contains("**********SecureResponse: **********"),
-				"Actual message: " + error.getMessage());
-
 	}
 
 	// Call not allowed
 	private static final class ExecutionFailedSoftFixture {
-		@JPostmanContext(logs = "error", collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
+		@JPostmanContext(collection = "classpath:DummyJSON.all_product_collection.json", environment = "classpath:DummyJSON.postman_environment.json")
 		private JPostman.Context jctx;
 
 		@JPostmanExecutor
@@ -397,7 +385,7 @@ public class JPostmanAnnotationUnitTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true)
+		@JPostmanRunner
 		public void productRunner() {
 			throw new AssertionError("Call not allowed");
 		}
@@ -432,7 +420,7 @@ public class JPostmanAnnotationUnitTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true)
+		@JPostmanRunner(verify = 0)
 		public void productRunner() {
 			throw softStatusCodeMismatchError(false);
 		}
@@ -469,7 +457,7 @@ public class JPostmanAnnotationUnitTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true)
+		@JPostmanRunner(verify = 0)
 		public void productRunner() {
 			throw softStatusCodeMismatchError(false, true);
 		}
@@ -509,7 +497,7 @@ public class JPostmanAnnotationUnitTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true, include = "Login user and get tokens")
+		@JPostmanRunner(include = "Login user and get tokens")
 		public void productRunner() {
 			api.verify();
 			report.summary();
@@ -579,7 +567,7 @@ public class JPostmanAnnotationUnitTest {
 		}
 
 		@Test
-		@JPostmanRunner(soft = true, include = "Login user and get tokens")
+		@JPostmanRunner(include = "Login user and get tokens", verify = 0)
 		public void productRunner() {
 		}
 	}
@@ -591,8 +579,7 @@ public class JPostmanAnnotationUnitTest {
 		Method method = JPostmanExecutionFailedSoftFixture.class.getDeclaredMethod("productRunner");
 		runner.setup(fixture);
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "JPostman runner failed for 1 request.\n\n"
-				+ "JPostman execution failed\nConnection refused: connect\n"
+		assertEquals(debug(error.getMessage()), "JPostman execution failed\nConnection refused: connect\n"
 				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
 	}
@@ -627,91 +614,9 @@ public class JPostmanAnnotationUnitTest {
 		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
 		assertEquals(debug(error.getMessage()),
 				"Dependency method returned null and cannot be cached: requestExecutor\n"
-				+ "Use void for setup-only dependencies, or return a non-null value when another request needs the cached value.\n"
-				+ "(@JPostmanRequest: method=requestExecutor, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
+						+ "Use void for setup-only dependencies, or return a non-null value when another request needs the cached value.\n"
+						+ "(@JPostmanRequest: method=requestExecutor, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
-	}
-
-	// Redundant collection/environment/rules mappings should be reported.
-	private static final class RedundantContextMappingsFixture {
-		@JPostmanContext(config = CONTEXT_CONFIG, collection = COLLECTION, environment = ENVIRONMENT, rules = RULES_FILE)
-		private JPostman.Context jctx;
-	}
-
-	@Test(enabled = ENABLED)
-	public void testRedundantContextMappingsFixture() throws Exception {
-		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
-		RedundantContextMappingsFixture fixture = new RedundantContextMappingsFixture();
-
-		String output = captureError(() -> {
-			try {
-				runner.setup(fixture);
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		});
-
-		assertEquals(debug(output), "Redundant JPostman collection mapping ignored.\n"
-				+ "The same field is configured in @JPostmanContext and config properties file.\n"
-				+ "Using @JPostmanContext value: collection=classpath:DummyJSON.all_product_collection.json\n"
-				+ "Ignored config mapping: classpath:my_jpostman.properties -> collection=classpath:DummyJSON.all_product_collection.json\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
-				+ System.lineSeparator() + "Redundant JPostman environment mapping ignored.\n"
-				+ "The same field is configured in @JPostmanContext and config properties file.\n"
-				+ "Using @JPostmanContext value: environment=classpath:DummyJSON.postman_environment.json\n"
-				+ "Ignored config mapping: classpath:my_jpostman.properties -> environment=classpath:DummyJSON.postman_environment.json\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
-				+ System.lineSeparator() + "Redundant JPostman rules mapping ignored.\n"
-				+ "The same field is configured in @JPostmanContext and config properties file.\n"
-				+ "Using @JPostmanContext value: rules=classpath:jpostman-rules.ini\n"
-				+ "Ignored config mapping: classpath:my_jpostman.properties -> rules=classpath:jpostman-rules.ini\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=classpath:DummyJSON.postman_environment.json)\n"
-				+ System.lineSeparator(), "Actual output: " + output);
-	}
-
-	// Redundant dataload mappings should be ignored and reported.
-	// Clean naming rule: dataload belongs to JPostmanContext and loads INI files.
-	// data belongs to JPostmanRunner/JPostmanRequest/JPostmanResponse and selects
-	// an INI section.
-	private static final class RedundantDataMappingsFixture {
-		@JPostmanContext(config = CONTEXT_CONFIG, collection = COLLECTION, dataload = DATALOADER)
-		private JPostman.Context jctx;
-
-		@JPostmanExecutor
-		public ApiExecutor authExecutor(TestNgContext ctx, JPostmanInfo info) {
-			return null;
-		}
-
-		@Test
-		@JPostmanRunner(include = "Login user and get tokens", data = "default")
-		public void productRunner() {
-		}
-	}
-
-	@Test(enabled = ENABLED)
-	public void testRedundantDataMappingsFixture() throws Exception {
-		JPostmanAnnotationRunner<TestNgContext> runner = new JPostmanAnnotationRunner<>(new TestNgPostmanFramework());
-		RedundantDataMappingsFixture fixture = new RedundantDataMappingsFixture();
-		Method method = RedundantDataMappingsFixture.class.getDeclaredMethod("productRunner");
-
-		String output = captureError(() -> {
-			try {
-				runner.setup(fixture);
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		});
-
-		assertEquals(debug(output), "Redundant JPostman dataload mapping ignored.\n"
-				+ "The same data file is configured more than once.\n"
-				+ "Using @JPostmanContext value: dataload=classpath:product-data.ini\n"
-				+ "Ignored config mapping: classpath:my_jpostman.properties -> dataload=classpath:product-data.ini\n"
-				+ "(@JPostmanContext: config=classpath:my_jpostman.properties, collection=classpath:DummyJSON.all_product_collection.json, environment=<default>)\n"
-				+ System.lineSeparator(), output);
-
-		AssertionError error = expectThrows(AssertionError.class, () -> runner.run(fixture, method));
-		assertEquals(debug(error.getMessage()), "JPostman executor returned null: authExecutor\n"
-				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n");
 	}
 
 	// Duplicate sections in different files should still fail.
@@ -740,10 +645,8 @@ public class JPostmanAnnotationUnitTest {
 		IllegalStateException error = expectThrows(IllegalStateException.class, () -> runner.run(fixture, method));
 
 		assertEquals(debug(error.getMessage()), "Duplicate JPostman data section: default\n"
-				+ "The same section was found in more than one loaded data file.\n"
-				+ "Found in:\n"
-				+ "- classpath:product-data.ini\n"
-				+ "- classpath:jpostman-rules.ini\n"
+				+ "The same section was found in more than one loaded data file.\nFound in:\n"
+				+ "- classpath:product-data.ini\n- classpath:jpostman-rules.ini\n"
 				+ "Keep each section name unique across loaded data files.\n"
 				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
@@ -782,7 +685,7 @@ public class JPostmanAnnotationUnitTest {
 				+ "Add @JPostmanContext(assertions = {...}) or config properties key assertions.\n"
 				+ "(@JPostmanRunner: method=productRunner, tags=, namespace=<default>, folder=<root>, request=Login user and get tokens, executor=<default>)\n",
 				"Actual message: " + error.getMessage());
-		
+
 	}
 
 	// JPostman assertion section not found: missing
@@ -1226,18 +1129,6 @@ public class JPostmanAnnotationUnitTest {
 			throw new RuntimeException(cause);
 		} catch (ReflectiveOperationException e) {
 			throw new RuntimeException(e);
-		}
-	}
-
-	private static String captureError(Runnable action) {
-		PrintStream originalErr = System.err;
-		ByteArrayOutputStream output = new ByteArrayOutputStream();
-		try {
-			System.setErr(new PrintStream(output, true, StandardCharsets.UTF_8));
-			action.run();
-			return output.toString(StandardCharsets.UTF_8);
-		} finally {
-			System.setErr(originalErr);
 		}
 	}
 

@@ -139,27 +139,18 @@ public @interface JPostmanResponse {
 	String cache() default NO_CACHE;
 
 	/**
-	 * Local automatic JPostman failure output mode. Values are single-choice; use
-	 * one value only.
+	 * Local JPostman debug override.
 	 *
-	 * <ul>
-	 * <li>{@code none} - print only the minimum failure message and the first
-	 * useful user-code stack frame.</li>
-	 * <li>{@code debug} - print the configured debug output and use minimum failure
-	 * output when debug is {@code none}.</li>
-	 * <li>{@code error} - print the failure message and include the trace.</li>
-	 * </ul>
+	 * <p>
+	 * Use {@code debug} to inherit {@link JPostmanContext#debug()}. Use
+	 * {@code none} to suppress output, {@code error} for the full failure trace, or
+	 * request, response, info, and all for local diagnostics. {@code error} may be
+	 * combined with one or more diagnostic values.
+	 * </p>
 	 *
-	 * @return local automatic failure output mode
+	 * @return local debug setting
 	 */
-	String log() default "debug";
-
-	/**
-	 * Whether to use soft assertion verification.
-	 *
-	 * @return {@code true} to use soft assertions
-	 */
-	boolean soft() default false;
+	String debug() default "debug";
 
 	/**
 	 * Optional data group or data section to apply before request execution.

@@ -1,5 +1,35 @@
 # Changelog
 
+## 4.2.1
+
+### Added
+
+- Added namespace-aware runtime access through jpostman.getCollection(String namespace) and jpostman.getEnvironment(String namespace), while retaining the no-argument methods for the default namespace.
+- Added nested collection-folder lookup with Collection.getFolder and slash-separated paths such as Collection.getFolder
+- Added composable `@JPostman.ReportContext(fail = ...)` values with one optional action (`ignore`, `skipAll`, or `terminate`) plus `error`, `request`, `response`, `info`, or `all` output details.
+- Added deferred report failure sections that retain per-execution request, response, info, and throwable snapshots and print them after the main report summary.
+
+### Changed
+
+- Changed `JPostman.Assert` to expose normal fluent assertions plus `verify()` without extending the public soft-assertion interface.
+- Changed context and annotation output configuration to use `debug` as the single setting. Context `debug` now controls minimum/full error traces and request, response, info, or all diagnostics, and local annotations use `debug = "debug"` to inherit the context setting.
+
+### Fixed
+
+- Fixed manually calling `asserts.verify()` causing the same soft failure to be reported again during automatic verification.
+- Fixed multiple injected soft assertion fields so all pending failures are verified, aggregated, and cleared even when an earlier field fails.
+- Fixed `fail = "error"` printing the full trace both before and after the report summary.
+- Fixed `fail = "ignore"` still producing a `JPostman failures` section.
+- Fixed report diagnostics and failure details being duplicated when `diagnostic = "short"` or `diagnostic = "extend"` is combined with failure output.
+
+### Removed
+
+- Removed `JPostman.Assert.soft()` and the public `JPostmanSoftAssertions` inheritance from the compact assertion facade; use `@JPostman.AssertContext(soft = true)` and `asserts.verify()`.
+- Removed `soft()` from compact and standalone `@JPostman.Response` and `@JPostman.Runner` annotations.
+- Removed the compact `@JPostman.Asserts` alias; use `@JPostman.AssertContext`.
+- Removed `logs()` from compact and standalone context annotations.
+- Removed local `log()` from compact and standalone request, response, runner, call, and executor annotations; use `debug()`.
+
 ## 4.2.0
 
 ### Added

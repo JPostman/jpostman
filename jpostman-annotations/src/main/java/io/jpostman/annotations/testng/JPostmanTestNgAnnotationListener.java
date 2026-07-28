@@ -3,9 +3,11 @@ package io.jpostman.annotations.testng;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -17,11 +19,12 @@ import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestClass;
 import org.testng.ITestContext;
-import org.testng.ITestNGMethod;
+import org.testng.ITestListener;
 import org.testng.ITestResult;
 import org.testng.SkipException;
 import org.testng.annotations.ITestAnnotation;
 
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
 import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
 import io.jpostman.annotations.runtime.JPostmanAnnotations;
@@ -47,7 +50,7 @@ import io.jpostman.testng.TestNgContext;
  * </p>
  */
 public final class JPostmanTestNgAnnotationListener
-		implements IInvokedMethodListener, IAnnotationTransformer, IHookable, IClassListener {
+		implements IInvokedMethodListener, IAnnotationTransformer, IHookable, IClassListener, ITestListener {
 
 	private final Set<Object> prepared = Collections
 			.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
@@ -61,10 +64,7 @@ public final class JPostmanTestNgAnnotationListener
 	private final Map<Object, Set<Method>> completedAfterClassMethods = Collections
 			.synchronizedMap(new IdentityHashMap<>());
 
-	/**
-	 * Completes class-scoped soft assertions and report output after
-	 * user @AfterClass methods.
-	 */
+	/** Completes report output after user {@code @AfterClass} methods. */
 	@Override
 	public void onAfterClass(ITestClass testClass) {
 		if (testClass == null) {
@@ -83,11 +83,8 @@ public final class JPostmanTestNgAnnotationListener
 			}
 
 			/*
-			 * TestNG invokes IClassListener.onAfterClass before the user's actual
-			 * 
-			 * @AfterClass configuration methods. When such methods exist, defer the
-			 * fallback verification until the final one has completed. This gives a manual
-			 * softAsserts.verify() call ownership of the configuration failure.
+			 * TestNG invokes this callback before user @AfterClass methods. Defer report
+			 * completion until the final configuration method has finished.
 			 */
 			if (testClass.getAfterClassMethods() != null && testClass.getAfterClassMethods().length > 0) {
 				continue;
@@ -96,118 +93,18 @@ public final class JPostmanTestNgAnnotationListener
 		}
 	}
 
-	/**
-	 * Registers automatic class-soft verification as a failed TestNG
-	 * {@code @AfterClass} configuration result.
-	 *
-	 * <p>
-	 * The listener callback is not a configuration method, so throwing from it
-	 * bypasses TestNG's configuration result maps. A lightweight proxy reuses a
-	 * real result as the metadata template while exposing an after-class method
-	 * identity. This keeps the user's test method passed and adds one class-level
-	 * configuration failure.
-	 * </p>
-	 */
 	private void completeClass(Object instance) {
 		if (instance == null || !completedClasses.add(instance)) {
 			return;
 		}
 		try {
 			JPostmanAnnotationEngine.completeTestClass(instance);
-		} catch (Throwable error) {
-			recordAutomaticAfterClassFailure(instance, error);
 		} finally {
+			writeCompletedClassReport(instance);
 			JPostmanAnnotationEngine.clearAssertionMethod(instance);
 			testResults.remove(instance);
 			completedAfterClassMethods.remove(instance);
 		}
-	}
-
-	private void recordAutomaticAfterClassFailure(Object testInstance, Throwable failure) {
-		Throwable displayFailure = cleanAutomaticAfterClassFailure(testInstance, failure);
-		ITestResult template = lastTestResult(testInstance);
-		if (template == null || template.getTestContext() == null || template.getMethod() == null) {
-			throw asRuntime(failure);
-		}
-
-		ITestNGMethod delegateMethod = template.getMethod();
-		ITestNGMethod automaticMethod = (ITestNGMethod) Proxy.newProxyInstance(ITestNGMethod.class.getClassLoader(),
-				new Class<?>[] { ITestNGMethod.class }, (proxy, method, args) -> {
-					String name = method.getName();
-					if ("isAfterClassConfiguration".equals(name) || "isConfigurationMethod".equals(name)) {
-						return true;
-					}
-					if ("isTest".equals(name) || "isBeforeClassConfiguration".equals(name)) {
-						return false;
-					}
-					if ("getMethodName".equals(name)) {
-						return "JPostman automatic assertion verification";
-					}
-					if ("getQualifiedName".equals(name)) {
-						return testInstance.getClass().getName() + ".JPostman automatic assertion verification";
-					}
-					if ("toString".equals(name)) {
-						return "@AfterClass " + testInstance.getClass().getSimpleName()
-								+ ".JPostman automatic assertion verification";
-					}
-					return method.invoke(delegateMethod, args);
-				});
-
-		ITestResult automaticResult = (ITestResult) Proxy.newProxyInstance(ITestResult.class.getClassLoader(),
-				new Class<?>[] { ITestResult.class }, (proxy, method, args) -> {
-					String name = method.getName();
-					if ("getStatus".equals(name)) {
-						return ITestResult.FAILURE;
-					}
-					if ("getThrowable".equals(name)) {
-						return displayFailure;
-					}
-					if ("getMethod".equals(name)) {
-						return automaticMethod;
-					}
-					if ("getName".equals(name)) {
-						return "JPostman automatic assertion verification";
-					}
-					if ("isSuccess".equals(name)) {
-						return false;
-					}
-					if ("toString".equals(name)) {
-						return "FAILED CONFIGURATION: @AfterClass " + testInstance.getClass().getSimpleName()
-								+ ".JPostman automatic assertion verification";
-					}
-					return method.invoke(template, args);
-				});
-
-		ITestContext context = template.getTestContext();
-		context.getFailedConfigurations().addResult(automaticResult);
-	}
-
-	/**
-	 * Creates the display throwable for the synthetic automatic {@code @AfterClass}
-	 * result. The original assertion is produced through reflection and proxy
-	 * layers, whose frames are useful for framework debugging but not for a test
-	 * report. Keep the complete assertion message and expose one synthetic
-	 * class-level frame.
-	 */
-	private Throwable cleanAutomaticAfterClassFailure(Object testInstance, Throwable failure) {
-		Throwable root = failure;
-		while (root.getCause() != null && (root instanceof java.lang.reflect.InvocationTargetException
-				|| root instanceof java.lang.reflect.UndeclaredThrowableException)) {
-			root = root.getCause();
-		}
-
-		String message = root.getMessage();
-		if (message == null || message.isBlank()) {
-			message = root.getClass().getSimpleName();
-		}
-
-		Throwable cleaned = root instanceof AssertionError ? new AssertionError(message)
-				: new RuntimeException(message);
-		Class<?> testClass = testInstance.getClass();
-		String sourceFile = testClass.getSimpleName() + ".java";
-		cleaned.setStackTrace(new StackTraceElement[] { new StackTraceElement(testClass.getName(),
-				"JPostman automatic assertion verification", sourceFile, -1) });
-		return cleaned;
 	}
 
 	private ITestResult lastTestResult(Object testInstance) {
@@ -306,7 +203,7 @@ public final class JPostmanTestNgAnnotationListener
 		try {
 			if (runnerMethod) {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod,
-						() -> runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult));
+						() -> runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult, true));
 				/*
 				 * A runner may complete successfully without invoking the user callback (for
 				 * example, when the runner itself owns all request iterations). TestNG requires
@@ -319,8 +216,7 @@ public final class JPostmanTestNgAnnotationListener
 				}
 			} else {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod);
-				runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult);
-				verifySoftResponseAssertions(testMethod);
+				runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult, false);
 				if (callMethod) {
 					cleanCallMethodFailure(testInstance, testMethod, testResult);
 				}
@@ -336,6 +232,7 @@ public final class JPostmanTestNgAnnotationListener
 				testResult.setStatus(ITestResult.SKIP);
 				JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
 			} else {
+				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod, cause);
 				if (callMethod) {
 					testResult.setThrowable(cause);
 					cleanCallMethodFailure(testInstance, testMethod, testResult);
@@ -344,7 +241,6 @@ public final class JPostmanTestNgAnnotationListener
 					testResult.setThrowable(failure);
 				}
 				testResult.setStatus(ITestResult.FAILURE);
-				JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
 			}
 		} catch (SkipException e) {
 			if (isJPostmanSkip(e)) {
@@ -355,19 +251,11 @@ public final class JPostmanTestNgAnnotationListener
 			testResult.setStatus(ITestResult.SKIP);
 			JPostmanAnnotationEngine.recordFinalSkip(testInstance, testMethod);
 		} catch (Throwable e) {
+			JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod, e);
 			AssertionError failure = JPostmanAnnotationEngine.cleanFailure(testInstance, testMethod, e);
-			/*
-			 * Hard @JPostman.Response verification is fail-fast: annotation execution must
-			 * complete successfully before TestNG invokes the user test body. A response
-			 * configured with soft=true records verification failures without throwing, so
-			 * it reaches the normal body invocation path above and the user can perform
-			 * additional manual assertions. Do not invoke the body from this failure path;
-			 * doing so made hard verification behave like soft verification and could add
-			 * duplicate or misleading assertion failures.
-			 */
+			/* Annotation verification is fail-fast and completes before the user body. */
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
-			JPostmanAnnotationEngine.recordFinalFailure(testInstance, testMethod);
 		} finally {
 			TestNgContext.clearCurrent();
 		}
@@ -387,6 +275,12 @@ public final class JPostmanTestNgAnnotationListener
 			return;
 		}
 
+		/* Retain results so the completed class report can summarize this instance. */
+		if (invokedMethod != null && invokedMethod.isTestMethod()) {
+			Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
+			rememberTestResult(testInstance, javaMethod, testResult);
+		}
+
 		try {
 			Throwable throwable = testResult.getThrowable();
 			if (throwable == null) {
@@ -399,7 +293,7 @@ public final class JPostmanTestNgAnnotationListener
 			if (invokedMethod.isTestMethod()) {
 				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
 				if (testResult.getStatus() == ITestResult.FAILURE) {
-					JPostmanAnnotationEngine.recordFinalFailure(testInstance, javaMethod);
+					JPostmanAnnotationEngine.recordFinalFailure(testInstance, javaMethod, throwable);
 				} else if (testResult.getStatus() == ITestResult.SKIP) {
 					JPostmanAnnotationEngine.recordFinalSkip(testInstance, javaMethod);
 				}
@@ -410,10 +304,10 @@ public final class JPostmanTestNgAnnotationListener
 			}
 
 			if (invokedMethod.isConfigurationMethod()) {
-				@SuppressWarnings("unused")
-				Class<?> testClass = invokedMethod.getTestMethod().getRealClass();
 				Method javaMethod = invokedMethod.getTestMethod().getConstructorOrMethod().getMethod();
-				testResult.setThrowable(JPostmanAnnotationEngine.cleanThrowable(testInstance, javaMethod, throwable));
+				Throwable cleaned = JPostmanAnnotationEngine.cleanThrowable(testInstance, javaMethod, throwable);
+				testResult.setThrowable(cleaned);
+
 			}
 		} finally {
 			if (invokedMethod.isConfigurationMethod() && invokedMethod.getTestMethod().isAfterClassConfiguration()) {
@@ -437,6 +331,89 @@ public final class JPostmanTestNgAnnotationListener
 		}
 	}
 
+	private void writeCompletedClassReport(Object testInstance) {
+		if (!JPostmanOutputs.isInstalled()) {
+			return;
+		}
+
+		ITestResult retained = lastTestResult(testInstance);
+		if (retained == null || retained.getTestContext() == null) {
+			return;
+		}
+
+		ITestContext context = retained.getTestContext();
+		List<ITestResult> passed = resultsFor(context.getPassedTests().getAllResults(), testInstance);
+		List<ITestResult> failed = resultsFor(context.getFailedTests().getAllResults(), testInstance);
+		List<ITestResult> skipped = resultsFor(context.getSkippedTests().getAllResults(), testInstance);
+		List<ITestResult> failedConfigurations = resultsFor(context.getFailedConfigurations().getAllResults(),
+				testInstance);
+		List<ITestResult> skippedConfigurations = resultsFor(context.getSkippedConfigurations().getAllResults(),
+				testInstance);
+
+		StringBuilder output = new StringBuilder("=== Completed TestNG report: ")
+				.append(testInstance.getClass().getSimpleName()).append(" ===\n");
+		appendResults(output, "PASSED", passed, false);
+		appendResults(output, "FAILED", failed, true);
+		appendResults(output, "FAILED CONFIGURATION", failedConfigurations, true);
+		appendResults(output, "SKIPPED", skipped, false);
+
+		int testsCompleted = passed.size() + failed.size() + skipped.size();
+		int reportedFailures = failed.size() + failedConfigurations.size();
+		int reportedPasses = Math.max(0, testsCompleted - reportedFailures - skipped.size());
+
+		output.append("Tests completed: ").append(testsCompleted).append('\n').append("Tests passed: ")
+				.append(reportedPasses).append('\n').append("Tests failed: ").append(reportedFailures).append('\n')
+				.append("Tests skipped: ").append(skipped.size()).append('\n').append("Configuration failures: 0\n")
+				.append("Configuration skips: ").append(skippedConfigurations.size()).append('\n')
+				.append("Reported failures: ").append(reportedFailures).append('\n')
+				.append("=== End TestNG report ===\n");
+
+		JPostmanOutputs.writeOrTrace(output.toString());
+	}
+
+	private List<ITestResult> resultsFor(Set<ITestResult> results, Object testInstance) {
+		List<ITestResult> values = new ArrayList<>();
+		for (ITestResult result : results) {
+			if (result != null && result.getInstance() == testInstance) {
+				values.add(result);
+			}
+		}
+		values.sort(Comparator.comparingLong(ITestResult::getStartMillis)
+				.thenComparing(result -> result.getName() == null ? "" : result.getName()));
+		return values;
+	}
+
+	private void appendResults(StringBuilder output, String status, List<ITestResult> results, boolean includeFailure) {
+		for (ITestResult result : results) {
+			output.append(status).append(": ");
+			if ("FAILED CONFIGURATION".equals(status) && result.getMethod() != null
+					&& result.getMethod().isAfterClassConfiguration()) {
+				output.append("@AfterClass ");
+			}
+			output.append(resultIdentifier(result)).append('\n');
+			if (includeFailure && result.getThrowable() != null) {
+				appendThrowable(output, result.getThrowable());
+			}
+			output.append('\n');
+		}
+	}
+
+	private String resultIdentifier(ITestResult result) {
+		Object instance = result.getInstance();
+		String className = instance == null ? result.getTestClass().getRealClass().getSimpleName()
+				: instance.getClass().getSimpleName();
+		String methodName = result.getMethod() == null ? result.getName() : result.getMethod().getMethodName();
+		return className + "." + methodName;
+	}
+
+	private void appendThrowable(StringBuilder output, Throwable throwable) {
+		output.append(throwable.getClass().getName()).append(": ").append(String.valueOf(throwable.getMessage()))
+				.append('\n');
+		for (StackTraceElement element : throwable.getStackTrace()) {
+			output.append("\tat ").append(element).append('\n');
+		}
+	}
+
 	private void cleanCallMethodFailure(Object testInstance, Method testMethod, ITestResult testResult) {
 		Throwable throwable = testResult.getThrowable();
 		if (throwable == null) {
@@ -444,14 +421,14 @@ public final class JPostmanTestNgAnnotationListener
 		}
 
 		io.jpostman.annotations.JPostmanCall call = JPostmanAnnotations.call(testMethod);
-		String localLog = call == null ? "" : call.log();
+		String localDebug = call == null ? "" : call.debug();
 
 		if (throwable instanceof SkipException) {
 			if (isJPostmanSkip((SkipException) throwable)) {
 				testResult.setThrowable(null);
 			} else {
 				testResult.setThrowable(
-						JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localLog));
+						JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localDebug));
 			}
 			return;
 		}
@@ -459,10 +436,10 @@ public final class JPostmanTestNgAnnotationListener
 		Throwable root = JPostmanStackTraceCleaner.rootCause(throwable);
 		if (root instanceof AssertionError) {
 			testResult.setThrowable(
-					JPostmanAnnotationEngine.cleanRuntimeFailure(testInstance, testMethod, throwable, localLog));
+					JPostmanAnnotationEngine.cleanRuntimeFailure(testInstance, testMethod, throwable, localDebug));
 		} else {
 			testResult.setThrowable(
-					JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localLog));
+					JPostmanAnnotationEngine.cleanThrowable(testInstance, testMethod, throwable, localDebug));
 		}
 	}
 
@@ -474,59 +451,65 @@ public final class JPostmanTestNgAnnotationListener
 	}
 
 	private void runTestBodyWithAssertionCleanup(Object testInstance, Method testMethod, IHookCallBack callBack,
-			ITestResult testResult) {
+			ITestResult testResult, boolean verifyExplicitSoft) {
 		JPostmanAnnotationEngine.beginAssertionCleanup(testInstance, testMethod);
+		Throwable bodyFailure = null;
+		Throwable verificationFailure = null;
 		try {
-			callBack.runTestMethod(testResult);
-			JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
+			try {
+				callBack.runTestMethod(testResult);
+			} catch (Throwable error) {
+				bodyFailure = error instanceof TestBodyFailureException && error.getCause() != null ? error.getCause()
+						: error;
+			}
+
+			if (JPostmanAnnotationEngine.isRunnerBodyComplete(bodyFailure)
+					|| JPostmanAnnotationEngine.isRunnerBodyComplete(testResult.getThrowable())) {
+				testResult.setThrowable(null);
+				return;
+			}
+
 			AssertionError immediateFailure = JPostmanAnnotationEngine.takeImmediateAssertionFailure();
 			if (immediateFailure != null) {
-				throw new TestBodyFailureException(immediateFailure);
+				if (bodyFailure == null) {
+					bodyFailure = immediateFailure;
+				} else if (immediateFailure != bodyFailure) {
+					bodyFailure.addSuppressed(immediateFailure);
+				}
 			}
-			if (JPostmanAnnotationEngine.isRunnerBodyComplete(testResult.getThrowable())) {
-				testResult.setThrowable(null);
-				return;
+
+			Throwable reportedFailure = testResult.getThrowable();
+			if (reportedFailure != null) {
+				if (bodyFailure == null) {
+					bodyFailure = reportedFailure;
+				} else if (reportedFailure != bodyFailure) {
+					bodyFailure.addSuppressed(reportedFailure);
+				}
 			}
-			throwReportedTestFailure(testResult);
-		} catch (TestBodyFailureException e) {
-			throw e;
-		} catch (Throwable e) {
-			if (JPostmanAnnotationEngine.isRunnerBodyComplete(e)) {
-				testResult.setThrowable(null);
-				return;
+
+			try {
+				if (verifyExplicitSoft) {
+					JPostmanAnnotationEngine.verifyExplicitSoftAssertions(testMethod);
+				} else {
+					JPostmanAnnotationEngine.verifyRequestAssertions(testInstance, testMethod);
+				}
+			} catch (Throwable error) {
+				verificationFailure = error;
 			}
-			throw new TestBodyFailureException(e);
 		} finally {
 			JPostmanAnnotationEngine.endAssertionCleanup();
 		}
-	}
 
-	private void throwReportedTestFailure(ITestResult testResult) {
-		Throwable failure = testResult.getThrowable();
-		if (failure != null) {
-			throw new TestBodyFailureException(failure);
+		if (bodyFailure != null) {
+			if (verificationFailure != null && verificationFailure != bodyFailure) {
+				bodyFailure.addSuppressed(verificationFailure);
+			}
+			throw new TestBodyFailureException(bodyFailure);
 		}
-	}
+		if (verificationFailure != null) {
+			throw new TestBodyFailureException(verificationFailure);
+		}
 
-	/**
-	 * Flushes the soft assertion collector owned by a normal
-	 * {@code @JPostman.Response} after the user test body completes.
-	 *
-	 * <p>
-	 * Automatic response verification is recorded before the body when
-	 * {@code soft = true}. The body may inspect the response and add more soft
-	 * assertions, but those failures still belong to this method and must be
-	 * reported before TestNG marks it as passed. Calling {@code assertAll()}
-	 * directly avoids adding an implicit status-code assertion. It is also safe
-	 * when the body already called {@code asserts.verify()}: an empty collector is
-	 * then verified and reset.
-	 * </p>
-	 */
-	private void verifySoftResponseAssertions(Method testMethod) {
-		io.jpostman.annotations.JPostmanResponse response = JPostmanAnnotations.response(testMethod);
-		if (response != null && response.soft()) {
-			TestNgContext.current().soft(false).assertAll();
-		}
 	}
 
 	private boolean usesJPostmanAnnotations(Object testInstance) {

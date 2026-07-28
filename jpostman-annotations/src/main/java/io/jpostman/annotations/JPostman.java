@@ -25,7 +25,6 @@ import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
 import io.jpostman.secure.JPostmanAssertions;
-import io.jpostman.secure.JPostmanSoftAssertions;
 import io.jpostman.secure.JPostmanTestContext;
 
 /**
@@ -67,9 +66,13 @@ public final class JPostman {
 	public @interface JUnit {
 
 		/**
-		 * Prints cleaned failure stack traces for JUnit execution.
+		 * Prints cleaned failure stack traces for JUnit execution when no
+		 * {@link ReportContext} is declared. When a report context is present, its
+		 * {@code diagnostic} and {@code fail} values exclusively control automatic
+		 * output.
 		 *
-		 * @return {@code true} to print cleaned failures
+		 * @return {@code true} to print cleaned failures when reporting does not own
+		 *         output
 		 */
 		boolean printFailures() default false;
 	}
@@ -162,45 +165,23 @@ public final class JPostman {
 		boolean skipAll() default false;
 
 		/**
-		 * Controls automatic JPostman failure output. Values may combine one stack mode
-		 * with optional failure diagnostics.
+		 * Controls automatic JPostman debug and failure output.
 		 *
 		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame. This is the default.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * <li>{@code request} - include the prepared request when a failure
-		 * occurs.</li>
-		 * <li>{@code response} - include the received response when a failure
-		 * occurs.</li>
-		 * <li>{@code info} - include runtime annotation info when a failure
-		 * occurs.</li>
-		 * <li>{@code all} - include request, response, and info when a failure
-		 * occurs.</li>
+		 * <li>{@code none} - disable automatic output and keep the minimum failure
+		 * stack.</li>
+		 * <li>{@code error} - include the full failure trace.</li>
+		 * <li>{@code request} - include the prepared request.</li>
+		 * <li>{@code response} - include the received response.</li>
+		 * <li>{@code info} - include runtime annotation information.</li>
+		 * <li>{@code all} - include request, response, and info.</li>
 		 * </ul>
 		 *
-		 * Examples: {@code logs = "request"}, {@code logs = { "request", "response" }},
-		 * or {@code logs = { "error", "response" }}.
+		 * {@code error} may be combined with request, response, info, or all. Request,
+		 * response, and info may be combined. {@code none} must be used alone;
+		 * {@code all} may only be combined with {@code error}.
 		 *
-		 * @return automatic failure output mode and diagnostics
-		 */
-		String[] logs() default { "none" };
-
-		/**
-		 * Controls automatic annotation output.
-		 *
-		 * <ul>
-		 * <li>{@code none} - do not print automatic annotation output.</li>
-		 * <li>{@code request} - print the prepared request.</li>
-		 * <li>{@code response} - print the received response.</li>
-		 * <li>{@code info} - print runtime annotation information.</li>
-		 * <li>{@code all} - print request, response, and info output.</li>
-		 * </ul>
-		 *
-		 * {@code request}, {@code response}, and {@code info} may be combined.
-		 * {@code none} and {@code all} must be used alone.
-		 *
-		 * @return debug output mode values
+		 * @return debug output and failure-trace settings
 		 */
 		String[] debug() default { "none" };
 	}
@@ -263,25 +244,11 @@ public final class JPostman {
 	@Retention(RUNTIME)
 	public @interface AssertContext {
 		/**
-		 * Enables class-scoped soft assertion mode. The collector is verified after all
-		 * tests in the class complete.
+		 * Enables request-scoped soft assertion mode. Pending failures are verified
+		 * automatically after an eligible response or runner request.
 		 *
-		 * @return {@code true} to collect failures and verify them after class teardown
-		 */
-		boolean soft() default false;
-	}
-
-	/**
-	 * Short alias for {@link AssertContext}.
-	 */
-	@Target(FIELD)
-	@Retention(RUNTIME)
-	public @interface Asserts {
-		/**
-		 * Enables class-scoped soft assertion mode. The collector is verified after all
-		 * tests in the class complete.
-		 *
-		 * @return {@code true} to collect failures and verify them after class teardown
+		 * @return {@code true} to collect failures until manual or automatic
+		 *         verification
 		 */
 		boolean soft() default false;
 	}
@@ -292,11 +259,52 @@ public final class JPostman {
 	@Target(FIELD)
 	@Retention(RUNTIME)
 	public @interface ReportContext {
-		/** Diagnostic detail appended after the summary: none, short, full, or fail. */
+		/**
+		 * Controls report diagnostics printed with the class summary.
+		 *
+		 * <ul>
+		 * <li>{@code none} - disable general execution diagnostics. This is the
+		 * default.</li>
+		 * <li>{@code short} - append one compact line per recorded execution with the
+		 * method, namespace, folder, request, status code, duration, and method
+		 * chain.</li>
+		 * <li>{@code extend} - append the short line and the prepared request output
+		 * for each recorded execution.</li>
+		 * </ul>
+		 *
+		 * @return report diagnostic detail
+		 */
 		String diagnostic() default "none";
 
-		/** Action after the first failed execution: ignore, skip all, or terminate. */
-		String fail() default "ignore";
+		/**
+		 * Controls report behavior after a failed execution. Combine at most one action
+		 * with optional failure diagnostics.
+		 *
+		 * <ul>
+		 * <li>{@code ignore} - continue after the failure without adding automatic
+		 * failure details to the report. This is the default.</li>
+		 * <li>{@code skipAll} - skip all remaining JPostman-managed tests.</li>
+		 * <li>{@code terminate} - print the report summary and failure details, then
+		 * terminate the process.</li>
+		 * <li>{@code error} - keep the full failure stack trace.</li>
+		 * <li>{@code request} - include the prepared request.</li>
+		 * <li>{@code response} - include the received response.</li>
+		 * <li>{@code info} - include runtime annotation information.</li>
+		 * <li>{@code all} - include request, response, and info.</li>
+		 * </ul>
+		 *
+		 * <p>
+		 * A failure section is printed after the JPostman report summary only when an
+		 * output value is configured. It starts with the current short report line and
+		 * then appends the selected diagnostics. Examples: {@code fail = "request"},
+		 * {@code fail = { "request", "response" }},
+		 * {@code fail = { "skipAll", "all" }}, or
+		 * {@code fail = { "terminate", "request", "error" }}.
+		 * </p>
+		 *
+		 * @return failure action and optional diagnostics
+		 */
+		String[] fail() default { "ignore" };
 	}
 
 	/**
@@ -338,20 +346,18 @@ public final class JPostman {
 		boolean session() default false;
 
 		/**
-		 * Local automatic JPostman failure output mode. Values are single-choice; use
-		 * one value only.
+		 * Local JPostman debug override.
 		 *
-		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * </ul>
+		 * <p>
+		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
+		 * suppress output, {@code error} for the full failure trace, or request,
+		 * response, info, and all for local diagnostics. {@code error} may be combined
+		 * with one or more diagnostic values.
+		 * </p>
 		 *
-		 * @return local automatic failure output mode
+		 * @return local debug setting
 		 */
-		String log() default "debug";
+		String debug() default "debug";
 
 	}
 
@@ -444,20 +450,18 @@ public final class JPostman {
 		String cache() default JPostmanRequest.NO_CACHE;
 
 		/**
-		 * Local automatic JPostman failure output mode. Values are single-choice; use
-		 * one value only.
+		 * Local JPostman debug override.
 		 *
-		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * </ul>
+		 * <p>
+		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
+		 * suppress output, {@code error} for the full failure trace, or request,
+		 * response, info, and all for local diagnostics. {@code error} may be combined
+		 * with one or more diagnostic values.
+		 * </p>
 		 *
-		 * @return local automatic failure output mode
+		 * @return local debug setting
 		 */
-		String log() default "debug";
+		String debug() default "debug";
 
 		/**
 		 * Data section name.
@@ -567,27 +571,18 @@ public final class JPostman {
 		String cache() default JPostmanResponse.NO_CACHE;
 
 		/**
-		 * Local automatic JPostman failure output mode. Values are single-choice; use
-		 * one value only.
+		 * Local JPostman debug override.
 		 *
-		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * </ul>
+		 * <p>
+		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
+		 * suppress output, {@code error} for the full failure trace, or request,
+		 * response, info, and all for local diagnostics. {@code error} may be combined
+		 * with one or more diagnostic values.
+		 * </p>
 		 *
-		 * @return local automatic failure output mode
+		 * @return local debug setting
 		 */
-		String log() default "debug";
-
-		/**
-		 * Enables soft assertion mode.
-		 *
-		 * @return {@code true} to collect assertion failures
-		 */
-		boolean soft() default false;
+		String debug() default "debug";
 
 		/**
 		 * Data section name.
@@ -697,20 +692,18 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Local automatic JPostman failure output mode. Values are single-choice; use
-		 * one value only.
+		 * Local JPostman debug override.
 		 *
-		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * </ul>
+		 * <p>
+		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
+		 * suppress output, {@code error} for the full failure trace, or request,
+		 * response, info, and all for local diagnostics. {@code error} may be combined
+		 * with one or more diagnostic values.
+		 * </p>
 		 *
-		 * @return local automatic failure output mode
+		 * @return local debug setting
 		 */
-		String log() default "debug";
+		String debug() default "debug";
 
 		/**
 		 * Data section name.
@@ -809,8 +802,8 @@ public final class JPostman {
 		 * For runner launcher methods, a single runner dependency such as
 		 * {@code dependsOn = "#testRunner"} can reuse the referenced runner body with
 		 * this annotation's tags when this runner does not define its own folder,
-		 * include/exclude, executor, rule, filter, data, asserts, verify, soft, or
-		 * lifecycle settings.
+		 * include/exclude, executor, rule, filter, data, asserts, verify, or lifecycle
+		 * settings.
 		 * </p>
 		 *
 		 * @return dependency method names
@@ -833,27 +826,18 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Local automatic JPostman failure output mode. Values are single-choice; use
-		 * one value only.
+		 * Local JPostman debug override.
 		 *
-		 * <ul>
-		 * <li>{@code none} - print only the minimum failure message and the first
-		 * useful user-code stack frame.</li>
-		 * <li>{@code debug} - print the configured debug output and use minimum failure
-		 * output when debug is {@code none}.</li>
-		 * <li>{@code error} - print the failure message and include the trace.</li>
-		 * </ul>
+		 * <p>
+		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
+		 * suppress output, {@code error} for the full failure trace, or request,
+		 * response, info, and all for local diagnostics. {@code error} may be combined
+		 * with one or more diagnostic values.
+		 * </p>
 		 *
-		 * @return local automatic failure output mode
+		 * @return local debug setting
 		 */
-		String log() default "debug";
-
-		/**
-		 * Enables soft assertion mode.
-		 *
-		 * @return {@code true} to collect assertion failures
-		 */
-		boolean soft() default false;
+		String debug() default "debug";
 
 		/**
 		 * Enables request/response runner lifecycle callbacks.
@@ -1046,18 +1030,58 @@ public final class JPostman {
 		void logError(Object... args);
 
 		/**
-		 * Returns the loaded collection.
+		 * Returns the collection loaded for the default namespace.
 		 *
-		 * @return collection
+		 * @return default namespace collection
 		 */
 		Collection getCollection();
 
 		/**
-		 * Returns the loaded environment.
+		 * Returns the collection loaded for a namespace.
 		 *
-		 * @return environment
+		 * <p>
+		 * For example, {@code getCollection("product")} resolves
+		 * {@code collection.product} from the configured properties file.
+		 * </p>
+		 *
+		 * @param namespace namespace to resolve, or blank for the default namespace
+		 * @return namespace collection
+		 */
+		default Collection getCollection(String namespace) {
+			String key = namespace == null ? "" : namespace.trim();
+			if (key.isEmpty()) {
+				return getCollection();
+			}
+			throw new UnsupportedOperationException(
+					"Namespace collection access is not supported by this runtime: " + key);
+		}
+
+		/**
+		 * Returns the environment loaded for the default namespace.
+		 *
+		 * @return default namespace environment
 		 */
 		Environment getEnvironment();
+
+		/**
+		 * Returns the environment loaded for a namespace.
+		 *
+		 * <p>
+		 * For example, {@code getEnvironment("product")} resolves
+		 * {@code environment.product} from the configured properties file.
+		 * </p>
+		 *
+		 * @param namespace namespace to resolve, or blank for the default namespace
+		 * @return namespace environment, or {@code null} when none is configured
+		 */
+		default Environment getEnvironment(String namespace) {
+			String key = namespace == null ? "" : namespace.trim();
+			if (key.isEmpty()) {
+				return getEnvironment();
+			}
+			throw new UnsupportedOperationException(
+					"Namespace environment access is not supported by this runtime: " + key);
+		}
 	}
 
 	/**
@@ -1541,14 +1565,14 @@ public final class JPostman {
 	 * Compact framework-neutral assertion facade backed by the latest active
 	 * JPostman test context.
 	 */
-	public interface Assert extends JPostmanAssertions<Test, Assert>, JPostmanSoftAssertions<Test, Assert> {
+	public interface Assert extends JPostmanAssertions<Test, Assert> {
 
 		/**
 		 * Immediately fails with the supplied custom message.
 		 *
 		 * <p>
-		 * This is always a hard failure, including when invoked from a facade returned
-		 * by {@link #soft()}. The failure is not added to the soft assertion collector.
+		 * This is always a hard failure. The failure is not added to a soft assertion
+		 * collector.
 		 * </p>
 		 *
 		 * @param message custom failure message; blank values use
@@ -1559,11 +1583,12 @@ public final class JPostman {
 		Assert fail(String message);
 
 		/**
-		 * Switches this facade to soft assertion mode.
+		 * Verifies and clears pending assertions for this facade.
 		 *
-		 * @return soft assertion facade
+		 * @return active JPostman test context
 		 */
-		Assert soft();
+		@Override
+		Test verify();
 	}
 
 	/**

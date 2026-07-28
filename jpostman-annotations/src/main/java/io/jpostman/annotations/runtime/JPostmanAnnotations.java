@@ -76,8 +76,7 @@ public final class JPostmanAnnotations {
 		if (compact != null) {
 			return adapt(compact, JPostmanAssertContext.class);
 		}
-		JPostman.Asserts alias = field.getAnnotation(JPostman.Asserts.class);
-		return alias == null ? null : adapt(alias, JPostmanAssertContext.class);
+		return null;
 	}
 
 	public static boolean hasAssertContext(Field field) {

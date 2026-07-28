@@ -2,6 +2,9 @@ package io.jpostman.annotations;
 
 import java.util.Objects;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Installs a scoped output sink for JPostman-generated messages.
  *
@@ -11,6 +14,8 @@ import java.util.Objects;
  * </p>
  */
 public final class JPostmanOutputs {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(JPostmanOutputs.class);
 
 	private static final InheritableThreadLocal<JPostmanOutput> CURRENT = new InheritableThreadLocal<>();
 
@@ -47,6 +52,22 @@ public final class JPostmanOutputs {
 		}
 		output.write(text);
 		return true;
+	}
+
+	/**
+	 * Sends text to the installed sink, or writes it at TRACE level when no sink is
+	 * active.
+	 *
+	 * @param text output text
+	 */
+	public static void writeOrTrace(String text) {
+		if (text == null || text.isEmpty()) {
+			return;
+		}
+
+		if (!write(text)) {
+			LOGGER.trace(text);
+		}
 	}
 
 	/**

@@ -180,11 +180,11 @@ public class JPostmanAnnotationResponseRequestNameRegressionTest {
 		public void responseWithExplicitRequestAndMethodDependency() {
 		}
 
-		@JPostman.Call(dependsOn = "#blankScopedRequest", request = "Nested request", log = "none")
+		@JPostman.Call(dependsOn = "#blankScopedRequest", request = "Nested request", debug = "none")
 		public void callWithExplicitRequestAndInheritedScope() {
 		}
 
-		@JPostman.Call(dependsOn = "#blankScopedRequest", log = "none")
+		@JPostman.Call(dependsOn = "#blankScopedRequest", debug = "none")
 		public void callWithoutRequest() {
 		}
 

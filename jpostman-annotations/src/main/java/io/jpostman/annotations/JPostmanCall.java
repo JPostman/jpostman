@@ -55,8 +55,19 @@ public @interface JPostmanCall {
 	/** @return executor id */
 	String executor() default "";
 
-	/** @return local automatic failure output mode */
-	String log() default "debug";
+	/**
+	 * Local JPostman debug override.
+	 *
+	 * <p>
+	 * Use {@code debug} to inherit {@link JPostmanContext#debug()}. Use
+	 * {@code none} to suppress output, {@code error} for the full failure trace, or
+	 * request, response, info, and all for local diagnostics. {@code error} may be
+	 * combined with one or more diagnostic values.
+	 * </p>
+	 *
+	 * @return local debug setting
+	 */
+	String debug() default "debug";
 
 	/** @return data section name */
 	String data() default "";

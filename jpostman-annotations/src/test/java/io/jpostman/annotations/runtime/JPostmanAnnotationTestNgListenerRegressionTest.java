@@ -52,7 +52,7 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
-	public void listenerRunsTestBodyWhenAnnotationVerificationIsSoft() throws Exception {
+	public void listenerRunsTestBodyAndAutoVerifiesSoftAssertContext() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		SoftVerificationBodyFixture fixture = new SoftVerificationBodyFixture();
 		Method method = SoftVerificationBodyFixture.class.getDeclaredMethod("inspectResponseAfterSoftVerification");
@@ -62,17 +62,17 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
 
-		assertEquals(1, fixture.bodyCalls, "soft=true must allow the user test body to inspect the executed response.");
-		assertTrue(fixture.sawResponse, "The soft response body should see the prepared response.");
+		assertEquals(1, fixture.bodyCalls, "The response body must inspect the executed response before auto verify.");
+		assertTrue(fixture.sawResponse, "The response body should see the prepared response.");
 		assertEquals(ITestResult.FAILURE, status.get(),
-				"The collected soft verification must be flushed after the same method body exits.");
+				"The injected soft AssertContext must be verified after the same method body exits.");
 		assertNotNull(throwable.get());
-		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [401] but found [200]"),
+		assertTrue(throwable.get().getMessage().contains("soft response body failure"),
 				"Actual message: " + throwable.get().getMessage());
 	}
 
 	@Test
-	public void automaticSoftVerificationIsResetBeforeTheNextTestMethod() throws Exception {
+	public void automaticAssertContextVerificationIsResetBeforeTheNextTestMethod() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		SoftVerificationBodyFixture fixture = new SoftVerificationBodyFixture();
 
@@ -98,7 +98,7 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
-	public void injectedAssertVerifyFlushesAndResetsAutomaticSoftStatusVerification() throws Exception {
+	public void injectedAssertVerifyFlushesAndResetsSoftAssertContext() throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		SoftVerifyResetFixture fixture = new SoftVerifyResetFixture();
 		Method method = SoftVerifyResetFixture.class.getDeclaredMethod("verifyCreatedResponse");
@@ -271,12 +271,12 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 0)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.AssertContext
+		@JPostman.AssertContext(soft = true)
 		private JPostman.Assert asserts;
 
 		private int bodyCalls;
 
-		@JPostman.Response(request = "Get current auth user", verify = 201, soft = true, log = "none")
+		@JPostman.Response(request = "Get current auth user", verify = 201, debug = "none")
 		@org.testng.annotations.Test
 		public void verifyCreatedResponse() {
 			bodyCalls++;
@@ -332,17 +332,21 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 0)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
+		@JPostman.AssertContext(soft = true)
+		private JPostman.Assert asserts;
+
 		private int bodyCalls;
 		private boolean sawResponse;
 
-		@JPostman.Response(request = "Get current auth user", verify = 401, soft = true)
+		@JPostman.Response(request = "Get current auth user", verify = 200)
 		@org.testng.annotations.Test
 		public void inspectResponseAfterSoftVerification() {
 			bodyCalls++;
 			sawResponse = jpostman.ctx().response() != null;
+			asserts.isTrue(false, "soft response body failure");
 		}
 
-		@JPostman.Response(request = "Get current auth user", verify = 200, soft = true)
+		@JPostman.Response(request = "Get current auth user", verify = 200)
 		@org.testng.annotations.Test
 		public void inspectResponseAfterSuccessfulSoftVerification() {
 			bodyCalls++;
@@ -423,7 +427,7 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 		private int bodyCalls;
 
-		@JPostman.Runner(verify = 400, enabled = true, soft = false)
+		@JPostman.Runner(verify = 400, enabled = true)
 		@org.testng.annotations.Test
 		public void runProducts() {
 			bodyCalls++;
@@ -441,10 +445,10 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	@JPostman.TestNG
 	private static final class RuntimeCallErrorTraceFixture {
 
-		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", logs = "debug", debug = "none")
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", debug = "none")
 		private JPostman.Runtime<TestNgContext> jpostman;
 
-		@JPostman.Call(tags = { "mouse", "product=mouse" }, log = "error")
+		@JPostman.Call(tags = { "mouse", "product=mouse" }, debug = "error")
 		@org.testng.annotations.Test
 		public void newMouseProduct2() {
 			// The hook callback supplies the runtime assertion failure for this regression.

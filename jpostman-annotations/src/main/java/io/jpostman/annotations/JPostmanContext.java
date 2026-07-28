@@ -160,45 +160,23 @@ public @interface JPostmanContext {
 	boolean skipAll() default false;
 
 	/**
-	 * Controls automatic JPostman failure output. Values may combine one stack mode
-	 * with optional failure diagnostics.
+	 * Controls automatic JPostman debug and failure output.
 	 *
 	 * <ul>
-	 * <li>{@code none} - print only the minimum failure message and the first
-	 * useful user-code stack frame. This is the default.</li>
-	 * <li>{@code error} - print the failure message and include the trace.</li>
-	 * <li>{@code request} - include the prepared request when a failure
-	 * occurs.</li>
-	 * <li>{@code response} - include the received response when a failure
-	 * occurs.</li>
-	 * <li>{@code info} - include runtime annotation info when a failure
-	 * occurs.</li>
-	 * <li>{@code all} - include request, response, and info when a failure
-	 * occurs.</li>
+	 * <li>{@code none} - disable automatic output and keep the minimum failure
+	 * stack.</li>
+	 * <li>{@code error} - include the full failure trace.</li>
+	 * <li>{@code request} - include the prepared request.</li>
+	 * <li>{@code response} - include the received response.</li>
+	 * <li>{@code info} - include runtime annotation information.</li>
+	 * <li>{@code all} - include request, response, and info.</li>
 	 * </ul>
 	 *
-	 * Examples: {@code logs = "request"}, {@code logs = { "request", "response" }},
-	 * or {@code logs = { "error", "response" }}.
+	 * {@code error} may be combined with request, response, info, or all. Request,
+	 * response, and info may be combined. {@code none} must be used alone;
+	 * {@code all} may only be combined with {@code error}.
 	 *
-	 * @return automatic failure output mode and diagnostics
-	 */
-	String[] logs() default { "none" };
-
-	/**
-	 * Controls automatic annotation output.
-	 *
-	 * <ul>
-	 * <li>{@code none} - do not print automatic annotation output.</li>
-	 * <li>{@code request} - print the prepared request.</li>
-	 * <li>{@code response} - print the received response.</li>
-	 * <li>{@code info} - print runtime annotation information.</li>
-	 * <li>{@code all} - print request, response, and info output.</li>
-	 * </ul>
-	 *
-	 * {@code request}, {@code response}, and {@code info} may be combined.
-	 * {@code none} and {@code all} must be used alone.
-	 *
-	 * @return debug output mode values
+	 * @return debug output and failure-trace settings
 	 */
 	String[] debug() default { "none" };
 }

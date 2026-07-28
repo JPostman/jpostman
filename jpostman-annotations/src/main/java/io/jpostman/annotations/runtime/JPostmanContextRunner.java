@@ -545,7 +545,7 @@ final class JPostmanContextRunner<C> {
 				}
 				if (!io.jpostman.annotations.JPostman.Assert.class.isAssignableFrom(field.getType())) {
 					throw new IllegalStateException(
-							"@JPostman.Asserts/@JPostman.AssertContext/@JPostmanAssertContext field must be JPostman.Assert: "
+							"@JPostman.AssertContext/@JPostmanAssertContext field must be JPostman.Assert: "
 									+ field.getName());
 				}
 				field.setAccessible(true);
@@ -631,12 +631,14 @@ final class JPostmanContextRunner<C> {
 					action -> JPostmanTestProxy.wrap(JPostmanRuntimeCall.execute(testInstance, framework.contextType(),
 							(ctx, info) -> action.accept(JPostmanTestProxy.wrap(ctx,
 									() -> activeContexts(testInstance, contexts).activeContext()), info)),
-							() -> activeContexts(testInstance, contexts).activeContext()));
+							() -> activeContexts(testInstance, contexts).activeContext()),
+					name -> activeContexts(testInstance, contexts).resolve(name).loaded);
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
 				() -> activeContexts(testInstance, contexts).activeContext(),
 				() -> activeContexts(testInstance, contexts).info(), () -> JPostmanRuntimeOptions.from(testInstance),
-				action -> JPostmanRuntimeCall.execute(testInstance, framework.contextType(), action));
+				action -> JPostmanRuntimeCall.execute(testInstance, framework.contextType(), action),
+				name -> activeContexts(testInstance, contexts).resolve(name).loaded);
 	}
 
 	private boolean compactTestRuntime(Field field) {
