@@ -61,7 +61,7 @@
 	</scm>
 
 	<properties>
-		<jpostman.annotations.version>4.2.1</jpostman.annotations.version>
+		<jpostman.annotations.version>4.2.2</jpostman.annotations.version>
 		<!-- ${project.version} -->
 		<jpostman.version>4.2.0</jpostman.version>
 

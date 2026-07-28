@@ -457,9 +457,10 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				appendExecutionSeparator(output, previousHadAdditionalData);
 			}
 			first = false;
+			boolean skippedExecution = isSkipped(value);
 			output.append(shortDiagnostic(value));
 			int detailStart = output.length();
-			if (diagnosticMode == DiagnosticMode.EXTEND) {
+			if (diagnosticMode == DiagnosticMode.EXTEND && !skippedExecution) {
 				appendBlock(output, value.requestLog());
 			}
 			if (failed.contains(value)) {
@@ -698,6 +699,18 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		output.append(System.lineSeparator()).append(System.lineSeparator()).append(text);
 	}
 
+	private boolean isSkipped(JPostmanInfo info) {
+		if (info == null) {
+			return false;
+		}
+		for (JPostmanInfo candidate : skipped) {
+			if (candidate == info || sameExecution(candidate, info)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	String shortDiagnostic(JPostmanInfo info) {
 		StringBuilder out = new StringBuilder(topMethod(info)).append(":  {");
 		List<String> scope = new ArrayList<>();
@@ -714,6 +727,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 			scope.add("request = " + request);
 		}
 		out.append(String.join(", ", scope)).append("}");
+		if (isSkipped(info)) {
+			return out.append(", SKIPPED").toString();
+		}
 		if (info != null && info.statusCode() != null) {
 			out.append(", statusCode=").append(info.statusCode());
 		}

@@ -113,6 +113,27 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
+	void diagnosticShortMarksSkippedExecutionWithoutZeroDuration() {
+		JPostmanReport report = new JPostmanReport().configure("short", new String[] { "ignore" });
+		JPostmanInfo skipped = new JPostmanInfo(new String[0], "", "addNewproduct", "product", "Product",
+				"Add a new product");
+		skipped.annotation = "@JPostmanResponse";
+		skipped.method("addNewproduct");
+		skipped.requestLog("REQUEST MUST NOT PRINT FOR A SKIPPED EXECUTION");
+		report.skipped(skipped);
+
+		String output = capture(report::summary).get(0);
+		String expected = "addNewproduct:  {namespace = product, folder = Product, request = Add a new product}, SKIPPED";
+
+		assertTrue(output.contains("Total tests run: 1, Passes: 0, Failures: 0, Skips: 1"), output);
+		assertTrue(output.contains(expected), output);
+		assertFalse(output.contains(
+				"addNewproduct:  {namespace = product, folder = Product, request = Add a new product}, duration="),
+				output);
+		assertFalse(output.contains("REQUEST MUST NOT PRINT FOR A SKIPPED EXECUTION"), output);
+	}
+
+	@Test
 	void diagnosticExtendPrintsShortLineAndPreparedRequest() {
 		JPostmanReport report = new JPostmanReport().configure("extend", new String[] { "ignore" });
 		report.passed(requestInfo().requestLog("PREPARED REQUEST"));

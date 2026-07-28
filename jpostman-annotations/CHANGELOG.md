@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.2.2
+
+### Added
+
+- Added TestNG regression coverage for `@JPostman.Runner(verify = 0)` across mixed `200 -> 201 -> 200` responses, including per-request `@JPostman.Request` dependencies, cached executor-backed `@JPostman.Response` dependencies, and report-result validation.
+
+### Changed
+
+- Changed report diagnostics so skipped executions are displayed as `SKIPPED` instead of showing an unexecuted `duration=00:00.000` result.
+
+### Fixed
+
+- Fixed `@JPostman.Runner(verify = 0)` still applying `@JPostman.Context.verifyStatusCode` to runner responses.
+
 ## 4.2.1
 
 ### Added
