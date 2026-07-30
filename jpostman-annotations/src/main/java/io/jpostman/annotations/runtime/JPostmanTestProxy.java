@@ -6,6 +6,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import io.jpostman.annotations.JPostman;
@@ -15,6 +20,49 @@ import io.jpostman.annotations.JPostmanTestSoftAssertions;
 
 /** Framework-neutral proxy for TestNG/JUnit contexts used by JPostman.Test. */
 final class JPostmanTestProxy implements InvocationHandler {
+
+	private static final String CACHE_ID_ALIAS_PREFIX = "__jpostman_cache_id__";
+	private static final ThreadLocal<List<CacheDependency>> CACHE_DEPENDENCIES = new ThreadLocal<>();
+
+	static final class CacheDependency {
+		final String reference;
+		final String cacheKey;
+
+		CacheDependency(String reference, String cacheKey) {
+			this.reference = reference == null ? "" : reference.trim();
+			this.cacheKey = cacheKey == null ? "" : cacheKey.trim();
+		}
+	}
+
+	static final class CacheScope implements AutoCloseable {
+		private final List<CacheDependency> previous;
+
+		private CacheScope(List<CacheDependency> dependencies) {
+			this.previous = CACHE_DEPENDENCIES.get();
+			CACHE_DEPENDENCIES.set(dependencies == null ? Collections.emptyList() : List.copyOf(dependencies));
+		}
+
+		@Override
+		public void close() {
+			if (previous == null) {
+				CACHE_DEPENDENCIES.remove();
+			} else {
+				CACHE_DEPENDENCIES.set(previous);
+			}
+		}
+	}
+
+	static CacheScope openCacheScope(List<CacheDependency> dependencies) {
+		return new CacheScope(dependencies);
+	}
+
+	static String cacheAliasKey(String annotationId) {
+		String id = annotationId == null ? "" : annotationId.trim();
+		while (id.startsWith("#")) {
+			id = id.substring(1).trim();
+		}
+		return id.isBlank() ? "" : CACHE_ID_ALIAS_PREFIX + id;
+	}
 
 	private final Object target;
 	private final Supplier<?> activeContextSupplier;
@@ -166,8 +214,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
 			return null;
 		}
-		if ("cache".equals(name) && args != null && args.length >= 1 && args[0] instanceof String) {
-			Object value = resolveCacheExpression(target, (String) args[0]);
+		if (("cache".equals(name) || "get".equals(name)) && args != null && args.length >= 1
+				&& args[0] instanceof String) {
+			Object value = "get".equals(name) ? resolveGetExpression(target, (String) args[0])
+					: resolveCacheExpression(target, (String) args[0]);
 			if (method.getParameterCount() == 2 && args.length == 2 && args[1] instanceof Class<?>) {
 				return JPostmanCacheValueConverter.convert(value, (Class<?>) args[1]);
 			}
@@ -191,6 +241,99 @@ final class JPostmanTestProxy implements InvocationHandler {
 			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
 		}
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
+	}
+
+	private static Object resolveGetExpression(Object target, String expression) throws Throwable {
+		String value = expression == null ? "" : expression.trim();
+		if (value.isBlank()) {
+			throw new IllegalArgumentException("JPostman cache expression is required.");
+		}
+
+		int separator = value.indexOf(':');
+		boolean idOnly = separator < 0 && value.startsWith("#");
+		String reference = separator >= 0 ? value.substring(0, separator).trim() : idOnly ? value : "";
+		String path = separator >= 0 ? value.substring(separator + 1).trim() : idOnly ? "" : value;
+		String cacheKey;
+
+		if (!reference.isBlank()) {
+			cacheKey = reference.startsWith("#") ? cacheKeyByAnnotationId(target, reference) : reference;
+		} else {
+			cacheKey = inferSingleCachedDependency(target, path);
+		}
+
+		Object cached = readCache(target, cacheKey);
+		if (cached == null) {
+			throw new IllegalStateException(
+					"Cached dependency value not found for " + (reference.isBlank() ? cacheKey : reference) + ".");
+		}
+		return path.isBlank() ? cached : pathValue(cached, path);
+	}
+
+	private static String cacheKeyByAnnotationId(Object target, String reference) throws Throwable {
+		String id = reference == null ? "" : reference.trim();
+		while (id.startsWith("#")) {
+			id = id.substring(1).trim();
+		}
+		if (id.isBlank()) {
+			throw new IllegalArgumentException("JPostman annotation id is missing before ':'.");
+		}
+		Object alias = readCache(target, cacheAliasKey(id));
+		if (alias != null && !String.valueOf(alias).isBlank()) {
+			return String.valueOf(alias);
+		}
+		if (readCache(target, id) != null) {
+			return id;
+		}
+		throw new IllegalStateException(
+				"Dependency #" + id + " is not cached. Enable cache on that dependency before reading its response.");
+	}
+
+	private static String inferSingleCachedDependency(Object target, String path) throws Throwable {
+		List<CacheDependency> configured = CACHE_DEPENDENCIES.get();
+		Map<String, CacheDependency> available = new LinkedHashMap<>();
+		if (configured != null) {
+			for (CacheDependency dependency : configured) {
+				if (dependency == null || dependency.cacheKey.isBlank()) {
+					continue;
+				}
+				if (readCache(target, dependency.cacheKey) != null) {
+					available.putIfAbsent(dependency.cacheKey, dependency);
+				}
+			}
+		}
+
+		if (available.size() == 1) {
+			return available.values().iterator().next().cacheKey;
+		}
+		if (available.isEmpty()) {
+			throw new IllegalStateException("No cached direct dependency is available for path \"" + path + "\".");
+		}
+
+		List<String> references = new ArrayList<>();
+		for (CacheDependency dependency : available.values()) {
+			references.add(dependency.reference.isBlank() ? dependency.cacheKey : dependency.reference);
+		}
+		throw new IllegalStateException("Cached path \"" + path + "\" is ambiguous. Cached direct dependencies: "
+				+ String.join(", ", references) + ". Use an explicit reference such as test.get(\"" + references.get(0)
+				+ ":" + path + "\").");
+	}
+
+	private static Object readCache(Object target, String key) throws Throwable {
+		if (key == null || key.isBlank()) {
+			return null;
+		}
+		Method cacheMethod = findTargetMethod(target, "cache", new Object[] { key });
+		return invokeTarget(cacheMethod, target, new Object[] { key });
+	}
+
+	private static Object pathValue(Object cached, String path) throws Throwable {
+		if (cached == null || path == null || path.isBlank()) {
+			return cached;
+		}
+		Object cachedTarget = unwrap(cached);
+		Method pathMethod = findTargetMethod(cachedTarget, "path", new Object[] { path });
+		Object value = invokeTarget(pathMethod, cachedTarget, new Object[] { path });
+		return JPostmanCacheValueConverter.unwrap(value);
 	}
 
 	private static Object resolveCacheExpression(Object target, String expression) throws Throwable {

@@ -123,14 +123,15 @@ public @interface JPostmanRequest {
 	 *
 	 * <p>
 	 * When omitted, this helper is not cached. When set to an empty string,
-	 * JPostman caches the dependency by the Java method name to prevent a second
-	 * call in the same run. When set to a non-empty value, that value is used as
-	 * the cache key. Non-void methods store their returned value; void methods
-	 * store a marker only.
+	 * JPostman uses the annotation id as the cache key when an id is present;
+	 * otherwise it caches the dependency by the Java method name to prevent a
+	 * second call in the same run. When set to a non-empty value, that value is
+	 * used as the cache key. Non-void methods store their returned value; void
+	 * methods store a marker only.
 	 * </p>
 	 *
-	 * @return cache key, empty string to cache by method name, or {@link #NO_CACHE}
-	 *         when omitted
+	 * @return cache key, empty string to cache by annotation id or method name, or
+	 *         {@link #NO_CACHE} when omitted
 	 */
 	String cache() default NO_CACHE;
 

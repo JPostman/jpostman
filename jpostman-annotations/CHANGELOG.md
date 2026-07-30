@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.3
+
+### Added
+
+- Added `JPostman.Test.get(String)` and `get(String, Class<T>)` for reading cached dependency values and response paths through `#annotationId:path`, `CACHE_NAME:path`, or an implicit path when exactly one cached direct dependency is available.
+- Added regression coverage for annotation-id cache aliases, custom cache-key resolution, implicit dependency lookup, ignored uncached dependencies, and ambiguity handling when multiple cached dependencies are available.
+
+### Changed
+
+- Changed `cache = ""` on `@JPostman.Request` and `@JPostman.Response` to use the normalized annotation id as the effective cache key when an id is present, while retaining the Java method-name fallback when no id is defined.
+
 ## 4.2.2
 
 ### Added

@@ -1080,7 +1080,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private void runResponseDependency(Object testInstance, PreparedContexts<C> resolver, Method dependencyMethod,
 			JPostmanResponse annotation, JPostmanInfo parentInfo, List<String> stack) throws Exception {
 
-		String cache = cacheKey(dependencyMethod, annotation.cache());
+		String cache = cacheKey(dependencyMethod, annotation.cache(), annotation.id());
 		/*
 		 * Response dependencies must use their own annotation location exactly. A blank
 		 * namespace/folder on @JPostmanResponse means the default context/root folder,
@@ -1091,6 +1091,7 @@ public final class JPostmanAnnotationRunner<C> {
 						folder(annotation.folder()), annotation.request())
 				.annotation("@JPostmanResponse").id(annotationId(annotation.id()));
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
+		registerCacheAlias(resolver, info.id, cache);
 		resolver.info(info);
 		JPostmanReport report = report(testInstance);
 
@@ -1368,8 +1369,9 @@ public final class JPostmanAnnotationRunner<C> {
 	private void runRequestDependency(Object testInstance, PreparedContexts<C> resolver, Method dependencyMethod,
 			JPostmanRequest annotation, JPostmanInfo parentInfo, List<String> stack) throws Exception {
 
-		String cache = cacheKey(dependencyMethod, annotation.cache());
+		String cache = cacheKey(dependencyMethod, annotation.cache(), annotation.id());
 		JPostmanInfo dependencyInfo = requestDependencyInfo(parentInfo, dependencyMethod, annotation, cache);
+		registerCacheAlias(resolver, dependencyInfo.id, cache);
 		resolver.info(dependencyInfo);
 		JPostmanReport report = report(testInstance);
 		add(report, dependencyInfo);
@@ -1470,12 +1472,15 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void cacheResponseDependencyResult(PreparedContexts<C> resolver, Method dependencyMethod, JPostmanInfo info,
 			String cache, Object value) {
+
 		if (cache == null || cache.isBlank()) {
 			return;
 		}
 
-		Object cacheValue = dependencyMethod.getReturnType() == Void.TYPE ? resolver.context(info.namespace)
+		Object cacheValue = dependencyMethod.getReturnType() == Void.TYPE
+				? JPostmanResponseSnapshot.create(resolver.context(info.namespace))
 				: snapshotCacheValue(value);
+
 		if (cacheValue == null) {
 			throw JPostmanErrors.usage(info,
 					"Dependency method returned null and cannot be cached: " + dependencyMethod.getName(),
@@ -2420,15 +2425,29 @@ public final class JPostmanAnnotationRunner<C> {
 		return runnerVerifyScopes.contains(Integer.valueOf(0));
 	}
 
-	private String cacheKey(Method method, String rawCache) {
-		String cache = value(rawCache);
+	private String cacheKey(Method method, String rawCache, String rawId) {
+		String cache = value(rawCache).trim();
 		if (NO_CACHE.equals(cache)) {
 			return "";
 		}
-		if (cache.isBlank()) {
-			return method == null ? "" : "__" + method.getName() + "__";
+		if (!cache.isBlank()) {
+			return cache;
 		}
-		return cache;
+		String id = annotationId(rawId);
+		if (!id.isBlank()) {
+			return id;
+		}
+		return method == null ? "" : "__" + method.getName() + "__";
+	}
+
+	private void registerCacheAlias(PreparedContexts<C> resolver, String rawId, String cacheKey) {
+		String aliasKey = JPostmanTestProxy.cacheAliasKey(rawId);
+		if (resolver == null || aliasKey.isBlank() || cacheKey == null || cacheKey.isBlank()) {
+			return;
+		}
+		for (C context : resolver.contexts()) {
+			framework.cache(context, aliasKey, cacheKey);
+		}
 	}
 
 	private Object cachedResponseValue(PreparedContexts<C> resolver, JPostmanInfo info, String cache) {
@@ -3731,6 +3750,16 @@ public final class JPostmanAnnotationRunner<C> {
 		if (info == null || info.ended() <= 0L) {
 			debug(testInstance, info, annotationDebug(method));
 		}
+
+		List<JPostmanTestProxy.CacheDependency> cachedDependencies = directCachedDependencies(testInstance, method,
+				info);
+		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy.openCacheScope(cachedDependencies)) {
+			return invokeAnnotatedWithCacheScope(testInstance, method, ctx, info, activeContextSupplier);
+		}
+	}
+
+	private Object invokeAnnotatedWithCacheScope(Object testInstance, Method method, C ctx, JPostmanInfo info,
+			Supplier<?> activeContextSupplier) throws Exception {
 		Class<?>[] types = method.getParameterTypes();
 
 		// Supports an annotated helper with no injected arguments:
@@ -3774,6 +3803,56 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		throw JPostmanErrors.usage(info, "Unsupported annotated method parameters: " + method.toGenericString());
+	}
+
+	private List<JPostmanTestProxy.CacheDependency> directCachedDependencies(Object testInstance, Method method,
+			JPostmanInfo info) {
+		List<JPostmanTestProxy.CacheDependency> result = new ArrayList<>();
+		if (testInstance == null || method == null) {
+			return result;
+		}
+		for (String reference : directDependencyReferences(method)) {
+			if (reference == null || reference.isBlank()) {
+				continue;
+			}
+			Method dependencyMethod = findDependencyMethod(testInstance.getClass(), reference, info);
+			JPostmanResponse response = JPostmanAnnotations.response(dependencyMethod);
+			if (response != null) {
+				String key = cacheKey(dependencyMethod, response.cache(), response.id());
+				if (!key.isBlank()) {
+					result.add(new JPostmanTestProxy.CacheDependency(reference.trim(), key));
+				}
+				continue;
+			}
+			JPostmanRequest request = JPostmanAnnotations.request(dependencyMethod);
+			if (request != null) {
+				String key = cacheKey(dependencyMethod, request.cache(), request.id());
+				if (!key.isBlank()) {
+					result.add(new JPostmanTestProxy.CacheDependency(reference.trim(), key));
+				}
+			}
+		}
+		return result;
+	}
+
+	private String[] directDependencyReferences(Method method) {
+		JPostmanResponse response = JPostmanAnnotations.response(method);
+		if (response != null) {
+			return dependencies(response.dependsOn());
+		}
+		JPostmanRequest request = JPostmanAnnotations.request(method);
+		if (request != null) {
+			return dependencies(request.dependsOn());
+		}
+		JPostmanRunner runner = JPostmanAnnotations.runner(method);
+		if (runner != null) {
+			return dependencies(runner.dependsOn());
+		}
+		JPostmanCall call = JPostmanAnnotations.call(method);
+		if (call != null) {
+			return dependencies(call.dependsOn());
+		}
+		return new String[0];
 	}
 
 	private Object invoke(Object testInstance, Method method, Object... args) throws Exception {

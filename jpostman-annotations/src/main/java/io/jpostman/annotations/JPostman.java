@@ -20,6 +20,7 @@ import org.testng.annotations.Listeners;
 
 import io.jpostman.Collection;
 import io.jpostman.Environment;
+import io.jpostman.annotations.runtime.JPostmanCacheValueConverter;
 import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
@@ -443,9 +444,12 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Cache key for the method return value.
+		 * Cache key for the method return value. An explicit non-empty value is used
+		 * directly. An explicit empty value uses the annotation id when one is defined,
+		 * otherwise the Java method-name fallback.
 		 *
-		 * @return cache key, or {@link JPostmanRequest#NO_CACHE}
+		 * @return cache key, empty string to use the annotation id or method fallback,
+		 *         or {@link JPostmanRequest#NO_CACHE} when caching is disabled
 		 */
 		String cache() default JPostmanRequest.NO_CACHE;
 
@@ -564,9 +568,12 @@ public final class JPostman {
 		String executor() default "";
 
 		/**
-		 * Cache key for the method return value.
+		 * Cache key for the method return value. An explicit non-empty value is used
+		 * directly. An explicit empty value uses the annotation id when one is defined,
+		 * otherwise the Java method-name fallback.
 		 *
-		 * @return cache key, or {@link JPostmanResponse#NO_CACHE}
+		 * @return cache key, empty string to use the annotation id or method fallback,
+		 *         or {@link JPostmanResponse#NO_CACHE} when caching is disabled
 		 */
 		String cache() default JPostmanResponse.NO_CACHE;
 
@@ -1606,8 +1613,35 @@ public final class JPostman {
 	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
 
 		/**
+		 * Reads a dependency cache expression. Use {@code #id:path} for an
+		 * annotation-id reference, {@code CACHE_NAME:path} for a custom cache key, or a
+		 * path by itself when the current method has exactly one cached direct
+		 * dependency.
+		 *
+		 * @param expression dependency cache expression
+		 * @return cached value or response-path value
+		 */
+		default Object get(String expression) {
+			throw new UnsupportedOperationException(
+					"JPostman.Test.get(...) is available only through an injected JPostman runtime context.");
+		}
+
+		/**
+		 * Reads and converts a dependency cache expression.
+		 *
+		 * @param expression dependency cache expression
+		 * @param type       requested Java type
+		 * @param <T>        result type
+		 * @return converted cached value
+		 */
+		default <T> T get(String expression, Class<T> type) {
+			return JPostmanCacheValueConverter.convert(get(expression), type);
+		}
+
+		/**
 		 * Reads a cached value or cached response path and converts it to the requested
-		 * Java type.
+		 * Java type. This preserves the existing cache-key/path API. New dependency
+		 * references should use {@link #get(String)}.
 		 *
 		 * @param expression cache key, optionally followed by a response path
 		 * @param type       requested Java type
@@ -1615,7 +1649,7 @@ public final class JPostman {
 		 * @return converted cached value
 		 */
 		default <T> T cache(String expression, Class<T> type) {
-			return io.jpostman.annotations.runtime.JPostmanCacheValueConverter.convert(cache(expression), type);
+			return JPostmanCacheValueConverter.convert(cache(expression), type);
 		}
 	}
 }

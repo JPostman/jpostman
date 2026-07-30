@@ -51,6 +51,20 @@ public class JPostmanAnnotationCacheRegressionTest {
 		assertEquals("token-123", fixture.api.cache("token"));
 	}
 
+	@Test
+	public void blankCacheUsesAnnotationIdAndImplicitLookupIgnoresUncachedDependencies() throws Exception {
+		IdBackedCacheFixture fixture = new IdBackedCacheFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "profile");
+
+		assertEquals("token-123", fixture.explicitIdToken);
+		assertEquals("token-123", fixture.implicitToken);
+		assertEquals("token-123", fixture.customToken);
+		assertEquals(1, fixture.primaryCalls);
+		assertEquals(1, fixture.backupCalls);
+	}
+
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
@@ -111,6 +125,49 @@ public class JPostmanAnnotationCacheRegressionTest {
 				return okExecutor("{\"id\":1,\"firstName\":\"John\"}");
 			}
 			throw new AssertionError("Unexpected request: " + requestName);
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class IdBackedCacheFixture {
+
+		@JPostman.Context(verifyStatusCode = 200)
+		private JPostman.Runtime<TestNgContext> runtime;
+
+		private String explicitIdToken;
+		private String implicitToken;
+		private String customToken;
+		private int primaryCalls;
+		private int backupCalls;
+
+		@JPostman.Response(id = "Ref1", request = "Login user and get tokens", cache = "")
+		public void loginPrimary() {
+			primaryCalls++;
+		}
+
+		@JPostman.Response(id = "Ref2", request = "Login user and get tokens")
+		public void loginBackup() {
+			backupCalls++;
+		}
+
+		@JPostman.Request(dependsOn = { "#Ref1", "#Ref2" })
+		public void prepare(JPostman.Test test) {
+			explicitIdToken = test.get("#Ref1:accessToken", String.class);
+			implicitToken = test.get("accessToken", String.class);
+			customToken = test.get("Ref1:accessToken", String.class);
+		}
+
+		@JPostman.Response(request = "Get current auth user", dependsOn = "prepare", verify = 200)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostman.Info info) {
+			if (ctx.request().log().contains("Login user and get tokens")) {
+				return okExecutor("{\"accessToken\":\"token-123\"}");
+			}
+			return okExecutor("{\"id\":1}");
 		}
 	}
 
