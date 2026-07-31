@@ -928,7 +928,7 @@ public class JPostmanAnnotationFunctionalTest {
 			return okExecutor("{}", 200);
 		}
 
-		@JPostmanRequest(skip = true)
+		@JPostmanRequest
 		public void skippedSetup() {
 		}
 

@@ -165,19 +165,6 @@ public @interface JPostmanRequest {
 	String[] asserts() default {};
 
 	/**
-	 * Skips the configured request when it is discovered by a runner or request
-	 * dependency.
-	 *
-	 * <p>
-	 * This option requires a concrete {@link #request()} value so JPostman can
-	 * identify which collection request should be skipped.
-	 * </p>
-	 *
-	 * @return {@code true} to skip the configured request
-	 */
-	boolean skip() default false;
-
-	/**
 	 * Local JPostman debug override.
 	 *
 	 * <p>

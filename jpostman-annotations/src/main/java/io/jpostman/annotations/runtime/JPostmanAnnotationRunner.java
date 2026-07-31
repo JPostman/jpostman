@@ -1376,18 +1376,6 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanReport report = report(testInstance);
 		add(report, dependencyInfo);
 
-		if (skipRequest(annotation)) {
-			/*
-			 * When @JPostmanRequest/@JPostman.Request is reached through dependsOn,
-			 * skip=true means skip this helper dependency only. The request name is
-			 * optional in this path because the helper may only exist to select tags or
-			 * block a dependency branch. Runner request skipping is handled separately by
-			 * JPostmanRequestDiscovery, where request/folder/namespace are used to match
-			 * collection requests.
-			 */
-			dependencyInfo.method(dependencyMethod.getName());
-			return;
-		}
 		/*
 		 * Request dependencies are request helpers. Blank namespace/folder/request
 		 * values inherit the parent request location through dependencyInfo. Use the
@@ -2938,10 +2926,6 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private boolean skipResponse(JPostmanResponse annotation) {
-		return annotation != null && annotation.skip();
-	}
-
-	private boolean skipRequest(JPostmanRequest annotation) {
 		return annotation != null && annotation.skip();
 	}
 

@@ -474,9 +474,6 @@ public final class JPostman {
 		 */
 		String data() default "";
 
-		/** @return {@code true} to skip this request helper or runner request */
-		boolean skip() default false;
-
 	}
 
 	/**
