@@ -28,6 +28,20 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 	}
 
 	@Test
+	public void exactCacheKeyWinsBeforeImplicitPathResolution() {
+		FakeContext context = new FakeContext();
+		context.cache("token", "token-123");
+		context.cache(JPostmanTestProxy.cacheAliasKey("Ref1"), "token");
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
+				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "token")))) {
+			assertEquals("token-123", test.get("token"));
+			assertEquals("token-123", test.get("#Ref1"));
+		}
+	}
+
+	@Test
 	public void implicitPathUsesOnlyCachedDirectDependency() {
 		FakeContext context = new FakeContext();
 		context.cache("__loginPrimary__", new FakeResponse(Map.of("accessToken", "primary")));

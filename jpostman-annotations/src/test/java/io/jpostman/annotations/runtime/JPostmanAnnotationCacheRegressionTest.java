@@ -84,7 +84,7 @@ public class JPostmanAnnotationCacheRegressionTest {
 		private int loginExecutorCalls;
 		private int authExecutorCalls;
 
-		@JPostman.Response(request = "Login user and get tokens", cache = "token")
+		@JPostman.Response(id = "Ref1", request = "Login user and get tokens", cache = "token")
 		public String getToken(TestNgContext ctx, JPostman.Info info) {
 			tokenMethodCalls++;
 			assertNotNull(ctx.response(), "The cached response dependency should execute before its method body.");
@@ -92,10 +92,11 @@ public class JPostmanAnnotationCacheRegressionTest {
 		}
 
 		@JPostman.Request(dependsOn = "getToken")
-		public void authRequest(TestNgContext ctx, JPostman.Info info) {
+		public void authRequest(JPostman.Test test, JPostman.Info info) {
 			authRequestCalls++;
-			assertEquals("token-123", ctx.cache("token"));
-			info.sauth("oauth2", ctx.cache("token"));
+			assertEquals("token-123", test.get("token"));
+			assertEquals("token-123", test.get("#Ref1"));
+			info.sauth("oauth2", test.get("token"));
 		}
 
 		@JPostman.Response(request = "Get current auth user", dependsOn = "authRequest", verify = 200)

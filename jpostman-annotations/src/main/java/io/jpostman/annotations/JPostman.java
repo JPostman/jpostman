@@ -1613,10 +1613,12 @@ public final class JPostman {
 	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
 
 		/**
-		 * Reads a dependency cache expression. Use {@code #id:path} for an
-		 * annotation-id reference, {@code CACHE_NAME:path} for a custom cache key, or a
-		 * path by itself when the current method has exactly one cached direct
-		 * dependency.
+		 * Reads a dependency cache expression. A bare value first resolves an exact
+		 * cache key, preserving calls such as {@code get("token")}. If that key is not
+		 * present, the value is treated as a response path when the current method has
+		 * exactly one cached direct dependency. Use {@code #id:path} for an
+		 * annotation-id reference or {@code CACHE_NAME:path} for a custom cache key and
+		 * response path.
 		 *
 		 * @param expression dependency cache expression
 		 * @return cached value or response-path value

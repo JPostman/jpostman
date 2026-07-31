@@ -251,6 +251,20 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		int separator = value.indexOf(':');
 		boolean idOnly = separator < 0 && value.startsWith("#");
+
+		/*
+		 * Preserve the pre-4.2.3 direct-key contract. A bare expression such as
+		 * get("token") first means "read cache key token". Only when that exact key is
+		 * absent does the 4.2.3 dependency-aware shorthand interpret the same
+		 * expression as a response path on the single cached direct dependency.
+		 */
+		if (separator < 0 && !idOnly) {
+			Object direct = readCache(target, value);
+			if (direct != null) {
+				return direct;
+			}
+		}
+
 		String reference = separator >= 0 ? value.substring(0, separator).trim() : idOnly ? value : "";
 		String path = separator >= 0 ? value.substring(separator + 1).trim() : idOnly ? "" : value;
 		String cacheKey;
