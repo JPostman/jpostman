@@ -136,6 +136,23 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
+	void diagnosticShortIncludesStatusCodeForExecutedVerifySkip() {
+		JPostmanReport report = new JPostmanReport().configure("short", new String[] { "ignore" });
+		JPostmanInfo skipped = new JPostmanInfo(new String[0], "", "testAuthRunner", "", "Auth",
+				"Get current authenticated user");
+		skipped.annotation = "@JPostmanRunner";
+		skipped.method("testAuthRunner");
+		skipped.statusCode(401);
+		report.skipped(skipped);
+
+		String output = capture(report::summary).get(0);
+		String expected = "testAuthRunner:  statusCode=401, SKIPPED, {folder = Auth, request = Get current authenticated user}";
+
+		assertTrue(output.contains(expected), output);
+		assertFalse(output.contains("testAuthRunner:  SKIPPED,"), output);
+	}
+
+	@Test
 	void diagnosticExtendPrintsShortLineAndPreparedRequest() {
 		JPostmanReport report = new JPostmanReport().configure("extend", new String[] { "ignore" });
 		report.passed(requestInfo().requestLog("PREPARED REQUEST"));

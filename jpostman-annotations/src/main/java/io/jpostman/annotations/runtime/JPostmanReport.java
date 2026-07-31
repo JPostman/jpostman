@@ -766,7 +766,14 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	String shortDiagnostic(JPostmanInfo info) {
 		StringBuilder out = new StringBuilder(topMethod(info)).append(":  ");
-		if (isSkipped(info)) {
+		boolean skippedExecution = isSkipped(info);
+		if (skippedExecution) {
+			// verify=1 runs the HTTP request and only then converts the completed
+			// execution to skipped. Preserve its response status so diagnostics can
+			// distinguish it from a true pre-execution skip such as skipAll=true.
+			if (info != null && info.statusCode() != null) {
+				out.append("statusCode=").append(info.statusCode()).append(", ");
+			}
 			out.append("SKIPPED");
 		} else {
 			if (info != null && info.statusCode() != null) {
