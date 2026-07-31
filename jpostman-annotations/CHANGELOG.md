@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.2.6
+
+### Added
+
+- Added `verify()` to compact `@JPostman.Call` and standalone `@JPostmanCall`; status verification runs only after `JPostman.Runtime.call(...)` completes and a response is available.
+- Added `verify = 1` for Runner, Response, and Call executions. The request still runs and captures its response, but an otherwise successful test is reported as skipped.
+- Added automatic default `@JPostman.Executor` selection. A single executor, or an executor without an id when multiple executors exist, is used without requiring an `executor` attribute.
+
+### Changed
+
+- Changed status verification values to:
+  - `-1` — use `@JPostman.Context.verifyStatusCode`.
+  - `0` — ignore the HTTP status code and allow the test to pass.
+  - `1` — ignore the HTTP status code and mark an otherwise successful test skipped.
+  - `100`–`599` — verify the exact HTTP status code.
+- Changed Runner verification so its `verify` value applies only to requests actively executed by that Runner. Standalone Response and Call tests with `verify = -1` continue to use the Context default.
+- Changed cache lookup so an exact cache-key match is resolved before implicit dependency-response path lookup. This restores returned scalar values such as `cache = "token"` while retaining 4.2.3 implicit path behavior.
+- Changed automatic debug output to print once after execution completes instead of printing an incomplete block before execution and another block afterward.
+- Changed method-level `debug = "error"` to defer the failure stack, secure request, and secure response until after the report diagnostics.
+- Changed compact report diagnostics to print status and duration before annotation attributes, for example `method: statusCode=200, duration=..., {request = ...}`.
+- Changed completed `verify = 1` diagnostics to retain the actual HTTP status code, for example `statusCode=401, SKIPPED`; pre-execution skips such as `skipAll = true` remain `SKIPPED` without a status code.
+- Changed default executor namespace resolution so the selected executor namespace is applied before collection, folder, and request lookup unless the current annotation or dependency explicitly supplies a namespace.
+
+### Removed
+
+- Removed `skip()` from compact `@JPostman.Request` and standalone `@JPostmanRequest`; request helpers always execute when reached through a dependency chain.
+- Removed `error` from the supported global `@JPostman.Context.debug` values. Global debug now supports `none`, `request`, `response`, `info`, and `all`.
+- Removed `error` from `@JPostman.ReportContext.fail`. Method-level `debug = "error"` remains available on Runner, Response, and Call.
+
 ## 4.2.3
 
 ### Added
