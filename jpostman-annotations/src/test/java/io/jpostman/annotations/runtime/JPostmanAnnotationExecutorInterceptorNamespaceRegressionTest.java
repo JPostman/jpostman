@@ -46,9 +46,52 @@ public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 				"Actual methods: " + fixture.interceptMethods);
 	}
 
+	@Test
+	public void singleDefaultInterceptorNamespaceIsAppliedBeforeRequestLookup() throws Exception {
+		DefaultInterceptorNamespaceFixture fixture = new DefaultInterceptorNamespaceFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.providerCalls);
+		assertEquals(1, fixture.interceptorCalls);
+		assertEquals("restage", fixture.interceptorNamespace);
+		assertEquals("Get current auth user", fixture.interceptorRequest);
+	}
+
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
+	}
+
+	@JPostman.TestNG
+	private static final class DefaultInterceptorNamespaceFixture {
+
+		@JPostman.Context(config = "classpath:executor-default-namespace.properties", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int providerCalls;
+		private int interceptorCalls;
+		private String interceptorNamespace;
+		private String interceptorRequest;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			providerCalls++;
+			return okExecutor("{\"id\":1,\"firstName\":\"Emily\"}");
+		}
+
+		@JPostman.Executor(namespace = "restage")
+		public void restageInterceptor(JPostman.Test test, JPostman.Info info) {
+			interceptorCalls++;
+			interceptorNamespace = info.attr().namespace;
+			interceptorRequest = info.attr().request;
+		}
 	}
 
 	@JPostman.TestNG

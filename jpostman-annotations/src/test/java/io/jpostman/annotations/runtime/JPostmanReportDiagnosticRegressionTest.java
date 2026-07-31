@@ -47,7 +47,7 @@ class JPostmanReportDiagnosticRegressionTest {
 	void skipAllCountsFrameworkSkippedMethodsThatNeverStarted() throws Exception {
 		SkipAllFixture fixture = new SkipAllFixture();
 		JPostmanReport report = (JPostmanReport) fixture.report;
-		report.configure("skipAll", "error");
+		report.configure("skipAll");
 		report.failed(requestInfo());
 
 		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
@@ -73,6 +73,12 @@ class JPostmanReportDiagnosticRegressionTest {
 		assertThrows(IllegalArgumentException.class, () -> report.configure("verbose"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("ignore", "skipAll"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("all", "request"));
+		IllegalArgumentException removedError = assertThrows(IllegalArgumentException.class,
+				() -> report.configure("error"));
+		assertTrue(
+				removedError.getMessage()
+						.contains("Allowed values: ignore, skipAll, terminate, request, response, info, all."),
+				removedError.getMessage());
 	}
 
 	@Test
@@ -93,7 +99,7 @@ class JPostmanReportDiagnosticRegressionTest {
 		String output = capture(report::summary).get(0);
 
 		assertTrue(output.contains("JPostman report"), output);
-		assertFalse(output.contains("JPostman diagnostics"), output);
+		assertFalse(output.contains("JPostman Diagnostics:"), output);
 		assertFalse(output.contains("PREPARED REQUEST"), output);
 	}
 
@@ -104,10 +110,8 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		String output = capture(report::summary).get(0);
 
-		assertTrue(output.contains("JPostman diagnostics"), output);
-		assertTrue(output.contains(
-				"assertsVerify:  {namespace = product, folder = Product, request = Add a new product}, statusCode=201, duration="),
-				output);
+		assertTrue(output.contains("JPostman Diagnostics:"), output);
+		assertTrue(output.contains("assertsVerify:  statusCode=201, duration="), output);
 		assertTrue(output.contains("(assertsVerify -> newProduct)"), output);
 		assertFalse(output.contains("PREPARED REQUEST"), output);
 	}
@@ -123,13 +127,11 @@ class JPostmanReportDiagnosticRegressionTest {
 		report.skipped(skipped);
 
 		String output = capture(report::summary).get(0);
-		String expected = "addNewproduct:  {namespace = product, folder = Product, request = Add a new product}, SKIPPED";
+		String expected = "addNewproduct:  SKIPPED, {namespace = product, folder = Product, request = Add a new product}";
 
 		assertTrue(output.contains("Total tests run: 1, Passes: 0, Failures: 0, Skips: 1"), output);
 		assertTrue(output.contains(expected), output);
-		assertFalse(output.contains(
-				"addNewproduct:  {namespace = product, folder = Product, request = Add a new product}, duration="),
-				output);
+		assertFalse(output.contains("addNewproduct:  duration="), output);
 		assertFalse(output.contains("REQUEST MUST NOT PRINT FOR A SKIPPED EXECUTION"), output);
 	}
 
@@ -140,10 +142,8 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		String output = capture(report::summary).get(0);
 
-		assertTrue(output.contains("JPostman diagnostics"), output);
-		assertTrue(output.contains(
-				"assertsVerify:  {namespace = product, folder = Product, request = Add a new product}, statusCode=201, duration="),
-				output);
+		assertTrue(output.contains("JPostman Diagnostics:"), output);
+		assertTrue(output.contains("assertsVerify:  statusCode=201, duration="), output);
 		assertTrue(output.contains("PREPARED REQUEST"), output);
 	}
 
@@ -158,7 +158,7 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		assertTrue(text.contains("JPostman report"), text);
 		assertFalse(text.contains("JPostman failures"), text);
-		assertFalse(text.contains("JPostman diagnostics"), text);
+		assertFalse(text.contains("JPostman Diagnostics:"), text);
 		assertFalse(text.contains("assertsVerify:"), text);
 		assertFalse(text.contains("PREPARED REQUEST"), text);
 		assertFalse(text.contains("RECEIVED RESPONSE"), text);
@@ -198,27 +198,10 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		assertTrue(capture(() -> report.failed(info)).isEmpty());
 		String output = capture(report::summary).get(0);
-		String line = "assertsVerify:  {namespace = product, folder = Product, request = Add a new product}, statusCode=201, duration=";
+		String line = "assertsVerify:  statusCode=201, duration=";
 
-		assertTrue(output.indexOf("JPostman report") < output.indexOf("JPostman diagnostics"), output);
+		assertTrue(output.indexOf("JPostman report") < output.indexOf("JPostman Diagnostics:"), output);
 		assertEquals(output.indexOf(line), output.lastIndexOf(line), output);
-	}
-
-	@Test
-	void errorOptionPrintsNamedFullFailureAfterTheReport() {
-		JPostmanReport report = new JPostmanReport().configure("skipAll", "error");
-		AssertionError failure = ErrorFixture.failure();
-
-		assertTrue(capture(() -> report.failed(requestInfo(), failure)).isEmpty());
-		String output = capture(report::summary).get(0);
-
-		assertTrue(output.indexOf("JPostman report") < output.indexOf("JPostman failures"), output);
-		assertTrue(
-				output.contains("assertsVerify:  {namespace = product, folder = Product, request = Add a new product}"),
-				output);
-		assertTrue(output.contains("FAILED: ErrorFixture.assertsVerify"), output);
-		assertTrue(output.contains("java.lang.AssertionError: Condition should be true"), output);
-		assertTrue(output.contains("\tat " + ErrorFixture.class.getName() + ".assertsVerify("), output);
 	}
 
 	@Test
@@ -243,42 +226,22 @@ class JPostmanReportDiagnosticRegressionTest {
 
 	@Test
 	void additionalFailureDataIsSeparatedFromTheNextExecution() {
-		JPostmanReport report = new JPostmanReport().configure("error");
-		JPostmanInfo first = requestInfo();
+		JPostmanReport report = new JPostmanReport().configure("request");
+		JPostmanInfo first = requestInfo().requestLog("FIRST REQUEST");
 		JPostmanInfo second = new JPostmanInfo(new String[0], "", "assertsInternalSoft", "product", "Product",
 				"Add a new product");
 		second.annotation = "@JPostmanResponse";
 		second.method("assertsInternalSoft");
 		second.appendMethod("newProduct");
-		second.statusCode(201);
+		second.statusCode(201).requestLog("SECOND REQUEST");
 
-		AssertionError firstFailure = new AssertionError("first failure");
-		firstFailure.setStackTrace(new StackTraceElement[] {
-				new StackTraceElement("DemoTest10", "assertsVerify", "DemoTest10.java", 40) });
-		AssertionError secondFailure = new AssertionError("second failure");
-		secondFailure.setStackTrace(new StackTraceElement[] {
-				new StackTraceElement("DemoTest10", "assertsInternalSoft", "DemoTest10.java", 52) });
-
-		report.failed(first, firstFailure);
-		report.failed(second, secondFailure);
+		report.failed(first, new AssertionError("first failure"));
+		report.failed(second, new AssertionError("second failure"));
 		String output = capture(report::summary).get(0);
-		String expectedBoundary = "\tat DemoTest10.assertsVerify(DemoTest10.java:40)" + System.lineSeparator()
-				+ System.lineSeparator() + "assertsInternalSoft:";
+		String expectedBoundary = "FIRST REQUEST" + System.lineSeparator() + System.lineSeparator()
+				+ "assertsInternalSoft:";
 
 		assertTrue(output.contains(expectedBoundary), output);
-	}
-
-	@Test
-	void errorOptionMarksFailureForFullTraceCleanup() {
-		JPostmanReport report = new JPostmanReport().configure("request", "error");
-		AssertionError failure = new AssertionError("boom");
-		capture(() -> report.failed(requestInfo(), failure));
-		assertTrue(JPostmanReport.hasFullErrorTrace(failure));
-		assertEquals(0, failure.getSuppressed().length);
-
-		AssertionError wrapper = new AssertionError("wrapper");
-		wrapper.initCause(failure);
-		assertTrue(JPostmanReport.hasFullErrorTrace(wrapper));
 	}
 
 	@Test
@@ -299,23 +262,8 @@ class JPostmanReportDiagnosticRegressionTest {
 		assertTrue(summary.contains("Total tests run: 6, Passes: 0, Failures: 6, Skips: 0"), summary);
 	}
 
-	private static final class ErrorFixture {
-		static AssertionError failure() {
-			try {
-				new ErrorFixture().assertsVerify();
-				return null;
-			} catch (AssertionError error) {
-				return error;
-			}
-		}
-
-		void assertsVerify() {
-			throw new AssertionError("Condition should be true");
-		}
-	}
-
 	private static final class SkipAllFixture {
-		@JPostman.ReportContext(fail = { "skipAll", "error" })
+		@JPostman.ReportContext(fail = "skipAll")
 		private JPostman.Report report = new JPostmanReport();
 
 		@JPostman.Request(namespace = "product", folder = "Product", request = "Add a new product")

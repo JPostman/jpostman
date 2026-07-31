@@ -48,15 +48,11 @@ public @interface JPostmanRequest {
 	String id() default "";
 
 	/**
-	 * @JPostmanExecutor method name associated with this request helper.
+	 * Selects a named {@link JPostmanExecutor} by method name or {@code "#id"}.
+	 * Leave empty to use the single executor or the executor without an id. The
+	 * selector is stored in {@link JPostmanInfo} for the active dependency chain.
 	 *
-	 *                   <p>
-	 *                   Empty means the default executor. This executor id is
-	 *                   stored in {@link JPostmanInfo} so helper methods can see
-	 *                   which executor is active for the chain.
-	 *                   </p>
-	 *
-	 * @return executor id
+	 * @return executor selector, or empty string for automatic/default selection
 	 */
 	String executor() default "";
 

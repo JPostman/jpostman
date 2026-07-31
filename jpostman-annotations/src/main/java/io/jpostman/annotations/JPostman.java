@@ -130,8 +130,8 @@ public final class JPostman {
 		/**
 		 * Default expected HTTP status code.
 		 *
-		 * @return expected HTTP status code, or {@code 0} to skip status code
-		 *         verification by default
+		 * @return expected HTTP status code, {@code 0} to pass without status
+		 *         verification, or {@code 1} to mark a completed test skipped
 		 */
 		int verifyStatusCode() default 200;
 
@@ -166,23 +166,21 @@ public final class JPostman {
 		boolean skipAll() default false;
 
 		/**
-		 * Controls automatic JPostman debug and failure output.
+		 * Controls automatic JPostman debug output.
 		 *
 		 * <ul>
 		 * <li>{@code none} - disable automatic output and keep the minimum failure
 		 * stack.</li>
-		 * <li>{@code error} - include the full failure trace.</li>
 		 * <li>{@code request} - include the prepared request.</li>
 		 * <li>{@code response} - include the received response.</li>
 		 * <li>{@code info} - include runtime annotation information.</li>
 		 * <li>{@code all} - include request, response, and info.</li>
 		 * </ul>
 		 *
-		 * {@code error} may be combined with request, response, info, or all. Request,
-		 * response, and info may be combined. {@code none} must be used alone;
-		 * {@code all} may only be combined with {@code error}.
+		 * Request, response, and info may be combined. {@code none} and {@code all}
+		 * must each be used alone.
 		 *
-		 * @return debug output and failure-trace settings
+		 * @return automatic debug output settings
 		 */
 		String[] debug() default { "none" };
 	}
@@ -287,7 +285,6 @@ public final class JPostman {
 		 * <li>{@code skipAll} - skip all remaining JPostman-managed tests.</li>
 		 * <li>{@code terminate} - print the report summary and failure details, then
 		 * terminate the process.</li>
-		 * <li>{@code error} - keep the full failure stack trace.</li>
 		 * <li>{@code request} - include the prepared request.</li>
 		 * <li>{@code response} - include the received response.</li>
 		 * <li>{@code info} - include runtime annotation information.</li>
@@ -300,7 +297,7 @@ public final class JPostman {
 		 * then appends the selected diagnostics. Examples: {@code fail = "request"},
 		 * {@code fail = { "request", "response" }},
 		 * {@code fail = { "skipAll", "all" }}, or
-		 * {@code fail = { "terminate", "request", "error" }}.
+		 * {@code fail = { "terminate", "request" }}.
 		 * </p>
 		 *
 		 * @return failure action and optional diagnostics
@@ -309,14 +306,19 @@ public final class JPostman {
 	}
 
 	/**
-	 * Marks a method as a JPostman executor.
+	 * Marks a method as a JPostman executor provider or post-response interceptor.
+	 * A single method of each role is selected automatically. With multiple
+	 * methods, the method without an id is the default and named methods are
+	 * selected with an annotation {@code executor} value such as {@code "#audit"}.
 	 */
 	@Target(METHOD)
 	@Retention(RUNTIME)
 	public @interface Executor {
 
 		/**
-		 * Executor id.
+		 * Optional executor id. A single executor is selected automatically even when
+		 * this id is set. With multiple executors of the same role, an empty id marks
+		 * the default and a non-empty id is selected with {@code executor = "#id"}.
 		 *
 		 * @return executor id, or empty string for the default executor
 		 */
@@ -331,9 +333,12 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Namespace where this executor interceptor applies. Empty means all namespaces
-		 * for void interceptors and the default executor provider for
-		 * ApiExecutor-returning methods.
+		 * Namespace where this void executor interceptor applies. Empty is the global
+		 * fallback. An exact namespace match takes precedence over a global
+		 * interceptor. When the selected/default interceptor is the only source of a
+		 * namespace, its namespace becomes the effective request namespace before
+		 * collection lookup. A namespace explicitly declared on Request, Response,
+		 * Call, or Runner always takes precedence.
 		 *
 		 * @return namespace, or empty string
 		 */
@@ -437,9 +442,10 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Executor id.
+		 * Selects a named {@link Executor} by method name or {@code "#id"}. Leave empty
+		 * to use the single executor or the executor without an id.
 		 *
-		 * @return executor id
+		 * @return executor selector, or empty string for automatic/default selection
 		 */
 		String executor() default "";
 
@@ -552,15 +558,17 @@ public final class JPostman {
 		/**
 		 * Expected HTTP status code.
 		 *
-		 * @return expected HTTP status code, {@code -1} to use the context default, or
-		 *         {@code 0} to skip status code verification for this response
+		 * @return expected HTTP status code, {@code -1} to use the context default,
+		 *         {@code 0} to pass without status verification, or {@code 1} to mark
+		 *         the completed test skipped
 		 */
 		int verify() default -1;
 
 		/**
-		 * Executor id.
+		 * Selects a named {@link Executor} by method name or {@code "#id"}. Leave empty
+		 * to use the single executor or the executor without an id.
 		 *
-		 * @return executor id
+		 * @return executor selector, or empty string for automatic/default selection
 		 */
 		String executor() default "";
 
@@ -689,9 +697,20 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Executor id.
+		 * Expected HTTP status code. Verification runs after {@link Runtime#call()} or
+		 * {@link Runtime#call(BiConsumer)} completes the request.
 		 *
-		 * @return executor id
+		 * @return expected HTTP status code, {@code -1} to use the context default,
+		 *         {@code 0} to pass without status verification, or {@code 1} to mark
+		 *         the completed test skipped
+		 */
+		int verify() default -1;
+
+		/**
+		 * Selects a named {@link Executor} by method name or {@code "#id"}. Leave empty
+		 * to use the single executor or the executor without an id.
+		 *
+		 * @return executor selector, or empty string for automatic/default selection
 		 */
 		String executor() default "";
 
@@ -815,17 +834,21 @@ public final class JPostman {
 		String[] dependsOn() default {};
 
 		/**
-		 * Expected HTTP status code.
+		 * Expected HTTP status code for every request executed by this runner. Response
+		 * and call dependencies inherit this value only while the runner is active.
+		 * Standalone response and call test methods remain separate executions.
 		 *
-		 * @return expected HTTP status code, {@code -1} to use the context default, or
-		 *         {@code 0} to skip status code verification for this runner
+		 * @return expected HTTP status code, {@code -1} to use the context default,
+		 *         {@code 0} to pass without status verification, or {@code 1} to mark
+		 *         the completed test skipped
 		 */
 		int verify() default -1;
 
 		/**
-		 * Executor id.
+		 * Selects a named {@link Executor} by method name or {@code "#id"}. Leave empty
+		 * to use the single executor or the executor without an id.
 		 *
-		 * @return executor id
+		 * @return executor selector, or empty string for automatic/default selection
 		 */
 		String executor() default "";
 

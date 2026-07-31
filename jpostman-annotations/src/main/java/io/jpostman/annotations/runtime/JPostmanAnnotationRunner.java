@@ -135,6 +135,9 @@ public final class JPostmanAnnotationRunner<C> {
 
 		JPostmanInfo info = info(testMethod.getName(), requestAnnotation, responseAnnotation, callAnnotation,
 				runnerAnnotation);
+		inheritTopLevelLocationFromDependencies(testInstance, requestAnnotation, responseAnnotation, callAnnotation,
+				runnerAnnotation, info);
+		applyDefaultExecutorNamespace(testInstance, info);
 		validateLocalDebugs(requestAnnotation, responseAnnotation, callAnnotation, runnerAnnotation, info);
 		PreparedContext<C> current = prepared.resolve(info.namespace);
 		info = info.context(current.contextAnnotation);
@@ -145,8 +148,11 @@ public final class JPostmanAnnotationRunner<C> {
 		add(report, info);
 		info.method(testMethod.getName());
 		captureDebugContext(current, info);
-		debug(testInstance, info,
-				annotationDebug(requestAnnotation, responseAnnotation, callAnnotation, runnerAnnotation));
+		/*
+		 * Do not emit annotation output during preparation. The record does not yet
+		 * contain the completed request timing/response and would be duplicated by the
+		 * post-execution output.
+		 */
 
 		if (callAnnotation != null) {
 			validateCallSkipEnabled(callAnnotation, info);
@@ -804,9 +810,9 @@ public final class JPostmanAnnotationRunner<C> {
 		framework.setCurrent(latest);
 		runExecutorInterceptors(testInstance, prepared, latest, info);
 		prepared.info(info);
-		debugOutput(testInstance, latest, info, annotation.debug());
 		applyAssertions(testInstance, prepared, latest, info, annotation.asserts(), annotation.debug());
 		verifyResponse(testInstance, latest, info, annotation.verify(), annotation.debug());
+		debugOutput(testInstance, latest, info, annotation.debug());
 		passed(report(testInstance), info);
 	}
 
@@ -908,7 +914,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (requestAnnotation != null) {
 			JPostmanInfo info = new JPostmanInfo(requestAnnotation.tags(), requestAnnotation.executor(), methodName,
 					requestAnnotation.namespace(), folder(requestAnnotation.folder()), requestAnnotation.request())
-					.annotation("@JPostmanRequest").id(requestAnnotation.id());
+					.annotation("@JPostmanRequest").id(requestAnnotation.id()).debug(requestAnnotation.debug());
 			if (!isBlank(requestAnnotation.request())) {
 				info.requestId(requestAnnotation.id());
 			}
@@ -918,18 +924,18 @@ public final class JPostmanAnnotationRunner<C> {
 		if (responseAnnotation != null) {
 			return new JPostmanInfo(responseAnnotation.tags(), responseAnnotation.executor(), methodName,
 					responseAnnotation.namespace(), folder(responseAnnotation.folder()), responseAnnotation.request())
-					.annotation("@JPostmanResponse").id(responseAnnotation.id());
+					.annotation("@JPostmanResponse").id(responseAnnotation.id()).debug(responseAnnotation.debug());
 		}
 
 		if (callAnnotation != null) {
 			return new JPostmanInfo(callAnnotation.tags(), callAnnotation.executor(), methodName,
 					callAnnotation.namespace(), folder(callAnnotation.folder()), callAnnotation.request())
-					.annotation("@JPostmanCall").id(callAnnotation.id());
+					.annotation("@JPostmanCall").id(callAnnotation.id()).debug(callAnnotation.debug());
 		}
 
 		return new JPostmanInfo(runnerAnnotation.tags(), runnerAnnotation.executor(), methodName,
 				runnerAnnotation.namespace(), folder(runnerAnnotation.folder()), "").annotation("@JPostmanRunner")
-				.id(annotationId(runnerAnnotation.id()));
+				.id(annotationId(runnerAnnotation.id())).debug(runnerAnnotation.debug());
 	}
 
 	/**
@@ -1704,6 +1710,10 @@ public final class JPostmanAnnotationRunner<C> {
 			framework.setCurrent(ctx);
 			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
+			// @JPostman.Call is prepared before the test body, but its response exists
+			// only after runtime.call(...) executes. Verify here so the annotation status
+			// check runs against the completed manual-call response.
+			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
 			debugOutput(testInstance, ctx, info, annotation.debug());
 			return ctx;
 		} catch (Exception | Error e) {
@@ -2095,9 +2105,9 @@ public final class JPostmanAnnotationRunner<C> {
 			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
-			debugOutput(testInstance, ctx, info, annotation.debug());
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.debug());
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
+			debugOutput(testInstance, ctx, info, annotation.debug());
 			passed(report, info);
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
@@ -2147,9 +2157,9 @@ public final class JPostmanAnnotationRunner<C> {
 			runExecutorInterceptors(testInstance, resolver, ctx, info);
 			resolver.info(info);
 			add(report, info);
-			debugOutput(testInstance, ctx, info, annotation.debug());
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.debug());
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
+			debugOutput(testInstance, ctx, info, annotation.debug());
 			passed(report, info);
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
@@ -2158,9 +2168,117 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
+	private void inheritTopLevelLocationFromDependencies(Object testInstance, JPostmanRequest requestAnnotation,
+			JPostmanResponse responseAnnotation, JPostmanCall callAnnotation, JPostmanRunner runnerAnnotation,
+			JPostmanInfo info) {
+		if (responseAnnotation != null) {
+			inheritResponseLocationFromDependencies(testInstance, responseAnnotation, info);
+		} else if (callAnnotation != null) {
+			inheritCallLocationFromDependencies(testInstance, callAnnotation, info);
+		} else if (runnerAnnotation != null) {
+			inheritRunnerLocationFromDependencies(testInstance, runnerAnnotation, info);
+		} else if (requestAnnotation != null) {
+			inheritLocationFromDependencies(testInstance, dependencies(requestAnnotation.dependsOn()), info,
+					new LinkedHashSet<>());
+		}
+	}
+
+	/**
+	 * Applies the namespace declared by the selected/default void executor before
+	 * collection lookup. A method-level namespace always wins. This preserves the
+	 * original executor design: a single interceptor, or the unique interceptor
+	 * without an id, is the default and does not require an executor attribute.
+	 */
+	private void applyDefaultExecutorNamespace(Object testInstance, JPostmanInfo info) {
+		if (testInstance == null || info == null || !isBlank(info.namespace)) {
+			return;
+		}
+
+		Method selected = defaultExecutorInterceptor(testInstance.getClass(), info.executor, info);
+		if (selected == null) {
+			return;
+		}
+
+		JPostmanExecutor annotation = JPostmanAnnotations.executor(selected);
+		String namespace = annotation == null ? "" : value(annotation.namespace()).trim();
+		if (!namespace.isBlank()) {
+			info.namespace = namespace;
+		}
+	}
+
+	private Method defaultExecutorInterceptor(Class<?> type, String requestedName, JPostmanInfo info) {
+		String requested = value(requestedName).trim();
+		if (!requested.isBlank()) {
+			return findExecutorInterceptorIgnoringNamespace(type, requested, info);
+		}
+
+		List<Method> interceptors = executorInterceptorMethods(type);
+		if (interceptors.size() == 1) {
+			return interceptors.get(0);
+		}
+
+		List<Method> defaults = new ArrayList<>();
+		for (Method method : interceptors) {
+			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+			String id = annotation == null ? "" : annotationId(annotation.id());
+			if (id.isBlank() || "default".equals(id)) {
+				defaults.add(method);
+			}
+		}
+		return defaults.size() == 1 ? defaults.get(0) : null;
+	}
+
+	private List<Method> executorInterceptorMethods(Class<?> type) {
+		List<Method> methods = new ArrayList<>();
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				if (JPostmanAnnotations.executor(method) == null || !isExecutorInterceptor(method)) {
+					continue;
+				}
+				method.setAccessible(true);
+				methods.add(method);
+			}
+			current = current.getSuperclass();
+		}
+		return methods;
+	}
+
+	private Method findExecutorInterceptorIgnoringNamespace(Class<?> type, String requestedName, JPostmanInfo info) {
+		String requested = value(requestedName).trim();
+		if (requested.isBlank()) {
+			return null;
+		}
+
+		boolean byId = isIdReference(requested);
+		String lookup = byId ? idReferenceValue(requested) : requested;
+		if (lookup.isBlank()) {
+			throw JPostmanErrors.usage(info, "JPostman executor id is empty: " + requestedName,
+					"Use executor = \"methodName\" for Java method names, or executor = \"#id\" for annotation ids.");
+		}
+
+		List<Method> matches = new ArrayList<>();
+		for (Method method : executorInterceptorMethods(type)) {
+			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+			String id = annotation == null ? "" : annotationId(annotation.id());
+			boolean matchesReference = byId ? lookup.equals(id) : lookup.equals(method.getName());
+			if (matchesReference) {
+				matches.add(method);
+			}
+		}
+
+		if (matches.size() == 1) {
+			return matches.get(0);
+		}
+		if (matches.size() > 1) {
+			throw JPostmanErrors.usage(info, "Multiple @JPostmanExecutor interceptors match: " + requestedName);
+		}
+		return null;
+	}
+
 	private void runExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx, JPostmanInfo info)
 			throws Exception {
-		for (Method method : executorInterceptors(testInstance.getClass(), info.namespace)) {
+		for (Method method : executorInterceptors(testInstance.getClass(), info.namespace, info.executor, info)) {
 			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
 			validateLocalDebug(annotation.debug(), info);
 			JPostmanInfo interceptorInfo = info
@@ -2174,8 +2292,11 @@ public final class JPostmanAnnotationRunner<C> {
 		resolver.info(info);
 	}
 
-	private List<Method> executorInterceptors(Class<?> type, String namespace) {
-		List<Method> methods = new ArrayList<>();
+	private List<Method> executorInterceptors(Class<?> type, String namespace, String requestedName,
+			JPostmanInfo info) {
+		List<Method> exactNamespace = new ArrayList<>();
+		List<Method> global = new ArrayList<>();
+		String activeNamespace = value(namespace).trim();
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
@@ -2183,16 +2304,113 @@ public final class JPostmanAnnotationRunner<C> {
 				if (annotation == null || !isExecutorInterceptor(method)) {
 					continue;
 				}
-				String configuredNamespace = value(annotation.namespace()).trim();
-				if (!configuredNamespace.isBlank() && !configuredNamespace.equals(value(namespace))) {
-					continue;
-				}
 				method.setAccessible(true);
-				methods.add(method);
+				String configuredNamespace = value(annotation.namespace()).trim();
+				if (configuredNamespace.isBlank()) {
+					global.add(method);
+				} else if (configuredNamespace.equals(activeNamespace)) {
+					exactNamespace.add(method);
+				}
 			}
 			current = current.getSuperclass();
 		}
-		return methods;
+
+		String requested = value(requestedName).trim();
+		if (!requested.isBlank()) {
+			Method selected = findExecutorInterceptor(type, requested, activeNamespace, info);
+			if (selected != null) {
+				return List.of(selected);
+			}
+		}
+
+		List<Method> candidates = exactNamespace.isEmpty() ? global : exactNamespace;
+		if (candidates.isEmpty()) {
+			return List.of();
+		}
+		if (candidates.size() == 1) {
+			return List.of(candidates.get(0));
+		}
+
+		List<Method> defaults = new ArrayList<>();
+		for (Method method : candidates) {
+			JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+			String id = annotation == null ? "" : annotationId(annotation.id());
+			if (id.isBlank() || "default".equals(id) || (id.isBlank() && "defaultExecutor".equals(method.getName()))) {
+				defaults.add(method);
+			}
+		}
+		if (defaults.size() == 1) {
+			return List.of(defaults.get(0));
+		}
+		if (defaults.size() > 1) {
+			throw JPostmanErrors.usage(info, "Multiple default @JPostmanExecutor interceptors found.",
+					"Keep one interceptor without an id in the active namespace, and give all other interceptors unique ids.");
+		}
+
+		throw JPostmanErrors.usage(info, "Multiple named @JPostmanExecutor interceptors found.",
+				"Select one with executor = \"#id\", or remove the id from the interceptor that should be the default.");
+	}
+
+	private boolean isRequestedExecutorInterceptor(Class<?> type, String requestedName, String namespace,
+			JPostmanInfo info) {
+		String requested = value(requestedName).trim();
+		if (requested.isBlank()) {
+			return false;
+		}
+		return findExecutorInterceptor(type, requested, value(namespace).trim(), info) != null;
+	}
+
+	private Method findExecutorInterceptor(Class<?> type, String requestedName, String namespace, JPostmanInfo info) {
+		String requested = value(requestedName).trim();
+		if (requested.isBlank()) {
+			return null;
+		}
+		boolean byId = isIdReference(requested);
+		String lookup = byId ? idReferenceValue(requested) : requested;
+		if (lookup.isBlank()) {
+			throw JPostmanErrors.usage(info, "JPostman executor id is empty: " + requestedName,
+					"Use executor = \"methodName\" for Java method names, or executor = \"#id\" for annotation ids.");
+		}
+
+		List<Method> matches = new ArrayList<>();
+		List<Method> namespaceMismatches = new ArrayList<>();
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
+				if (annotation == null || !isExecutorInterceptor(method)) {
+					continue;
+				}
+				String id = annotationId(annotation.id());
+				boolean matchesReference = byId ? lookup.equals(id) : lookup.equals(method.getName());
+				if (!matchesReference) {
+					continue;
+				}
+				String configuredNamespace = value(annotation.namespace()).trim();
+				if (!configuredNamespace.isBlank() && !configuredNamespace.equals(namespace)) {
+					namespaceMismatches.add(method);
+					continue;
+				}
+				method.setAccessible(true);
+				matches.add(method);
+			}
+			current = current.getSuperclass();
+		}
+
+		if (matches.size() == 1) {
+			return matches.get(0);
+		}
+		if (matches.size() > 1) {
+			throw JPostmanErrors.usage(info, "Multiple @JPostmanExecutor interceptors match: " + requestedName);
+		}
+		if (!namespaceMismatches.isEmpty()) {
+			JPostmanExecutor annotation = JPostmanAnnotations.executor(namespaceMismatches.get(0));
+			throw JPostmanErrors.usage(info,
+					"JPostman executor interceptor does not apply to this namespace: " + requestedName,
+					"Interceptor namespace: " + value(annotation.namespace()).trim(),
+					"Request namespace: " + (namespace.isBlank() ? "<default>" : namespace));
+		}
+		return null;
 	}
 
 	private void rejectVerifyAndAsserts(JPostmanResponse annotation, JPostmanInfo info) {
@@ -2376,27 +2594,76 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void verifyResponse(Object testInstance, C ctx, JPostmanInfo info, int annotationVerify,
 			String annotationDebug) {
-		if (skipRunnerStatusVerification()) {
+		int statusCode = statusCode(testInstance, effectiveVerify(annotationVerify), info);
+		if (statusCode == 1) {
+			/*
+			 * verify=1 has the same request/status behavior as verify=0. The request
+			 * completes, diagnostics and user assertions remain available, and the
+			 * framework converts the final successful test result to skipped only after the
+			 * user test body has completed.
+			 */
+			JPostmanVerificationOutcome.requestSkip(info);
 			return;
 		}
-		int statusCode = statusCode(testInstance, annotationVerify, info);
-		if (statusCode >= 1) {
+		if (statusCode >= 100) {
 			framework.verify(ctx, statusCode, false, failureDiagnostics(testInstance, annotationDebug, info), info,
 					failureDiagnosticLog(testInstance, ctx, info, annotationDebug));
 		}
 	}
 
+	/**
+	 * Resolves the verification value for a concrete HTTP request.
+	 *
+	 * <p>
+	 * A response or call that is executed while a runner is active may inherit that
+	 * runner's concrete verification value when its own value is {@code -1}.
+	 * Standalone {@code @JPostman.Response} and {@code @JPostman.Call} test methods
+	 * are separate executions and therefore keep {@code -1}, which resolves through
+	 * {@code @JPostman.Context.verifyStatusCode}.
+	 * </p>
+	 */
+	private int effectiveVerify(int annotationVerify) {
+		if (annotationVerify != -1) {
+			return annotationVerify;
+		}
+
+		Integer activeRunnerVerify = activeRunnerVerify();
+		return activeRunnerVerify == null ? -1 : activeRunnerVerify.intValue();
+	}
+
+	/**
+	 * Returns the nearest non-default active runner verification value. A nested
+	 * runner that keeps {@code -1} continues to inherit an outer runner's concrete
+	 * value. No annotation lookup is performed when a runner is not currently
+	 * executing.
+	 */
+	private Integer activeRunnerVerify() {
+		for (Integer verify : runnerVerifyScopes) {
+			if (verify != null && verify.intValue() != -1) {
+				return verify;
+			}
+		}
+		return null;
+	}
+
 	private int statusCode(Object testInstance, int annotationVerify, JPostmanInfo info) {
-		int statusCode = JPostmanRuntimeOptions.from(testInstance).statusCode(annotationVerify);
-		if ((statusCode > 0 && statusCode < 100) || statusCode > 599) {
+		if (annotationVerify < -1) {
 			throw JPostmanErrors.usage(info,
-					"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599.");
+					"verify must be -1 to use the context default, 0 to pass without status verification, "
+							+ "1 to mark the completed test skipped, or between 100 and 599.");
+		}
+		int statusCode = JPostmanRuntimeOptions.from(testInstance).statusCode(annotationVerify);
+		if ((statusCode > 1 && statusCode < 100) || statusCode > 599 || statusCode < -1) {
+			throw JPostmanErrors.usage(info,
+					"verify status code must be 0 to pass without status verification, "
+							+ "1 to mark the completed test skipped, -1 to use the context default, "
+							+ "or between 100 and 599.");
 		}
 		return statusCode;
 	}
 
 	private boolean shouldVerify(int verify) {
-		return verify > 0;
+		return verify >= 100;
 	}
 
 	private void beginRunnerVerifyScope(int verify) {
@@ -2407,10 +2674,6 @@ public final class JPostmanAnnotationRunner<C> {
 		if (!runnerVerifyScopes.isEmpty()) {
 			runnerVerifyScopes.pop();
 		}
-	}
-
-	private boolean skipRunnerStatusVerification() {
-		return runnerVerifyScopes.contains(Integer.valueOf(0));
 	}
 
 	private String cacheKey(Method method, String rawCache, String rawId) {
@@ -2755,10 +3018,13 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanRunner runnerAnnotation = JPostmanAnnotations.runner(testMethod);
 		if (runnerAnnotation != null && report.hasRunnerRequest(testMethod.getName())) {
 			/*
-			 * Per-request runner results are already final. The framework-level result for
-			 * the single Java test method must not convert an earlier passed request into a
-			 * failure or create a synthetic parent runner result.
+			 * Per-request runner results are normally final. verify=1 is the one deferred
+			 * successful outcome that must convert every completed runner request from pass
+			 * to skip after the framework test body has finished.
 			 */
+			if (skip && JPostmanVerificationOutcome.requested()) {
+				report.skipRunnerRequests(testMethod.getName());
+			}
 			return;
 		}
 		JPostmanInfo info = report.execution(testMethod.getName());
@@ -2799,6 +3065,7 @@ public final class JPostmanAnnotationRunner<C> {
 		} else if (runnerAnnotation != null) {
 			inheritRunnerLocationFromDependencies(testInstance, runnerAnnotation, info);
 		}
+		applyDefaultExecutorNamespace(testInstance, info);
 		info.method(testMethod.getName());
 		return info;
 	}
@@ -2859,13 +3126,14 @@ public final class JPostmanAnnotationRunner<C> {
 			return;
 		}
 		try {
-			if (report.failureRequest()) {
+			boolean localErrorOutput = report.localErrorOutput(info);
+			if (report.failureRequest() || localErrorOutput) {
 				String request = value(framework.diagnosticLog(ctx, true, false)).trim();
 				if (!request.isBlank()) {
 					info.requestLog(request);
 				}
 			}
-			if (report.failureResponse()) {
+			if (report.failureResponse() || localErrorOutput) {
 				String response = value(framework.diagnosticLog(ctx, false, true)).trim();
 				if (!response.isBlank()) {
 					info.responseLog(response);
@@ -3197,10 +3465,10 @@ public final class JPostmanAnnotationRunner<C> {
 			if (needBlank) {
 				message.append(JPostmanErrors.ENDL);
 			}
-			message.append("Only one default @JPostmanExecutor is allowed.").append(JPostmanErrors.ENDL).append(
-					"Default executors are @JPostmanExecutor(id = \"default\"), a method named defaultExecutor, or an unnamed @JPostmanExecutor.")
+			message.append("Only one default @JPostmanExecutor provider is allowed.").append(JPostmanErrors.ENDL)
+					.append("A single provider is selected automatically. With multiple providers, use one unnamed provider as the default or give every provider a unique id.")
 					.append(JPostmanErrors.ENDL)
-					.append("Keep one default executor, and give all other executors unique ids.")
+					.append("Keep one default provider, and select named providers with executor = \"#id\".")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Default executor methods:")
 					.append(JPostmanErrors.ENDL);
 			for (Method method : defaults) {
@@ -3344,15 +3612,18 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private ExecutorCall<C> executorCall(Object testInstance, C ctx, JPostmanInfo info) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
-		if (isBlank(info.executor) && options.hasDefaultExecutor()
-				&& !hasDefaultExecutorMethod(testInstance.getClass())) {
+		Class<?> type = testInstance.getClass();
+		String requestedExecutor = value(info.executor).trim();
+		String requestedProvider = isRequestedExecutorInterceptor(type, requestedExecutor, info.namespace, info) ? ""
+				: requestedExecutor;
+		if (isBlank(requestedProvider) && options.hasDefaultExecutor() && !hasExecutorProviderMethods(type)) {
 			String name = options.executorClass().getSimpleName();
 			JPostmanInfo executorInfo = info.child(name, info.executor, info.namespace, info.folder, info.request)
 					.annotation("@JPostmanContext executor").debug(info.debug);
 			return new ExecutorCall<>(name, executorInfo, options.executorClass(), options.session());
 		}
 
-		Method method = findExecutor(testInstance.getClass(), info.executor, info);
+		Method method = findExecutor(type, requestedProvider, info);
 		JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
 		validateLocalDebug(annotation.debug(), info);
 		JPostmanInfo executorInfo = info
@@ -3361,17 +3632,11 @@ public final class JPostmanAnnotationRunner<C> {
 		return new ExecutorCall<>(method, annotation, executorInfo);
 	}
 
-	private boolean hasDefaultExecutorMethod(Class<?> type) {
+	private boolean hasExecutorProviderMethods(Class<?> type) {
 		Class<?> current = type;
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
-				JPostmanExecutor annotation = JPostmanAnnotations.executor(method);
-				if (annotation == null) {
-					continue;
-				}
-
-				String id = annotationId(annotation.id());
-				if (isExecutorProvider(method) && (id.isBlank() || "default".equals(id))) {
+				if (JPostmanAnnotations.executor(method) != null && isExecutorProvider(method)) {
 					return true;
 				}
 			}
@@ -3383,6 +3648,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private Method findExecutor(Class<?> type, String requestedName, JPostmanInfo info) {
 		String requested = value(requestedName).trim();
 		List<Method> requestedMethodMatches = new ArrayList<>();
+		List<Method> providers = new ArrayList<>();
 		List<Method> defaultIdMatches = new ArrayList<>();
 		List<Method> namedDefault = new ArrayList<>();
 		List<Method> unnamed = new ArrayList<>();
@@ -3423,6 +3689,7 @@ public final class JPostmanAnnotationRunner<C> {
 					continue;
 				}
 				method.setAccessible(true);
+				providers.add(method);
 
 				String id = annotationId(annotation.id());
 
@@ -3466,6 +3733,9 @@ public final class JPostmanAnnotationRunner<C> {
 					"Use executor = \"methodName\" for Java method names, or executor = \"#id\" for annotation ids.");
 		}
 
+		if (providers.size() == 1) {
+			return providers.get(0);
+		}
 		if (defaultIdMatches.size() == 1) {
 			return defaultIdMatches.get(0);
 		}
@@ -3487,9 +3757,13 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.usage(info, "Multiple default @JPostmanExecutor methods found.",
 					"Add a unique id to non-default executors and use executor = \"#id\" to select one.");
 		}
+		if (!providers.isEmpty()) {
+			throw JPostmanErrors.usage(info, "Multiple named @JPostmanExecutor providers found.",
+					"Select one with executor = \"#id\", or remove the id from the provider that should be the default.");
+		}
 
 		throw framework.skipException(info, "No default @JPostmanExecutor was configured.",
-				"Add one default executor, for example @JPostmanExecutor, @JPostmanExecutor(id = \"default\"), or specify executor = \"#id\".");
+				"Add one executor provider, configure @JPostman.Context(executor = ...), or specify executor = \"#id\".");
 	}
 
 	private final class ExecutorCall<T> {

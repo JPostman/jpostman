@@ -6,18 +6,22 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
-import io.jpostman.annotations.runtime.JPostmanInfo;
-
 /**
- * Marks a method that provides an {@code ApiExecutor} for annotation-based
- * request execution.
+ * Marks a method as a JPostman request executor provider or post-response
+ * interceptor.
  *
  * <p>
- * Executor methods are used by {@link JPostmanResponse#executor()} and
- * {@link JPostmanRunner#executor()} through a unique executor {@link #id()}.
- * They can also declare dependencies that must run before the executor is
- * created. Supported method signatures are: context only, or context and
- * {@link JPostmanInfo}.
+ * Methods returning {@code ApiExecutor} provide request execution. Methods
+ * returning {@code void} run after a response is received. A single method of a
+ * role is selected automatically, even when it has an id. When multiple methods
+ * of the same role are available, the method without an id is the default. Use
+ * the annotation {@code executor} attribute only to select a named method, for
+ * example {@code executor = "#audit"}.
+ * </p>
+ *
+ * <p>
+ * For void interceptors, an exact namespace match takes precedence over a
+ * global interceptor whose namespace is empty.
  * </p>
  */
 @Target(METHOD)
@@ -25,11 +29,12 @@ import io.jpostman.annotations.runtime.JPostmanInfo;
 public @interface JPostmanExecutor {
 
 	/**
-	 * Unique executor id referenced by {@link JPostmanResponse#executor()} and
-	 * {@link JPostmanRunner#executor()}. Empty means this executor may be used as a
-	 * default executor when no explicit executor id is requested.
+	 * Optional executor id. A single executor is selected automatically even when
+	 * this id is set. When multiple executors of the same role are available, an
+	 * empty id marks the default and a non-empty id can be selected with
+	 * {@code executor = "#id"}.
 	 *
-	 * @return unique executor id, or empty string for a default executor candidate
+	 * @return unique executor id, or empty string for the default executor
 	 */
 	String id() default "";
 
@@ -43,9 +48,12 @@ public @interface JPostmanExecutor {
 	String[] dependsOn() default {};
 
 	/**
-	 * Namespace where this executor interceptor applies. Empty means all namespaces
-	 * for void interceptors and the default executor provider for
-	 * ApiExecutor-returning methods.
+	 * Namespace where this void executor interceptor applies. Empty is the global
+	 * fallback. An interceptor whose namespace exactly matches the active request
+	 * namespace takes precedence over a global interceptor. When the
+	 * selected/default interceptor is the only source of a namespace, its namespace
+	 * becomes the effective request namespace before collection lookup. An
+	 * explicitly declared request annotation namespace always takes precedence.
 	 *
 	 * @return namespace, or empty string
 	 */

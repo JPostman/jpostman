@@ -87,6 +87,7 @@ public final class JPostmanJUnitExtension
 		Object testInstance = extensionContext.getRequiredTestInstance();
 		Method testMethod = invocationContext.getExecutable();
 
+		JPostmanAnnotationEngine.beginVerificationOutcome();
 		try {
 			setup(testInstance, extensionContext);
 			if (JPostmanAnnotations.runner(testMethod) != null) {
@@ -99,6 +100,9 @@ public final class JPostmanJUnitExtension
 			} else {
 				JPostmanAnnotationEngine.runJUnit(testInstance, testMethod);
 				invokeTestBodyAndVerifyRequest(invocation, testInstance, testMethod);
+			}
+			if (JPostmanAnnotationEngine.verificationSkipRequested()) {
+				throw new TestAbortedException(JPostmanAnnotationEngine.verificationSkipMessage(testMethod));
 			}
 			printPassed(extensionContext, testMethod);
 		} catch (Throwable error) {
@@ -115,6 +119,7 @@ public final class JPostmanJUnitExtension
 			}
 			throw cleaned;
 		} finally {
+			JPostmanAnnotationEngine.clearVerificationOutcome();
 			JUnitContext.clearCurrent();
 		}
 	}

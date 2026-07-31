@@ -104,21 +104,24 @@ public @interface JPostmanResponse {
 	 *
 	 * <p>
 	 * The default value {@code -1} uses {@link JPostmanContext#verifyStatusCode()}.
-	 * Use {@code 0} to explicitly skip status-code verification for this response,
-	 * even when the context has a default expected status code. Set a concrete
+	 * Use {@code 0} to explicitly skip status-code verification for this response
+	 * and keep a successful result. Use {@code 1} to perform the same execution but
+	 * mark the otherwise successful completed test as skipped. Set a concrete
 	 * value, such as {@code 200} or {@code 201}, when the response should be
 	 * verified by the annotation runtime.
 	 * </p>
 	 *
-	 * @return expected HTTP status code, {@code -1} to use the context default, or
-	 *         {@code 0} to skip status-code verification for this response
+	 * @return expected HTTP status code, {@code -1} to use the context default,
+	 *         {@code 0} to pass without status verification, or {@code 1} to mark
+	 *         the completed test skipped
 	 */
 	int verify() default -1;
 
 	/**
-	 * @JPostmanExecutor id to use. Empty means default execution.
+	 * Selects a named {@link JPostmanExecutor} by method name or {@code "#id"}.
+	 * Leave empty to use the single executor or the executor without an id.
 	 *
-	 * @return executor id
+	 * @return executor selector, or empty string for automatic/default selection
 	 */
 	String executor() default "";
 

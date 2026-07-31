@@ -32,7 +32,7 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 
 		assertTrue(error.getMessage().contains("Status code mismatch"), "Actual message: " + error.getMessage());
 		assertEquals(1, InterceptBeforeVerifyFixture.UnauthorizedExecutor.applyCount);
-		assertEquals(1, fixture.globalInterceptCalls);
+		assertEquals(0, fixture.globalInterceptCalls);
 		assertEquals(1, fixture.interceptCalls);
 		assertEquals("unauthorized", fixture.interceptedMessage);
 		assertEquals("test", fixture.interceptedNamespace);
@@ -65,7 +65,7 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 		AssertionError defaultError = assertThrows(AssertionError.class, () -> runTestNg(invalidDefault, "profile"));
 
 		assertTrue(defaultError.getMessage().contains(
-				"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599"),
+				"verify status code must be 0 to pass without status verification, 1 to mark the completed test skipped, -1 to use the context default, or between 100 and 599"),
 				"Actual message: " + defaultError.getMessage());
 
 		InvalidResponseVerifyFixture invalidResponse = new InvalidResponseVerifyFixture();
@@ -74,7 +74,7 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 		AssertionError responseError = assertThrows(AssertionError.class, () -> runTestNg(invalidResponse, "profile"));
 
 		assertTrue(responseError.getMessage().contains(
-				"verify status code must be 0 to skip verification, -1 to use the context default, or between 100 and 599"),
+				"verify status code must be 0 to pass without status verification, 1 to mark the completed test skipped, -1 to use the context default, or between 100 and 599"),
 				"Actual message: " + responseError.getMessage());
 	}
 
@@ -91,9 +91,236 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 		assertEquals(1, runner.defaultExecutorCalls);
 	}
 
+	@Test
+	public void singleNamedExecutorProviderIsUsedAsDefault() throws Exception {
+		SingleNamedProviderFixture fixture = new SingleNamedProviderFixture();
+		SingleNamedProviderFixture.FallbackExecutor.applyCalls = 0;
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.providerCalls);
+		assertEquals(0, SingleNamedProviderFixture.FallbackExecutor.applyCalls);
+	}
+
+	@Test
+	public void multipleNamedExecutorProvidersRequireSelection() throws Exception {
+		MultipleNamedProvidersFixture fixture = new MultipleNamedProvidersFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		AssertionError error = assertThrows(AssertionError.class, () -> runTestNg(fixture, "profile"));
+
+		assertTrue(error.getMessage().contains("Multiple named @JPostmanExecutor providers found"),
+				"Actual message: " + error.getMessage());
+	}
+
+	@Test
+	public void singleNamedVoidExecutorIsUsedAsDefaultInterceptor() throws Exception {
+		SingleNamedInterceptorFixture fixture = new SingleNamedInterceptorFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.providerCalls);
+		assertEquals(1, fixture.interceptorCalls);
+	}
+
+	@Test
+	public void unnamedVoidExecutorIsDefaultWhenMultipleInterceptorsExist() throws Exception {
+		UnnamedInterceptorDefaultFixture fixture = new UnnamedInterceptorDefaultFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.defaultCalls);
+		assertEquals(0, fixture.namedCalls);
+	}
+
+	@Test
+	public void explicitExecutorIdSelectsNamedVoidInterceptor() throws Exception {
+		ExplicitInterceptorFixture fixture = new ExplicitInterceptorFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.providerCalls);
+		assertEquals(1, fixture.auditCalls);
+		assertEquals(0, fixture.otherCalls);
+	}
+
+	@Test
+	public void multipleNamedVoidInterceptorsRequireExecutorSelection() throws Exception {
+		MultipleNamedInterceptorsFixture fixture = new MultipleNamedInterceptorsFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		AssertionError error = assertThrows(AssertionError.class, () -> runTestNg(fixture, "profile"));
+
+		assertTrue(error.getMessage().contains("Multiple named @JPostmanExecutor interceptors found"),
+				"Actual message: " + error.getMessage());
+	}
+
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
+	}
+
+	@JPostman.TestNG
+	private static final class SingleNamedProviderFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200, executorClass = FallbackExecutor.class)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int providerCalls;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor(id = "named")
+		public ApiExecutor namedProvider() {
+			providerCalls++;
+			return okResponseExecutor(200, "{\"message\":\"ok\"}");
+		}
+
+		public static final class FallbackExecutor {
+			private static int applyCalls;
+
+			@SuppressWarnings("unused")
+			public static ApiExecutor apply(Object request) {
+				applyCalls++;
+				return okResponseExecutor(200, "{\"message\":\"fallback\"}");
+			}
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class MultipleNamedProvidersFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor(id = "first")
+		public ApiExecutor first() {
+			return okResponseExecutor(200, "{\"message\":\"first\"}");
+		}
+
+		@JPostman.Executor(id = "second")
+		public ApiExecutor second() {
+			return okResponseExecutor(200, "{\"message\":\"second\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class SingleNamedInterceptorFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int providerCalls;
+		private int interceptorCalls;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			providerCalls++;
+			return okResponseExecutor(200, "{\"message\":\"ok\"}");
+		}
+
+		@JPostman.Executor(id = "audit")
+		public void audit() {
+			interceptorCalls++;
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class UnnamedInterceptorDefaultFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int defaultCalls;
+		private int namedCalls;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return okResponseExecutor(200, "{\"message\":\"ok\"}");
+		}
+
+		@JPostman.Executor
+		public void defaultInterceptor() {
+			defaultCalls++;
+		}
+
+		@JPostman.Executor(id = "named")
+		public void namedInterceptor() {
+			namedCalls++;
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ExplicitInterceptorFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int providerCalls;
+		private int auditCalls;
+		private int otherCalls;
+
+		@JPostman.Response(request = "Get current auth user", executor = "#audit")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			providerCalls++;
+			return okResponseExecutor(200, "{\"message\":\"ok\"}");
+		}
+
+		@JPostman.Executor(id = "audit")
+		public void audit() {
+			auditCalls++;
+		}
+
+		@JPostman.Executor(id = "other")
+		public void other() {
+			otherCalls++;
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class MultipleNamedInterceptorsFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		@JPostman.Response(request = "Get current auth user")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return okResponseExecutor(200, "{\"message\":\"ok\"}");
+		}
+
+		@JPostman.Executor(id = "first")
+		public void first() {
+		}
+
+		@JPostman.Executor(id = "second")
+		public void second() {
+		}
 	}
 
 	@JPostman.TestNG

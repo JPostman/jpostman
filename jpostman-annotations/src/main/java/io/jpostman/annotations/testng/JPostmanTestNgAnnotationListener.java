@@ -200,6 +200,7 @@ public final class JPostmanTestNgAnnotationListener
 		rememberTestResult(testInstance, testMethod, testResult);
 		boolean runnerMethod = JPostmanAnnotations.runner(testMethod) != null;
 		boolean callMethod = JPostmanAnnotations.call(testMethod) != null;
+		JPostmanAnnotationEngine.beginVerificationOutcome();
 		try {
 			if (runnerMethod) {
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod,
@@ -220,6 +221,9 @@ public final class JPostmanTestNgAnnotationListener
 				if (callMethod) {
 					cleanCallMethodFailure(testInstance, testMethod, testResult);
 				}
+			}
+			if (JPostmanAnnotationEngine.verificationSkipRequested()) {
+				throw new SkipException(JPostmanAnnotationEngine.verificationSkipMessage(testMethod));
 			}
 		} catch (TestBodyFailureException e) {
 			Throwable cause = e.getCause();
@@ -257,6 +261,7 @@ public final class JPostmanTestNgAnnotationListener
 			testResult.setThrowable(failure);
 			testResult.setStatus(ITestResult.FAILURE);
 		} finally {
+			JPostmanAnnotationEngine.clearVerificationOutcome();
 			TestNgContext.clearCurrent();
 		}
 	}

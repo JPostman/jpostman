@@ -90,6 +90,24 @@ final class JPostmanRuntimeOptions {
 			return result == null ? NONE : result;
 		}
 
+		static void validateContext(String... values) {
+			if (values != null) {
+				for (String value : values) {
+					if (value == null || value.isBlank()) {
+						continue;
+					}
+					for (String part : value.split(",")) {
+						if (ERROR.name().equalsIgnoreCase(part.trim())) {
+							throw new IllegalArgumentException(
+									"Unsupported @JPostman.Context debug value: error. Supported values: none, request, response, info, all.");
+						}
+					}
+				}
+			}
+			from(values);
+			DebugOutput.from(values);
+		}
+
 		static void validateLocal(String value) {
 			from(value);
 			DebugOutput.from(value);
@@ -190,6 +208,7 @@ final class JPostmanRuntimeOptions {
 			throw new IllegalStateException("Unable to load JPostman runtime options from " + annotation.config(), e);
 		}
 
+		DebugMode.validateContext(debug);
 		return new JPostmanRuntimeOptions(DebugMode.from(debug), DebugOutput.from(debug), defaultStatusCode,
 				executorClass, session);
 	}
@@ -352,7 +371,13 @@ final class JPostmanRuntimeOptions {
 
 	EnumSet<DebugOutput> contextDebugOutput(JPostmanInfo info) {
 		String local = info == null ? "" : info.debug;
-		return local == null || local.isBlank() ? EnumSet.copyOf(contextOutput) : DebugOutput.from(local);
+		/*
+		 * Completed execution records retain the annotation's literal debug value.
+		 * "debug" is the inheritance marker, not a concrete output selection. Treat it
+		 * exactly like an omitted local value so Context output continues to propagate
+		 * for verify=0, verify=1, and normal status verification.
+		 */
+		return inheritsContextDebug(local) ? EnumSet.copyOf(contextOutput) : DebugOutput.from(local);
 	}
 
 	private static boolean inheritsContextDebug(String localDebug) {

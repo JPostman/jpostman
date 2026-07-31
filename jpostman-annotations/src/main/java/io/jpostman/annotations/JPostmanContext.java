@@ -107,13 +107,15 @@ public @interface JPostmanContext {
 	 * </p>
 	 *
 	 * <p>
-	 * Use {@code 0} to disable default status-code verification. Values from
-	 * {@code 1} to {@code 99} are invalid because the lowest standard HTTP status
-	 * code is {@code 100}; values greater than {@code 599} are also invalid.
+	 * Use {@code 0} to disable default status-code verification and keep a
+	 * successful test result. Use {@code 1} to disable status-code verification and
+	 * mark an otherwise successful completed test as skipped. Values from {@code 2}
+	 * to {@code 99} are invalid because the lowest standard HTTP status code is
+	 * {@code 100}; values greater than {@code 599} are also invalid.
 	 * </p>
 	 *
-	 * @return default expected HTTP status code, or {@code 0} to skip status code
-	 *         verification by default
+	 * @return default expected HTTP status code, {@code 0} to pass without status
+	 *         verification, or {@code 1} to mark a completed test skipped
 	 */
 	int verifyStatusCode() default 200;
 
@@ -160,23 +162,21 @@ public @interface JPostmanContext {
 	boolean skipAll() default false;
 
 	/**
-	 * Controls automatic JPostman debug and failure output.
+	 * Controls automatic JPostman debug output.
 	 *
 	 * <ul>
 	 * <li>{@code none} - disable automatic output and keep the minimum failure
 	 * stack.</li>
-	 * <li>{@code error} - include the full failure trace.</li>
 	 * <li>{@code request} - include the prepared request.</li>
 	 * <li>{@code response} - include the received response.</li>
 	 * <li>{@code info} - include runtime annotation information.</li>
 	 * <li>{@code all} - include request, response, and info.</li>
 	 * </ul>
 	 *
-	 * {@code error} may be combined with request, response, info, or all. Request,
-	 * response, and info may be combined. {@code none} must be used alone;
-	 * {@code all} may only be combined with {@code error}.
+	 * Request, response, and info may be combined. {@code none} and {@code all}
+	 * must each be used alone.
 	 *
-	 * @return debug output and failure-trace settings
+	 * @return automatic debug output settings
 	 */
 	String[] debug() default { "none" };
 }

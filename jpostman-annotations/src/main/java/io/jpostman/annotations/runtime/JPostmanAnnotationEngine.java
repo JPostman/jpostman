@@ -226,6 +226,29 @@ public final class JPostmanAnnotationEngine {
 		JPostmanAssertionCleanup.clear();
 	}
 
+	/** Starts a fresh verification outcome for the current framework test. */
+	public static void beginVerificationOutcome() {
+		JPostmanVerificationOutcome.clear();
+	}
+
+	/**
+	 * Returns {@code true} when a completed request used {@code verify = 1} and the
+	 * otherwise successful framework test must be reported as skipped.
+	 */
+	public static boolean verificationSkipRequested() {
+		return JPostmanVerificationOutcome.requested();
+	}
+
+	/** Returns the framework skip message for a {@code verify = 1} outcome. */
+	public static String verificationSkipMessage(Method testMethod) {
+		return JPostmanVerificationOutcome.message(testMethod);
+	}
+
+	/** Clears the verification outcome after the framework finalizes the test. */
+	public static void clearVerificationOutcome() {
+		JPostmanVerificationOutcome.clear();
+	}
+
 	/**
 	 * Verifies and clears explicit context-created soft assertion facades recorded
 	 * while the current test body continued executing.
@@ -388,20 +411,14 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
-	 * Returns {@code true} when report configuration owns full failure-trace
-	 * output. Framework bridges use this to avoid printing the same error
-	 * immediately and again after the JPostman report summary.
+	 * ReportContext no longer provides a full-error-trace option. This
+	 * compatibility method therefore always returns {@code false}; use method-level
+	 * {@code debug = "error"} for deferred error output.
 	 *
 	 * @param testInstance current test instance
-	 * @return {@code true} when {@code @JPostman.ReportContext(fail = "error")} is
-	 *         active
+	 * @return always {@code false}
 	 */
 	public static boolean defersFailureTrace(Object testInstance) {
-		for (JPostmanReport report : reports(testInstance)) {
-			if (report.fullErrorTrace()) {
-				return true;
-			}
-		}
 		return false;
 	}
 
@@ -507,8 +524,7 @@ public final class JPostmanAnnotationEngine {
 	public static AssertionError cleanFailure(Object testInstance, Method testMethod, Throwable error) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(error) && !JPostmanReport.hasFullErrorTrace(error),
-				options.failureDiagnostics(error));
+				options.minimumErrorOutput(error), options.failureDiagnostics(error));
 	}
 
 	/**
@@ -525,8 +541,7 @@ public final class JPostmanAnnotationEngine {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		options.markFailure(error, localDebug);
 		return JPostmanStackTraceCleaner.cleanFailure(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(error),
-				options.failureDiagnostics(error));
+				options.minimumErrorOutput(localDebug), options.failureDiagnostics(error));
 	}
 
 	/**
@@ -546,8 +561,7 @@ public final class JPostmanAnnotationEngine {
 		Throwable display = runtimeDisplayError(testMethod, error, stackSource);
 		options.markFailure(display, localDebug);
 		return JPostmanStackTraceCleaner.cleanRuntimeFailure(testInstance.getClass(), testMethod, display,
-				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(display),
-				options.failureDiagnostics(error));
+				options.minimumErrorOutput(localDebug), options.failureDiagnostics(error));
 	}
 
 	private static Throwable runtimeDisplayError(Method testMethod, Throwable error, Throwable stackSource) {
@@ -610,7 +624,7 @@ public final class JPostmanAnnotationEngine {
 	public static Throwable cleanThrowable(Object testInstance, Method testMethod, Throwable error) {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(error) && !JPostmanReport.hasFullErrorTrace(error));
+				options.minimumErrorOutput(error));
 	}
 
 	/**
@@ -626,7 +640,7 @@ public final class JPostmanAnnotationEngine {
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		options.markFailure(error, localDebug);
 		return JPostmanStackTraceCleaner.cleanThrowable(testInstance.getClass(), testMethod, error,
-				options.minimumErrorOutput(localDebug) && !JPostmanReport.hasFullErrorTrace(error));
+				options.minimumErrorOutput(localDebug));
 	}
 
 }

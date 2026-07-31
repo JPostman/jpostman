@@ -48,7 +48,6 @@ public @interface JPostmanReportContext {
 	 * <li>{@code skipAll} - skip all remaining JPostman-managed tests.</li>
 	 * <li>{@code terminate} - print the report summary and failure details, then
 	 * terminate the process.</li>
-	 * <li>{@code error} - keep the full failure stack trace.</li>
 	 * <li>{@code request} - include the prepared request.</li>
 	 * <li>{@code response} - include the received response.</li>
 	 * <li>{@code info} - include runtime annotation information.</li>
@@ -61,7 +60,7 @@ public @interface JPostmanReportContext {
 	 * then appends the selected diagnostics. Examples: {@code fail = "request"},
 	 * {@code fail = { "request", "response" }},
 	 * {@code fail = { "skipAll", "all" }}, or
-	 * {@code fail = { "terminate", "request", "error" }}.
+	 * {@code fail = { "terminate", "request" }}.
 	 * </p>
 	 *
 	 * @return failure action and optional diagnostics

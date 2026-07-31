@@ -863,11 +863,11 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(error.getMessage().contains("Invalid JPostman annotation usage"));
 		assertTrue(error.getMessage().contains("@JPostmanExecutor ids must be unique"));
 		assertTrue(error.getMessage().contains("id=\"duplicate\""));
-		assertTrue(error.getMessage().contains("Only one default @JPostmanExecutor is allowed"));
-		assertTrue(error.getMessage().contains("@JPostmanExecutor methods have unsupported parameters"));
-		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badSignature"));
-		assertTrue(error.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void"));
-		assertTrue(error.getMessage().contains("InvalidExecutorValidationFixture.badReturn"));
+		assertTrue(error.getMessage().contains("Only one default @JPostmanExecutor provider is allowed."));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor methods have unsupported parameters."));
+		assertTrue(error.getMessage().contains("- InvalidExecutorValidationFixture.badSignature(String)"));
+		assertTrue(error.getMessage().contains("@JPostmanExecutor methods must return ApiExecutor or void."));
+		assertTrue(error.getMessage().contains("- InvalidExecutorValidationFixture.badReturn() returns String"));
 		assertTrue(error.getStackTrace().length >= 6);
 	}
 
@@ -1021,6 +1021,32 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies @JPostman.Call status verification is deferred until the manual
+	 * runtime.call() has completed and a response status exists.
+	 */
+	@Test
+	public void callVerifyRunsAfterRuntimeCall() throws Exception {
+		CoverageApplyExecutor.reset();
+		JPostmanAnnotationRunner<JUnitContext> runner = new JPostmanAnnotationRunner<>(new JUnitPostmanFramework());
+		CompactCallVerifyFixture fixture = new CompactCallVerifyFixture();
+
+		runner.setup(fixture);
+
+		Method accepted = CompactCallVerifyFixture.class.getDeclaredMethod("accepted");
+		assertDoesNotThrow(() -> runner.run(fixture, accepted),
+				"Call verification must not run while the annotation is only being prepared.");
+		AssertionError mismatch = assertThrows(AssertionError.class, () -> fixture.runtime.call());
+		assertTrue(mismatch.getMessage().contains("201"));
+
+		Method ok = CompactCallVerifyFixture.class.getDeclaredMethod("ok");
+		assertDoesNotThrow(() -> runner.run(fixture, ok));
+		assertDoesNotThrow(() -> {
+			fixture.runtime.call();
+		});
+		assertEquals(2, CoverageApplyExecutor.applyCount);
+	}
+
+	/**
 	 * Verifies context-level session default executor creation and reuse.
 	 *
 	 * <p>
@@ -1166,6 +1192,8 @@ public class JPostmanAnnotationCoverageTest {
 		assertEquals("debug", JPostmanRunner.class.getMethod("debug").getDefaultValue());
 		assertEquals("debug", JPostman.Call.class.getMethod("debug").getDefaultValue());
 		assertEquals("debug", JPostmanCall.class.getMethod("debug").getDefaultValue());
+		assertEquals(-1, JPostman.Call.class.getMethod("verify").getDefaultValue());
+		assertEquals(-1, JPostmanCall.class.getMethod("verify").getDefaultValue());
 		assertEquals("debug", JPostman.Executor.class.getMethod("debug").getDefaultValue());
 		assertEquals("debug", JPostmanExecutor.class.getMethod("debug").getDefaultValue());
 
@@ -1222,14 +1250,15 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(options.failureInfo("debug", null));
 	}
 
-	/** Verifies debug=error enables the full failure trace. */
+	/** Verifies global Context debug=error is rejected during option resolution. */
 	@Test
-	public void contextDebugErrorEnablesFailureTrace() {
-		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(new ErrorDebugFixture());
+	public void contextDebugErrorIsRejected() {
+		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+				() -> JPostmanRuntimeOptions.from(new ErrorDebugFixture()));
 
-		assertFalse(options.minimumErrorOutput());
-		assertTrue(options.errorStackTrace());
-		assertTrue(options.failureResponse("debug", null));
+		assertTrue(error.getMessage().contains(
+				"Unsupported @JPostman.Context debug value: error. Supported values: none, request, response, info, all."),
+				error.getMessage());
 	}
 
 	/**
@@ -1297,7 +1326,7 @@ public class JPostmanAnnotationCoverageTest {
 		InfoDebugOutputFixture fixture = new InfoDebugOutputFixture();
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(fixture);
 		JPostmanInfo info = new JPostmanInfo(new String[0], "", "newProduct", "product", "Product", "Add a new product")
-				.annotation("@JPostmanRequest");
+				.annotation("@JPostmanRequest").debug("debug");
 
 		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> suppressed = options.automaticOutput("none", info);
 		java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> inherited = options.automaticOutput("debug", info);
@@ -1763,29 +1792,6 @@ public class JPostmanAnnotationCoverageTest {
 				"@AssertContext(soft = true) must allow the response body to finish before verification.");
 		assertTrue(error.getMessage().contains("response soft assertion failed"),
 				"Actual message: " + error.getMessage());
-	}
-
-	/**
-	 * Verifies ReportContext fail="error" owns the full trace and suppresses the
-	 * JUnit bridge's optional immediate print. The report prints it later, after
-	 * the summary.
-	 */
-	@Test
-	public void junitImmediateFailurePrintIsSuppressedWhenReportDefersErrorOutput() throws Throwable {
-		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
-		DeferredReportErrorFixture fixture = new DeferredReportErrorFixture();
-		Method method = DeferredReportErrorFixture.class.getDeclaredMethod("fails");
-		List<String> output = new java.util.ArrayList<>();
-
-		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
-			AssertionError error = assertThrows(AssertionError.class,
-					() -> extension.interceptTestMethod(invocation(() -> invokeUnchecked(fixture, method)),
-							reflectiveInvocation(method), extensionContext(fixture)));
-			assertEquals("deferred failure", error.getMessage());
-		}
-
-		assertTrue(JPostmanAnnotationEngine.defersFailureTrace(fixture));
-		assertFalse(String.join("", output).contains("FAILED:"), String.join("", output));
 	}
 
 	/**
@@ -2652,6 +2658,19 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class CompactCallVerifyFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executorClass = CoverageApplyExecutor.class)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> runtime;
+
+		@io.jpostman.annotations.JPostman.Call(request = "Get current auth user", verify = 201, debug = "none")
+		void accepted() {
+		}
+
+		@io.jpostman.annotations.JPostman.Call(request = "Get current auth user", verify = 200, debug = "none")
+		void ok() {
+		}
+	}
+
 	private static final class CompactSessionExecutorReportFixture {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, executorClass = CoverageSessionExecutor.class, session = true)
 		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jctx;
@@ -3503,17 +3522,6 @@ public class JPostmanAnnotationCoverageTest {
 		@SuppressWarnings("unused")
 		void fails() {
 			throw new AssertionError("ignored report failure");
-		}
-	}
-
-	@io.jpostman.annotations.JPostman.JUnit(printFailures = true)
-	private static final class DeferredReportErrorFixture {
-		@io.jpostman.annotations.JPostman.ReportContext(fail = { "skipAll", "error" })
-		private io.jpostman.annotations.JPostman.Report report;
-
-		@SuppressWarnings("unused")
-		void fails() {
-			throw new AssertionError("deferred failure");
 		}
 	}
 

@@ -52,7 +52,22 @@ public @interface JPostmanCall {
 	/** @return dependency method names or "#id" references */
 	String[] dependsOn() default {};
 
-	/** @return executor id */
+	/**
+	 * Expected HTTP status code. Verification runs after
+	 * {@code JPostman.Runtime.call()} completes the request.
+	 *
+	 * @return expected HTTP status code, {@code -1} to use the context default,
+	 *         {@code 0} to pass without status verification, or {@code 1} to mark
+	 *         the completed test skipped
+	 */
+	int verify() default -1;
+
+	/**
+	 * Selects a named {@link JPostmanExecutor} by method name or {@code "#id"}.
+	 * Leave empty to use the single executor or the executor without an id.
+	 *
+	 * @return executor selector, or empty string for automatic/default selection
+	 */
 	String executor() default "";
 
 	/**

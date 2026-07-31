@@ -2,13 +2,11 @@ package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.WeakHashMap;
 
 import io.jpostman.annotations.JPostmanOutputs;
 
@@ -26,14 +24,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private enum FailOutput {
-		ERROR, REQUEST, RESPONSE, INFO, ALL
+		REQUEST, RESPONSE, INFO, ALL
 	}
-
-	/**
-	 * Failures whose complete stack trace must be retained. A weak registry avoids
-	 * mutating the user-visible throwable with an internal suppressed marker.
-	 */
-	private static final Map<Throwable, Boolean> FULL_ERROR_TRACES = Collections.synchronizedMap(new WeakHashMap<>());
 
 	private boolean summaryPrinted;
 	private DiagnosticMode diagnosticMode = DiagnosticMode.NONE;
@@ -71,8 +63,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * {@code @JPostman.ReportContext}.
 	 *
 	 * @param diagnostic report diagnostic mode: none, short, or extend
-	 * @param values     one action plus optional error/request/response/info/all
-	 *                   values
+	 * @param values     one action plus optional request/response/info/all values
 	 * @return this report
 	 */
 	public JPostmanReport configure(String diagnostic, String[] values) {
@@ -85,7 +76,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * {@code @JPostman.ReportContext}. This overload keeps the current diagnostic
 	 * mode unchanged.
 	 *
-	 * @param values one action plus optional error/request/response/info/all values
+	 * @param values one action plus optional request/response/info/all values
 	 * @return this report
 	 */
 	public JPostmanReport configure(String... values) {
@@ -113,7 +104,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 					FailOutput output = output(option);
 					if (output == null) {
 						throw invalid(values,
-								"Allowed values: ignore, skipAll, terminate, error, request, response, info, all.");
+								"Allowed values: ignore, skipAll, terminate, request, response, info, all.");
 					}
 					outputs.add(output);
 				}
@@ -164,8 +155,6 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	private FailOutput output(String value) {
 		switch (value) {
-		case "error":
-			return FailOutput.ERROR;
 		case "request":
 			return FailOutput.REQUEST;
 		case "response":
@@ -201,8 +190,19 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		return failOutput.contains(FailOutput.INFO) || failOutput.contains(FailOutput.ALL);
 	}
 
-	boolean fullErrorTrace() {
-		return failOutput.contains(FailOutput.ERROR);
+	/**
+	 * Returns whether this execution requested local failure output through
+	 * {@code debug = "error"}. The mode may be combined with request, response,
+	 * info, or all.
+	 */
+	boolean localErrorOutput(JPostmanInfo info) {
+		String debug = info == null ? "" : value(info.debug);
+		for (String part : debug.split(",")) {
+			if ("error".equals(normalize(part))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -248,11 +248,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	/**
 	 * Records a failed execution and defers all report output until
 	 * {@link #summary()} so diagnostics always appear after the JPostman report.
-	 * The throwable is still marked immediately when a full trace was requested.
 	 */
 	void failed(JPostmanInfo info, Throwable failure) {
 		boolean reportable = record(failed, info);
-		markFullErrorTrace(failure);
 		if (reportable) {
 			failureDetails.put(executionKey(info), failure);
 		}
@@ -308,6 +306,20 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 			}
 		}
 		return false;
+	}
+
+	/** Converts every completed request owned by one runner method to skipped. */
+	void skipRunnerRequests(String methodName) {
+		String expected = value(methodName);
+		List<JPostmanInfo> matches = new ArrayList<>();
+		for (JPostmanInfo candidate : all()) {
+			if (isRunnerRequest(candidate) && expected.equals(value(candidate.method))) {
+				matches.add(candidate);
+			}
+		}
+		for (JPostmanInfo candidate : matches) {
+			skipped(candidate);
+		}
 	}
 
 	private boolean isRunnerRequest(JPostmanInfo info) {
@@ -430,10 +442,14 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private String detailLog() {
+		StringBuilder output = new StringBuilder();
 		if (diagnosticMode != DiagnosticMode.NONE) {
-			return diagnosticLog();
+			output.append(diagnosticLog());
+		} else if (hasFailureOutput()) {
+			output.append(failureLog());
 		}
-		return hasFailureOutput() ? failureLog() : "";
+		output.append(localErrorLog());
+		return output.toString();
 	}
 
 	private boolean hasFailureOutput() {
@@ -446,7 +462,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 			return "";
 		}
 
-		StringBuilder output = section("JPostman diagnostics");
+		StringBuilder output = section("JPostman Diagnostics:\n");
 		boolean first = true;
 		boolean previousHadAdditionalData = false;
 		for (JPostmanInfo value : values) {
@@ -494,6 +510,51 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		return first ? "" : output.toString();
 	}
 
+	/**
+	 * Appends local {@code debug = "error"} failures after the report diagnostics.
+	 * The local mode includes the cleaned error plus the secure request and
+	 * response. ReportContext-selected details are not repeated.
+	 */
+	private String localErrorLog() {
+		if (failed.isEmpty()) {
+			return "";
+		}
+
+		StringBuilder output = null;
+		boolean first = true;
+		for (JPostmanInfo value : failed) {
+			if (value == null || !localErrorOutput(value)) {
+				continue;
+			}
+
+			boolean includeError = true;
+			boolean includeRequest = !failureRequest();
+			boolean includeResponse = !failureResponse();
+			if (!includeError && !includeRequest && !includeResponse) {
+				continue;
+			}
+
+			if (output == null) {
+				output = section("JPostman Errors:");
+			}
+			if (!first) {
+				output.append(System.lineSeparator()).append(System.lineSeparator());
+			}
+			first = false;
+
+			if (includeError) {
+				appendError(output, value, failureDetails.get(executionKey(value)), false);
+			}
+			if (includeRequest) {
+				appendBlock(output, value.requestLog());
+			}
+			if (includeResponse) {
+				appendBlock(output, value.responseLog());
+			}
+		}
+		return output == null ? "" : output.toString();
+	}
+
 	private void appendExecutionSeparator(StringBuilder output, boolean previousHadAdditionalData) {
 		output.append(System.lineSeparator());
 		if (previousHadAdditionalData) {
@@ -516,13 +577,10 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		if (failureResponse()) {
 			appendBlock(output, value == null ? "" : value.responseLog());
 		}
-		if (fullErrorTrace()) {
-			appendError(output, value, failureDetails.get(executionKey(value)));
-		}
 	}
 
-	private void appendError(StringBuilder output, JPostmanInfo info, Throwable failure) {
-		String text = failureTrace(info, failure);
+	private void appendError(StringBuilder output, JPostmanInfo info, Throwable failure, boolean includeHeading) {
+		String text = failureTrace(info, failure, includeHeading);
 		if (text.isBlank()) {
 			return;
 		}
@@ -531,12 +589,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		output.append(System.lineSeparator()).append(text);
 	}
 
-	/**
-	 * Builds the same readable full-error form used by the framework bridges, but
-	 * defers it until the report summary. This makes {@code fail = "error"}
-	 * independent of JUnit/TestNG's optional immediate failure printer.
-	 */
-	private String failureTrace(JPostmanInfo info, Throwable failure) {
+	private String failureTrace(JPostmanInfo info, Throwable failure, boolean includeHeading) {
 		if (failure == null) {
 			return "";
 		}
@@ -550,7 +603,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		String className = testClass == null ? simpleClassName(origin) : testClass.getSimpleName();
 		String methodName = testMethod == null ? failureMethod(info, origin) : testMethod.getName();
 		StringBuilder text = new StringBuilder();
-		if (!className.isBlank() || !methodName.isBlank()) {
+		if (includeHeading && (!className.isBlank() || !methodName.isBlank())) {
 			text.append("FAILED: ");
 			if (!className.isBlank()) {
 				text.append(className);
@@ -712,7 +765,16 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	String shortDiagnostic(JPostmanInfo info) {
-		StringBuilder out = new StringBuilder(topMethod(info)).append(":  {");
+		StringBuilder out = new StringBuilder(topMethod(info)).append(":  ");
+		if (isSkipped(info)) {
+			out.append("SKIPPED");
+		} else {
+			if (info != null && info.statusCode() != null) {
+				out.append("statusCode=").append(info.statusCode()).append(", ");
+			}
+			out.append("duration=").append(JPostmanInfo.formatDuration(info == null ? 0L : info.duration(), false));
+		}
+
 		List<String> scope = new ArrayList<>();
 		String namespace = value(info == null ? null : info.namespace);
 		if (!isDefault(namespace)) {
@@ -726,17 +788,11 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		if (!request.isBlank()) {
 			scope.add("request = " + request);
 		}
-		out.append(String.join(", ", scope)).append("}");
-		if (isSkipped(info)) {
-			return out.append(", SKIPPED").toString();
-		}
-		if (info != null && info.statusCode() != null) {
-			out.append(", statusCode=").append(info.statusCode());
-		}
-		out.append(", duration=").append(JPostmanInfo.formatDuration(info == null ? 0L : info.duration(), false));
+		out.append(", {").append(String.join(", ", scope)).append("}");
+
 		String chain = methodChain(info);
 		if (!chain.isBlank()) {
-			out.append("  (").append(chain).append(")");
+			out.append(" (").append(chain).append(")");
 		}
 		return out.toString();
 	}
@@ -773,24 +829,4 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				|| "default".equalsIgnoreCase(value);
 	}
 
-	private void markFullErrorTrace(Throwable failure) {
-		if (fullErrorTrace() && failure != null) {
-			FULL_ERROR_TRACES.put(failure, Boolean.TRUE);
-		}
-	}
-
-	static boolean hasFullErrorTrace(Throwable failure) {
-		Throwable current = failure;
-		for (int depth = 0; current != null && depth < 32; depth++) {
-			if (FULL_ERROR_TRACES.containsKey(current)) {
-				return true;
-			}
-			Throwable next = current.getCause();
-			if (next == current) {
-				break;
-			}
-			current = next;
-		}
-		return false;
-	}
 }

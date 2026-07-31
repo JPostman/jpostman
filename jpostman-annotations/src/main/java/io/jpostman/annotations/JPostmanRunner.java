@@ -107,20 +107,26 @@ public @interface JPostmanRunner {
 	 *
 	 * <p>
 	 * The default value {@code -1} uses {@link JPostmanContext#verifyStatusCode()}.
-	 * Use {@code 0} to explicitly skip status-code verification for this runner,
-	 * even when the context has a default expected status code. Set a concrete
+	 * Use {@code 0} to explicitly skip status-code verification for this runner and
+	 * keep a successful result. Use {@code 1} to perform the same runner execution
+	 * but mark the otherwise successful completed test as skipped. Set a concrete
 	 * value when each runner request should be verified by the annotation runtime.
+	 * Response and call dependencies executed while this runner is active inherit
+	 * this value when they keep {@code verify = -1}. Standalone response and call
+	 * test methods remain separate executions and use their own verification value.
 	 * </p>
 	 *
-	 * @return expected HTTP status code, {@code -1} to use the context default, or
-	 *         {@code 0} to skip status-code verification for this runner
+	 * @return expected HTTP status code, {@code -1} to use the context default,
+	 *         {@code 0} to pass without status verification, or {@code 1} to mark
+	 *         the completed test skipped
 	 */
 	int verify() default -1;
 
 	/**
-	 * @JPostmanExecutor id to use. Empty means default execution.
+	 * Selects a named {@link JPostmanExecutor} by method name or {@code "#id"}.
+	 * Leave empty to use the single executor or the executor without an id.
 	 *
-	 * @return executor id
+	 * @return executor selector, or empty string for automatic/default selection
 	 */
 	String executor() default "";
 
