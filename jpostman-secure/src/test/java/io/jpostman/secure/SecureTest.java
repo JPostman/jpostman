@@ -171,7 +171,7 @@ public class SecureTest {
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		// Also mask username and Content-Type.
 		assertEquals(secure.redactionPolicy().isProtectedKey("username"), false);
 		assertEquals(secure.redactionPolicy().isProtectedKey("password"), true);
@@ -183,8 +183,8 @@ public class SecureTest {
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********application\n\nBody: [raw] {\n"
-						+ "  \"username\": \"********\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		Request request = secure.build();
 		assertEquals(request.getHeader().get("Authorization"), "Bearer real-token");
 		assertEquals(request.getHeader().get("API-KEY"), "real-api-key");
@@ -220,13 +220,13 @@ public class SecureTest {
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"********\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 		assertEquals(userDebug,
 				"[GET   ] Get User                                 -> {{baseUrl}}/users/123\nHeaders:\n"
 						+ "  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********json\n\nBody: [none]");
+						+ "  Content-Type                        = application/json\n\nBody: [none]");
 		assertEquals(resolvedLogin.getHeader().get("Authorization"), "Bearer real-token");
 		assertEquals(resolvedLogin.getHeader().get("API-KEY"), "real-api-key");
 		assertEquals(resolvedLogin.toUrl(), "https://api.example.com/login");
@@ -241,7 +241,7 @@ public class SecureTest {
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
 						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 
 		assertEquals(secure.values().get("accessToken").isProtected(), true);
 		secure.unsecret("accessToken").unheaders("Authorization");
@@ -354,8 +354,8 @@ public class SecureTest {
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"sam\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
@@ -369,8 +369,8 @@ public class SecureTest {
 				"[POST  ] Login                                    -> {{baseUrl}}/login\n"
 						+ "Headers:\n  Authorization                       = Bearer {{accessToken}}\n"
 						+ "  API-KEY                             = {{API-KEY}}\n"
-						+ "  Content-Type                        = ********json\n\nBody: [raw] {\n"
-						+ "  \"username\": \"********\",\n  \"password\": \"********\",\n  \"ssn\": \"{{SSN}}\"\n}");
+						+ "  Content-Type                        = application/json\n\nBody: [raw] {\n"
+						+ "  \"username\": \"sam\",\n  \"password\": \"secret\",\n  \"ssn\": \"{{SSN}}\"\n}");
 	}
 
 	@Test
@@ -566,7 +566,7 @@ public class SecureTest {
 		assertEquals(login.build().toUrl(), "https://api.example.com/login");
 		assertEquals(user.build().toUrl(), "https://api.example.com/users/123");
 		assertEquals(login.build().getHeader().get("Authorization"), "Bearer real-token");
-		assertTrue(login.log(false).contains("\"username\": \"********\""));
+		assertTrue(login.log(false).contains("\"username\": \"sam\""));
 
 		ApiResponse response = response(200, "{\"id\":1,\"token\":\"abc\"}");
 		assertEquals(first.from(response).filtered(), "{\n  \"id\": 1\n}");

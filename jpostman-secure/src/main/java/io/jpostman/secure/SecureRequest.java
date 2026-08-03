@@ -220,7 +220,7 @@ public final class SecureRequest implements RequestProvider {
 		if (resolve) {
 			return redactConcreteProtectedHeaders(SecureText.redact(build().log(), values.build(), redactionPolicy));
 		}
-		return redactConcreteProtectedHeaders(SecureText.redact(request.log(), redactionPolicy));
+		return redactConcreteProtectedHeaders(resolve ? SecureText.redact(request.log(), redactionPolicy) : request.log());
 	}
 
 	private String redactConcreteProtectedHeaders(String text) {
