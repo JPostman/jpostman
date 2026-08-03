@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import io.jpostman.annotations.JPostman;
 
-/** Regression coverage for dependency-aware JPostman.Test.get expressions. */
+/** Regression coverage for dependency-aware JPostman.Test.cache expressions. */
 public class JPostmanTestProxyCacheExpressionRegressionTest {
 
 	@Test
@@ -22,9 +22,33 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 		context.cache(JPostmanTestProxy.cacheAliasKey("Ref1"), "MY_TOKEN");
 		JPostman.Test test = JPostmanTestProxy.wrap(context);
 
-		assertEquals("token-123", test.get("#Ref1:level1/accessToken"));
-		assertTrue(test.get("#Ref1") instanceof FakeResponse);
-		assertEquals("token-123", test.get("MY_TOKEN:level1/accessToken"));
+		assertEquals("token-123", test.cache("#Ref1:level1/accessToken"));
+		assertTrue(test.cache("#Ref1") instanceof FakeResponse);
+		assertEquals("token-123", test.cache("MY_TOKEN/level1/accessToken"));
+	}
+
+	@Test
+	public void getRemainsSecureValueLookupInsteadOfCacheLookup() {
+		FakeContext context = new FakeContext();
+		context.cache("token", "cached-token");
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		assertEquals("secure-token", test.get("token"));
+		assertEquals("cached-token", test.cache("token"));
+	}
+
+	@Test
+	public void cacheWriteOverloadRemainsSupported() {
+		FakeContext context = new FakeContext();
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		assertTrue(test == test.cache("token", "token-123"));
+		test.cache("type", (Object) String.class);
+		test.cache("optional", (Object) null);
+
+		assertEquals("token-123", test.cache("token", String.class));
+		assertEquals(String.class, test.cache("type"));
+		assertTrue(context.containsCacheKey("optional"));
 	}
 
 	@Test
@@ -36,8 +60,8 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 
 		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
 				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "token")))) {
-			assertEquals("token-123", test.get("token"));
-			assertEquals("token-123", test.get("#Ref1"));
+			assertEquals("token-123", test.cache("token"));
+			assertEquals("token-123", test.cache("#Ref1"));
 		}
 	}
 
@@ -50,7 +74,18 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
 				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("loginPrimary", "__loginPrimary__"),
 						new JPostmanTestProxy.CacheDependency("#Ref2", "Ref2")))) {
-			assertEquals("primary", test.get("accessToken"));
+			assertEquals("primary", test.cache("accessToken"));
+		}
+	}
+
+	@Test
+	public void unresolvedOrdinaryCacheKeyRemainsNull() {
+		FakeContext context = new FakeContext();
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
+				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "Ref1")))) {
+			assertEquals(null, (Object) test.cache("missing"));
 		}
 	}
 
@@ -64,7 +99,7 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
 				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "Ref1"),
 						new JPostmanTestProxy.CacheDependency("#Ref2", "Ref2")))) {
-			IllegalStateException error = assertThrows(IllegalStateException.class, () -> test.get("accessToken"));
+			IllegalStateException error = assertThrows(IllegalStateException.class, () -> test.cache("accessToken"));
 			assertTrue(error.getMessage().contains("#Ref1"));
 			assertTrue(error.getMessage().contains("#Ref2"));
 		}
@@ -80,6 +115,15 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 
 		public void cache(String key, Object value) {
 			values.put(key, value);
+		}
+
+		private boolean containsCacheKey(String key) {
+			return values.containsKey(key);
+		}
+
+		@SuppressWarnings("unused")
+		public Object get(String key) {
+			return "secure-" + key;
 		}
 	}
 

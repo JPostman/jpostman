@@ -1,7 +1,9 @@
 package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +18,20 @@ class JPostmanInfoDiagnosticStateRegressionTest {
 		child.requestLog("resolved request with body");
 
 		assertEquals("resolved request with body", top.requestLog());
+	}
+
+	@Test
+	void copiedInfoDeduplicatesTheSameLogicalDebugOutput() {
+		JPostmanInfo response = new JPostmanInfo("@JPostmanResponse", "response", "product", "Product",
+				"Add a new product");
+		JPostmanInfo copy = response.withTags("keyboard");
+		JPostmanInfo executor = response.child("executor", "product", "Product", "Add a new product");
+
+		assertTrue(response.markDebugOutputEmitted());
+		assertFalse(copy.markDebugOutputEmitted(),
+				"copies of the same annotation step must not print a second completed debug block");
+		assertTrue(executor.markDebugOutputEmitted(),
+				"a distinct executor step in the same diagnostic chain must still print");
 	}
 
 	@Test

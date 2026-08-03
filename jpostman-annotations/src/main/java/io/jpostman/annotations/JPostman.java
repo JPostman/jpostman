@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
@@ -69,8 +71,7 @@ public final class JPostman {
 		/**
 		 * Prints cleaned failure stack traces for JUnit execution when no
 		 * {@link ReportContext} is declared. When a report context is present, its
-		 * {@code diagnostic} and {@code fail} values exclusively control automatic
-		 * output.
+		 * {@code details} and {@code fail} values exclusively control automatic output.
 		 *
 		 * @return {@code true} to print cleaned failures when reporting does not own
 		 *         output
@@ -178,7 +179,8 @@ public final class JPostman {
 		 * </ul>
 		 *
 		 * Request, response, and info may be combined. {@code none} and {@code all}
-		 * must each be used alone.
+		 * must each be used alone. Selected output is printed after each annotation
+		 * execution whether that execution passes or fails.
 		 *
 		 * @return automatic debug output settings
 		 */
@@ -259,21 +261,18 @@ public final class JPostman {
 	@Retention(RUNTIME)
 	public @interface ReportContext {
 		/**
-		 * Controls report diagnostics printed with the class summary.
+		 * Includes compact execution details after the class summary.
 		 *
-		 * <ul>
-		 * <li>{@code none} - disable general execution diagnostics. This is the
-		 * default.</li>
-		 * <li>{@code short} - append one compact line per recorded execution with the
-		 * method, namespace, folder, request, status code, duration, and method
-		 * chain.</li>
-		 * <li>{@code extend} - append the short line and the prepared request output
-		 * for each recorded execution.</li>
-		 * </ul>
+		 * <p>
+		 * Each recorded request is displayed on one line with its method, HTTP status
+		 * code, duration or skip state, resolved namespace, folder, request name, and
+		 * dependency chain when available. Request and response bodies remain
+		 * controlled by {@code debug} and {@code fail}.
+		 * </p>
 		 *
-		 * @return report diagnostic detail
+		 * @return {@code true} to include compact execution details
 		 */
-		String diagnostic() default "none";
+		boolean details() default false;
 
 		/**
 		 * Controls report behavior after a failed execution. Combine at most one action
@@ -356,9 +355,13 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
-		 * suppress output, {@code error} for the full failure trace, or request,
-		 * response, info, and all for local diagnostics. {@code error} may be combined
-		 * with one or more diagnostic values.
+		 * suppress output, {@code error} for the full failure trace, {@code request}
+		 * for prepared-request diagnostics, {@code response} for received-response
+		 * diagnostics, {@code info} for runtime annotation information, or {@code all}
+		 * for all local diagnostics. Request, response, info, and all are printed after
+		 * annotation execution for both passing and failing executions. The local
+		 * {@code error} mode is different: it is printed only for failures and is
+		 * deferred until after the JPostman report execution details.
 		 * </p>
 		 *
 		 * @return local debug setting
@@ -464,9 +467,13 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
-		 * suppress output, {@code error} for the full failure trace, or request,
-		 * response, info, and all for local diagnostics. {@code error} may be combined
-		 * with one or more diagnostic values.
+		 * suppress output, {@code error} for the full failure trace, {@code request}
+		 * for prepared-request diagnostics, {@code response} for received-response
+		 * diagnostics, {@code info} for runtime annotation information, or {@code all}
+		 * for all local diagnostics. Request, response, info, and all are printed after
+		 * annotation execution for both passing and failing executions. The local
+		 * {@code error} mode is different: it is printed only for failures and is
+		 * deferred until after the JPostman report execution details.
 		 * </p>
 		 *
 		 * @return local debug setting
@@ -587,9 +594,13 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
-		 * suppress output, {@code error} for the full failure trace, or request,
-		 * response, info, and all for local diagnostics. {@code error} may be combined
-		 * with one or more diagnostic values.
+		 * suppress output, {@code error} for the full failure trace, {@code request}
+		 * for prepared-request diagnostics, {@code response} for received-response
+		 * diagnostics, {@code info} for runtime annotation information, or {@code all}
+		 * for all local diagnostics. Request, response, info, and all are printed after
+		 * annotation execution for both passing and failing executions. The local
+		 * {@code error} mode is different: it is printed only for failures and is
+		 * deferred until after the JPostman report execution details.
 		 * </p>
 		 *
 		 * @return local debug setting
@@ -719,9 +730,13 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
-		 * suppress output, {@code error} for the full failure trace, or request,
-		 * response, info, and all for local diagnostics. {@code error} may be combined
-		 * with one or more diagnostic values.
+		 * suppress output, {@code error} for the full failure trace, {@code request}
+		 * for prepared-request diagnostics, {@code response} for received-response
+		 * diagnostics, {@code info} for runtime annotation information, or {@code all}
+		 * for all local diagnostics. Request, response, info, and all are printed after
+		 * annotation execution for both passing and failing executions. The local
+		 * {@code error} mode is different: it is printed only for failures and is
+		 * deferred until after the JPostman report execution details.
 		 * </p>
 		 *
 		 * @return local debug setting
@@ -857,9 +872,13 @@ public final class JPostman {
 		 *
 		 * <p>
 		 * Use {@code debug} to inherit the context debug setting. Use {@code none} to
-		 * suppress output, {@code error} for the full failure trace, or request,
-		 * response, info, and all for local diagnostics. {@code error} may be combined
-		 * with one or more diagnostic values.
+		 * suppress output, {@code error} for the full failure trace, {@code request}
+		 * for prepared-request diagnostics, {@code response} for received-response
+		 * diagnostics, {@code info} for runtime annotation information, or {@code all}
+		 * for all local diagnostics. Request, response, info, and all are printed after
+		 * annotation execution for both passing and failing executions. The local
+		 * {@code error} mode is different: it is printed only for failures and is
+		 * deferred until after the JPostman report execution details.
 		 * </p>
 		 *
 		 * @return local debug setting
@@ -1595,6 +1614,65 @@ public final class JPostman {
 	public interface Assert extends JPostmanAssertions<Test, Assert> {
 
 		/**
+		 * Verifies that every numeric item at {@code path} satisfies the predicate. The
+		 * failure message is optional; the underlying assertion implementation supplies
+		 * its normal allMatch diagnostic when this overload is used.
+		 *
+		 * @param path      response path containing numeric values
+		 * @param predicate condition evaluated for every numeric value
+		 * @return this fluent assertion facade
+		 */
+		Assert allMatch(String path, Predicate<Number> predicate);
+
+		/**
+		 * Verifies that every item at {@code path} satisfies an index-aware predicate.
+		 * Values are exposed as {@link Object}.
+		 *
+		 * @param path      response path containing values
+		 * @param predicate condition receiving the item and its zero-based index
+		 * @return this fluent assertion facade
+		 */
+		Assert allMatch(String path, BiPredicate<Object, Integer> predicate);
+
+		/**
+		 * Verifies that every item at {@code path} satisfies a typed, index-aware
+		 * predicate.
+		 *
+		 * @param <V>       item type
+		 * @param path      response path containing values
+		 * @param type      expected item type
+		 * @param predicate condition receiving the typed item and its zero-based index
+		 * @return this fluent assertion facade
+		 */
+		<V> Assert allMatch(String path, Class<V> type, BiPredicate<V, Integer> predicate);
+
+		/**
+		 * Creates a temporary soft assertion facade for the current annotated test
+		 * method.
+		 *
+		 * <p>
+		 * The returned facade uses the same request-scoped soft collector as
+		 * {@code jpostman.ctx().soft()}. Failures are collected while the method body
+		 * continues and are verified automatically after an eligible {@link Response},
+		 * {@link Call}, or {@link Runner} method exits. The injected
+		 * {@code AssertContext} facade itself remains hard, so assertions in the next
+		 * test fail immediately unless {@code soft()} is called again.
+		 * </p>
+		 *
+		 * <pre>
+		 * asserts.soft().statusCode(200).exists("accessToken");
+		 * </pre>
+		 *
+		 * <p>
+		 * Calling {@link #verify()} manually is optional and consumes the same
+		 * collector before automatic method-exit verification.
+		 * </p>
+		 *
+		 * @return temporary method-scoped soft assertion facade
+		 */
+		Assert soft();
+
+		/**
 		 * Immediately fails with the supplied custom message.
 		 *
 		 * <p>
@@ -1629,49 +1707,146 @@ public final class JPostman {
 		void summary();
 	}
 
-	/** Compact framework-neutral test context facade. */
+	/**
+	 * Compact framework-neutral test context facade.
+	 *
+	 * <p>
+	 * Cache values are both read and written through {@code cache(...)}. Supported
+	 * read expressions are:
+	 * </p>
+	 * <ul>
+	 * <li>{@code cache("token")} &mdash; exact cache key. Exact keys always win
+	 * before dependency-path inference.</li>
+	 * <li>{@code cache("login/accessToken")} &mdash; exact cache key followed by a
+	 * cached-response path.</li>
+	 * <li>{@code cache("#login")} &mdash; complete value cached by the annotation
+	 * whose {@code id} is {@code login}.</li>
+	 * <li>{@code cache("#login:accessToken")} &mdash; response path from the value
+	 * cached by annotation id {@code login}.</li>
+	 * <li>{@code cache("accessToken")} &mdash; when no exact key exists, treats the
+	 * expression as a response path if the current annotated method has exactly one
+	 * cached direct dependency.</li>
+	 * </ul>
+	 *
+	 * <p>
+	 * Typed reads use {@code cache(expression, Type.class)}. Existing cache writes
+	 * remain supported through {@code cache(key, value)}. The inherited
+	 * {@code get(String)} method remains a secure-value lookup; cache expressions
+	 * are resolved only by {@code cache(...)}.
+	 * </p>
+	 *
+	 * <pre>
+	 * test.cache("token", accessToken);
+	 * String token = test.cache("token", String.class);
+	 * String nested = test.cache("#login:accessToken", String.class);
+	 * </pre>
+	 *
+	 * <p>
+	 * Because the typed-read overload accepts {@link Class}, storing a
+	 * {@code Class} value or {@code null} requires an explicit {@code Object} cast
+	 * so Java selects the write overload:
+	 * </p>
+	 *
+	 * <pre>
+	 * test.cache("type", (Object) String.class);
+	 * test.cache("optional", (Object) null);
+	 * </pre>
+	 */
 	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
 
 		/**
-		 * Reads a dependency cache expression. A bare value first resolves an exact
-		 * cache key, preserving calls such as {@code get("token")}. If that key is not
-		 * present, the value is treated as a response path when the current method has
-		 * exactly one cached direct dependency. Use {@code #id:path} for an
-		 * annotation-id reference or {@code CACHE_NAME:path} for a custom cache key and
-		 * response path.
+		 * Reads a cache expression.
 		 *
-		 * @param expression dependency cache expression
-		 * @return cached value or response-path value
+		 * <p>
+		 * Resolution rules:
+		 * </p>
+		 * <ol>
+		 * <li>An expression beginning with {@code #} resolves an annotation id. Use
+		 * {@code #id:path} to read a nested response value.</li>
+		 * <li>An expression containing {@code /} resolves the text before the first
+		 * slash as an exact cache key and the remaining text as a response path.</li>
+		 * <li>A bare expression first resolves as an exact cache key.</li>
+		 * <li>If the exact key is absent, a bare expression resolves as a response path
+		 * only when exactly one cached direct dependency is available.</li>
+		 * </ol>
+		 *
+		 * <p>
+		 * When more than one cached direct dependency is available, use an explicit
+		 * annotation-id expression such as {@code cache("#login:accessToken")}.
+		 * </p>
+		 *
+		 * @param expression exact cache key, cache-key/path expression, annotation-id
+		 *                   expression, or implicit dependency response path
+		 * @param <T>        cached value type inferred by the caller
+		 * @return cached value or cached-response path value; an unresolved ordinary
+		 *         exact key returns {@code null}
+		 * @throws IllegalArgumentException if the expression is blank or an annotation
+		 *                                  id is malformed
+		 * @throws IllegalStateException    if an explicit annotation id is not cached
+		 *                                  or an implicit path is ambiguous
 		 */
-		default Object get(String expression) {
+		@Override
+		default <T> T cache(String expression) {
 			throw new UnsupportedOperationException(
-					"JPostman.Test.get(...) is available only through an injected JPostman runtime context.");
+					"JPostman.Test.cache(...) is available only through an injected JPostman runtime context.");
 		}
 
 		/**
-		 * Reads and converts a dependency cache expression.
+		 * Reads a cache expression and converts the result to the requested Java type.
+		 * This supports the same expressions as {@link #cache(String)}:
 		 *
-		 * @param expression dependency cache expression
-		 * @param type       requested Java type
-		 * @param <T>        result type
-		 * @return converted cached value
-		 */
-		default <T> T get(String expression, Class<T> type) {
-			return JPostmanCacheValueConverter.convert(get(expression), type);
-		}
-
-		/**
-		 * Reads a cached value or cached response path and converts it to the requested
-		 * Java type. This preserves the existing cache-key/path API. New dependency
-		 * references should use {@link #get(String)}.
+		 * <pre>
+		 * String token = test.cache("token", String.class);
+		 * String token = test.cache("login/accessToken", String.class);
+		 * String token = test.cache("#login:accessToken", String.class);
+		 * String token = test.cache("accessToken", String.class);
+		 * </pre>
 		 *
-		 * @param expression cache key, optionally followed by a response path
+		 * <p>
+		 * Cache writes continue to use {@code cache(key, value)}. Cast a {@code Class}
+		 * value or {@code null} to {@code Object} when writing to avoid selecting this
+		 * typed-read overload.
+		 * </p>
+		 *
+		 * @param expression exact cache key, cache-key/path expression, annotation-id
+		 *                   expression, or implicit dependency response path
 		 * @param type       requested Java type
 		 * @param <T>        result type
 		 * @return converted cached value
 		 */
 		default <T> T cache(String expression, Class<T> type) {
 			return JPostmanCacheValueConverter.convert(cache(expression), type);
+		}
+
+		/**
+		 * Stores a value under an exact cache key and returns the active test context
+		 * for fluent chaining.
+		 *
+		 * <pre>
+		 * test.cache("token", accessToken);
+		 * test.cache("attempts", 3);
+		 * </pre>
+		 *
+		 * <p>
+		 * Write keys are stored literally. Read-expression syntax such as
+		 * {@code #login:accessToken} and {@code login/accessToken} is interpreted only
+		 * by the read overloads. To store a {@link Class} value or {@code null}, cast
+		 * the value to {@code Object} so Java selects this write overload:
+		 * </p>
+		 *
+		 * <pre>
+		 * test.cache("type", (Object) String.class);
+		 * test.cache("optional", (Object) null);
+		 * </pre>
+		 *
+		 * @param key   exact cache key
+		 * @param value value to cache; may be {@code null}
+		 * @return active test context
+		 */
+		@Override
+		default Test cache(String key, Object value) {
+			throw new UnsupportedOperationException(
+					"JPostman.Test.cache(...) is available only through an injected JPostman runtime context.");
 		}
 	}
 }

@@ -93,9 +93,89 @@ public class JPostmanVerifySkipRegressionTest {
 		assertEquals(3, occurrences(text, "annotation=@JPostmanExecutor"), text);
 		assertEquals(6, occurrences(text, "JPostmanInfo {"), text);
 		assertEquals(3, occurrences(text, "[POST  ]"), text);
+		assertEquals(3, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(0, occurrences(text, "**********SecureResponse: **********"), text);
+		assertTrue(text.contains("\n\nDEBUG "), text);
 		assertTrue(text.contains("Folder request one"), text);
 		assertTrue(text.contains("Folder request two"), text);
 		assertTrue(text.contains("Folder request three"), text);
+	}
+
+	@Test
+	void requestAndResponseDebugUseSecureSectionHeaders() {
+		List<String> output = new ArrayList<>();
+		TestNgReport report;
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			report = runFixture(RequestResponseDebugFixture.class);
+		}
+
+		String text = String.join("", output).replace("\r\n", "\n");
+		assertEquals(1, report.passed.size());
+		assertEquals(0, report.failed.size());
+		assertEquals(0, report.skipped.size());
+		assertEquals(1, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(1, occurrences(text, "**********SecureResponse: **********"), text);
+		assertTrue(
+				text.contains(
+						"=== response ===\nrequest=Get current auth user\n\n********** SecureRequest: **********"),
+				text);
+		assertTrue(text.indexOf("********** SecureRequest: **********") < text.indexOf("[GET   ]"), text);
+		assertTrue(text.indexOf("[GET   ]") < text.indexOf("**********SecureResponse: **********"), text);
+		assertTrue(text.indexOf("**********SecureResponse: **********") < text.indexOf("Status Code: 401"), text);
+	}
+
+	@Test
+	void requestDebugStillPrintsWhenStatusVerificationFails() {
+		String text = failedDebugOutput(RequestFailureDebugFixture.class);
+
+		assertEquals(1, occurrences(text, "=== response ==="), text);
+		assertEquals(1, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(0, occurrences(text, "**********SecureResponse: **********"), text);
+		assertTrue(text.contains("request=Get current auth user"), text);
+		assertTrue(text.contains("[GET   ] Get current auth user"), text);
+	}
+
+	@Test
+	void responseDebugStillPrintsWhenStatusVerificationFails() {
+		String text = failedDebugOutput(ResponseFailureDebugFixture.class);
+
+		assertEquals(1, occurrences(text, "=== response ==="), text);
+		assertEquals(0, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(1, occurrences(text, "**********SecureResponse: **********"), text);
+		assertTrue(text.contains("Status Code: 401"), text);
+	}
+
+	@Test
+	void infoDebugStillPrintsWhenStatusVerificationFails() {
+		String text = failedDebugOutput(InfoFailureDebugFixture.class);
+
+		assertEquals(1, occurrences(text, "=== response ==="), text);
+		assertEquals(1, occurrences(text, "JPostmanInfo {"), text);
+		assertEquals(0, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(0, occurrences(text, "**********SecureResponse: **********"), text);
+	}
+
+	@Test
+	void allDebugStillPrintsWhenStatusVerificationFails() {
+		String text = failedDebugOutput(AllFailureDebugFixture.class);
+
+		assertEquals(1, occurrences(text, "=== response ==="), text);
+		assertEquals(1, occurrences(text, "JPostmanInfo {"), text);
+		assertTrue(text.contains("[GET   ] Get current auth user"), text);
+		assertTrue(text.contains("Status Code: 401"), text);
+	}
+
+	private static String failedDebugOutput(Class<?> fixtureClass) {
+		List<String> output = new ArrayList<>();
+		TestNgReport report;
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			report = runFixture(fixtureClass);
+		}
+
+		assertEquals(0, report.passed.size());
+		assertEquals(1, report.failed.size());
+		assertEquals(0, report.skipped.size());
+		return String.join("", output).replace("\r\n", "\n");
 	}
 
 	private static int occurrences(String value, String token) {
@@ -227,6 +307,60 @@ public class JPostmanVerifySkipRegressionTest {
 		@JPostman.Runner(folder = "Product", verify = 1)
 		@org.testng.annotations.Test
 		public void runner() {
+		}
+	}
+
+	public static final class RequestResponseDebugFixture {
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", debug = { "request",
+				"response" })
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.Executor
+		public ApiExecutor executor(TestNgContext ctx, JPostman.Info info) {
+			return unauthorizedExecutor();
+		}
+
+		@JPostman.Response(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void response() {
+		}
+	}
+
+	public static final class RequestFailureDebugFixture extends FailureDebugFixture {
+		@JPostman.Response(request = "Get current auth user", debug = "request")
+		@org.testng.annotations.Test
+		public void response() {
+		}
+	}
+
+	public static final class ResponseFailureDebugFixture extends FailureDebugFixture {
+		@JPostman.Response(request = "Get current auth user", debug = "response")
+		@org.testng.annotations.Test
+		public void response() {
+		}
+	}
+
+	public static final class InfoFailureDebugFixture extends FailureDebugFixture {
+		@JPostman.Response(request = "Get current auth user", debug = "info")
+		@org.testng.annotations.Test
+		public void response() {
+		}
+	}
+
+	public static final class AllFailureDebugFixture extends FailureDebugFixture {
+		@JPostman.Response(request = "Get current auth user", debug = "all")
+		@org.testng.annotations.Test
+		public void response() {
+		}
+	}
+
+	public abstract static class FailureDebugFixture {
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json")
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.Executor
+		public ApiExecutor executor(TestNgContext ctx, JPostman.Info info) {
+			return unauthorizedExecutor();
 		}
 	}
 

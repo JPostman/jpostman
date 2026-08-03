@@ -6,7 +6,7 @@
 
 	<groupId>io.github.jpostman</groupId>
 	<artifactId>jpostman-parent</artifactId>
-	<version>4.2.0</version>
+	<version>4.2.1</version>
 	<packaging>pom</packaging>
 
 	<name>JPostman Parent</name>
@@ -61,9 +61,9 @@
 	</scm>
 
 	<properties>
-		<jpostman.annotations.version>4.2.6</jpostman.annotations.version>
+		<jpostman.annotations.version>4.2.7</jpostman.annotations.version>
 		<!-- ${project.version} -->
-		<jpostman.version>4.2.0</jpostman.version>
+		<jpostman.version>4.2.1</jpostman.version>
 
 		<java.version>11</java.version>
 		<maven.compiler.release>${java.version}</maven.compiler.release>

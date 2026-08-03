@@ -15,10 +15,6 @@ import io.jpostman.annotations.JPostmanOutputs;
  */
 public final class JPostmanReport implements io.jpostman.annotations.JPostman.Report {
 
-	private enum DiagnosticMode {
-		NONE, SHORT, EXTEND
-	}
-
 	private enum FailAction {
 		IGNORE, SKIP_ALL, TERMINATE
 	}
@@ -28,7 +24,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private boolean summaryPrinted;
-	private DiagnosticMode diagnosticMode = DiagnosticMode.NONE;
+	private boolean details;
 	private FailAction failAction = FailAction.IGNORE;
 	private EnumSet<FailOutput> failOutput = EnumSet.noneOf(FailOutput.class);
 	private boolean skipRemaining;
@@ -59,22 +55,22 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	public final List<JPostmanInfo> skipped = new ArrayList<>();
 
 	/**
-	 * Applies both report diagnostics and composable failure behavior declared by
-	 * {@code @JPostman.ReportContext}.
+	 * Applies compact execution-detail output and composable failure behavior
+	 * declared by {@code @JPostman.ReportContext}.
 	 *
-	 * @param diagnostic report diagnostic mode: none, short, or extend
-	 * @param values     one action plus optional request/response/info/all values
+	 * @param details {@code true} to include compact execution details
+	 * @param values  one action plus optional request/response/info/all values
 	 * @return this report
 	 */
-	public JPostmanReport configure(String diagnostic, String[] values) {
-		this.diagnosticMode = diagnosticMode(diagnostic);
+	public JPostmanReport configure(boolean details, String[] values) {
+		this.details = details;
 		return configure(values);
 	}
 
 	/**
 	 * Applies the composable failure values declared by
-	 * {@code @JPostman.ReportContext}. This overload keeps the current diagnostic
-	 * mode unchanged.
+	 * {@code @JPostman.ReportContext}. This overload keeps the current execution
+	 * details setting unchanged.
 	 *
 	 * @param values one action plus optional request/response/info/all values
 	 * @return this report
@@ -119,20 +115,6 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		this.failAction = action == null ? FailAction.IGNORE : action;
 		this.failOutput = outputs;
 		return this;
-	}
-
-	private DiagnosticMode diagnosticMode(String value) {
-		switch (normalize(value)) {
-		case "none":
-			return DiagnosticMode.NONE;
-		case "short":
-			return DiagnosticMode.SHORT;
-		case "extend":
-			return DiagnosticMode.EXTEND;
-		default:
-			throw new IllegalArgumentException("Invalid @JPostman.ReportContext diagnostic value: " + value
-					+ ". Allowed values: none, short, extend.");
-		}
 	}
 
 	private String normalize(String value) {
@@ -247,7 +229,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	/**
 	 * Records a failed execution and defers all report output until
-	 * {@link #summary()} so diagnostics always appear after the JPostman report.
+	 * {@link #summary()} so details always appear after the JPostman report.
 	 */
 	void failed(JPostmanInfo info, Throwable failure) {
 		boolean reportable = record(failed, info);
@@ -413,7 +395,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		int displayedFailures = failed.size() + combinedConfigurationFailures;
 		int displayedPasses = Math.max(0, total() - displayedFailures - skipped.size());
 
-		return "===============================================" + "\nJPostman report" + "\nTotal tests run: " + total()
+		return "===============================================\nJPostman report\nTotal tests run: " + total()
 				+ ", Passes: " + displayedPasses + ", Failures: " + displayedFailures + ", Skips: " + skipped.size()
 				+ ", Duration: " + JPostmanInfo.formatDuration(duration(), true)
 				+ "\n===============================================";
@@ -443,8 +425,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	private String detailLog() {
 		StringBuilder output = new StringBuilder();
-		if (diagnosticMode != DiagnosticMode.NONE) {
-			output.append(diagnosticLog());
+		if (details) {
+			output.append(executionDetailsLog());
 		} else if (hasFailureOutput()) {
 			output.append(failureLog());
 		}
@@ -456,13 +438,13 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		return !failOutput.isEmpty();
 	}
 
-	private String diagnosticLog() {
+	private String executionDetailsLog() {
 		List<JPostmanInfo> values = all();
 		if (values.isEmpty()) {
 			return "";
 		}
 
-		StringBuilder output = section("JPostman Diagnostics:\n");
+		StringBuilder output = section("JPostman Execution Details:\n");
 		boolean first = true;
 		boolean previousHadAdditionalData = false;
 		for (JPostmanInfo value : values) {
@@ -473,12 +455,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				appendExecutionSeparator(output, previousHadAdditionalData);
 			}
 			first = false;
-			boolean skippedExecution = isSkipped(value);
-			output.append(shortDiagnostic(value));
+			output.append(executionDetailsLine(value));
 			int detailStart = output.length();
-			if (diagnosticMode == DiagnosticMode.EXTEND && !skippedExecution) {
-				appendBlock(output, value.requestLog());
-			}
 			if (failed.contains(value)) {
 				appendFailureDetails(output, value);
 			}
@@ -502,7 +480,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				appendExecutionSeparator(output, previousHadAdditionalData);
 			}
 			first = false;
-			output.append(shortDiagnostic(value));
+			output.append(executionDetailsLine(value));
 			int detailStart = output.length();
 			appendFailureDetails(output, value);
 			previousHadAdditionalData = output.length() > detailStart;
@@ -511,9 +489,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	/**
-	 * Appends local {@code debug = "error"} failures after the report diagnostics.
-	 * The local mode includes the cleaned error plus the secure request and
-	 * response. ReportContext-selected details are not repeated.
+	 * Appends local {@code debug = "error"} failures after the report execution
+	 * details. The local mode includes the cleaned error plus the secure request
+	 * and response. ReportContext-selected details are not repeated.
 	 */
 	private String localErrorLog() {
 		if (failed.isEmpty()) {
@@ -764,12 +742,12 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		return false;
 	}
 
-	String shortDiagnostic(JPostmanInfo info) {
+	String executionDetailsLine(JPostmanInfo info) {
 		StringBuilder out = new StringBuilder(topMethod(info)).append(":  ");
 		boolean skippedExecution = isSkipped(info);
 		if (skippedExecution) {
 			// verify=1 runs the HTTP request and only then converts the completed
-			// execution to skipped. Preserve its response status so diagnostics can
+			// execution to skipped. Preserve its response status so execution details can
 			// distinguish it from a true pre-execution skip such as skipAll=true.
 			if (info != null && info.statusCode() != null) {
 				out.append("statusCode=").append(info.statusCode()).append(", ");

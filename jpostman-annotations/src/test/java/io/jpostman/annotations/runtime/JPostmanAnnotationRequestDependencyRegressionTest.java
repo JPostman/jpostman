@@ -155,7 +155,7 @@ public class JPostmanAnnotationRequestDependencyRegressionTest {
 		@JPostman.Context(config = "classpath:annotation-test-runner-per-request.properties", verifyStatusCode = 200)
 		private JPostman.Runtime<TestNgContext> jpostman;
 
-		@JPostman.ReportContext(diagnostic = "short")
+		@JPostman.ReportContext(details = true)
 		private JPostman.Report report;
 
 		private int loginMethodCalls;

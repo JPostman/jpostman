@@ -255,7 +255,7 @@ public final class JPostmanAnnotationEngine {
 	 */
 	public static void verifyExplicitSoftAssertions(Method testMethod) {
 		if (testMethod == null || (JPostmanAnnotations.response(testMethod) == null
-				&& JPostmanAnnotations.runner(testMethod) == null)) {
+				&& JPostmanAnnotations.call(testMethod) == null && JPostmanAnnotations.runner(testMethod) == null)) {
 			return;
 		}
 		JPostmanAssertionCleanup.verifyExplicitSoft();
@@ -424,8 +424,8 @@ public final class JPostmanAnnotationEngine {
 
 	/**
 	 * Returns {@code true} when a report context is declared for the test class.
-	 * Once present, the report's {@code diagnostic} and {@code fail} settings own
-	 * all automatic failure output. This prevents JUnit's optional
+	 * Once present, the report's {@code details} and {@code fail} settings own all
+	 * automatic failure output. This prevents JUnit's optional
 	 * {@code printFailures} bridge from printing an immediate duplicate or from
 	 * bypassing {@code fail = "ignore"}.
 	 *

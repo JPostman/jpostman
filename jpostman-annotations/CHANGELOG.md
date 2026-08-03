@@ -74,7 +74,7 @@
 - Fixed multiple injected soft assertion fields so all pending failures are verified, aggregated, and cleared even when an earlier field fails.
 - Fixed `fail = "error"` printing the full trace both before and after the report summary.
 - Fixed `fail = "ignore"` still producing a `JPostman failures` section.
-- Fixed report diagnostics and failure details being duplicated when `diagnostic = "short"` or `diagnostic = "extend"` is combined with failure output.
+- Fixed report diagnostics and failure details being duplicated when `details = true` or `diagnostic = "extend"` is combined with failure output.
 
 ### Removed
 

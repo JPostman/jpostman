@@ -165,9 +165,14 @@ public @interface JPostmanRequest {
 	 *
 	 * <p>
 	 * Use {@code debug} to inherit {@link JPostmanContext#debug()}. Use
-	 * {@code none} to suppress output, {@code error} for the full failure trace, or
-	 * request, response, info, and all for local diagnostics. {@code error} may be
-	 * combined with one or more diagnostic values.
+	 * {@code none} to suppress output, {@code error} for the full failure trace,
+	 * {@code request} for prepared-request diagnostics, {@code response} for
+	 * received-response diagnostics, {@code info} for runtime annotation
+	 * information, or {@code all} for all local diagnostics. Request, response,
+	 * info, and all are printed after annotation execution for both passing and
+	 * failing executions. The local {@code error} mode is different: it is printed
+	 * only for failures and is deferred until after the JPostman report execution
+	 * details.
 	 * </p>
 	 *
 	 * @return local debug setting

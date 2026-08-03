@@ -9,8 +9,6 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Properties;
 
-import org.slf4j.LoggerFactory;
-
 import io.jpostman.annotations.JPostmanContext;
 import io.jpostman.annotations.JPostmanOutputs;
 
@@ -403,14 +401,50 @@ final class JPostmanRuntimeOptions {
 		}
 	}
 
+	static String debugScope(JPostmanInfo info) {
+		if (info == null) {
+			return "";
+		}
+
+		StringBuilder result = new StringBuilder();
+		appendDebugScope(result, "namespace", info.namespace, "<default>", "default");
+		appendDebugScope(result, "folder", info.folder, "<root>", "root");
+		appendDebugScope(result, "request", info.request);
+		return result.toString();
+	}
+
+	private static void appendDebugScope(StringBuilder result, String name, String value, String... omittedValues) {
+		String normalized = value == null ? "" : value.trim();
+		if (normalized.isBlank()) {
+			return;
+		}
+		if (omittedValues != null) {
+			for (String omitted : omittedValues) {
+				if (omitted != null && omitted.equalsIgnoreCase(normalized)) {
+					return;
+				}
+			}
+		}
+		if (result.length() > 0) {
+			result.append(", ");
+		}
+		result.append(name).append('=').append(normalized);
+	}
+
 	static void printMethodHeader(Object testInstance, JPostmanInfo info) {
 		if (testInstance == null || info == null) {
 			return;
 		}
 
-		String text = "DEBUG " + testInstance.getClass().getName() + ":   === " + info.method + " ===";
+		/*
+		 * Keep the execution separator and DEBUG header in one output message. When
+		 * they are written separately, SLF4J and System.out may use different streams
+		 * and the blank line can appear out of order or disappear in IDE consoles.
+		 */
+		String text = JPostmanErrors.ENDL + JPostmanErrors.ENDL + "DEBUG " + testInstance.getClass().getName()
+				+ ":   === " + info.method + " ===" + JPostmanErrors.ENDL;
 		if (!JPostmanOutputs.write(text)) {
-			LoggerFactory.getLogger(testInstance.getClass()).debug("  === {} ===", info.method);
+			System.out.print(text);
 		}
 	}
 

@@ -23,6 +23,7 @@ import io.jpostman.Request;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanCall;
 import io.jpostman.annotations.JPostmanExecutor;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanRequest;
 import io.jpostman.annotations.JPostmanResponse;
 import io.jpostman.annotations.JPostmanRunner;
@@ -229,6 +230,9 @@ public final class JPostmanAnnotationRunner<C> {
 			String localDebug = annotationDebug(requestAnnotation, responseAnnotation, callAnnotation,
 					runnerAnnotation);
 			C latest = latestContext(prepared, info.namespace, current.context);
+			if (!isFrameworkSkip(e)) {
+				debugOutputAfterFailure(testInstance, latest, info, localDebug);
+			}
 			String internalDiagnostic = internalDiagnosticLog(latest);
 			boolean concreteRunnerResult = runnerAnnotation != null && report != null
 					&& report.hasRunnerRequest(info.method);
@@ -1095,7 +1099,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), "", annotation.executor(), cache, annotation.namespace(),
 						folder(annotation.folder()), annotation.request())
-				.annotation("@JPostmanResponse").id(annotationId(annotation.id()));
+				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.debug());
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		registerCacheAlias(resolver, info.id, cache);
 		resolver.info(info);
@@ -1156,7 +1160,7 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.child(dependencyMethod.getName(), new String[0], annotation.executor(), "", annotation.namespace(),
 						folder(annotation.folder()), parentInfo.request)
-				.annotation("@JPostmanRunner").id(annotationId(annotation.id()));
+				.annotation("@JPostmanRunner").id(annotationId(annotation.id())).debug(annotation.debug());
 		prepareRunnerScope(testInstance, resolver, annotation, info);
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(dependencyMethod.getName());
@@ -1261,7 +1265,8 @@ public final class JPostmanAnnotationRunner<C> {
 		JPostmanInfo info = parentInfo
 				.child(reusableRunner.getName(), new String[0], reusableAnnotation.executor(), "",
 						reusableAnnotation.namespace(), folder(reusableAnnotation.folder()), parentInfo.request)
-				.annotation("@JPostmanRunner").id(annotationId(reusableAnnotation.id()));
+				.annotation("@JPostmanRunner").id(annotationId(reusableAnnotation.id()))
+				.debug(reusableAnnotation.debug());
 		prepareRunnerScope(testInstance, resolver, reusableAnnotation, info);
 		JPostmanInfo runnerInfo = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		runnerInfo.method(reusableRunner.getName());
@@ -1365,7 +1370,7 @@ public final class JPostmanAnnotationRunner<C> {
 				: parentInfo.childExact(dependencyMethod.getName(), "", annotation.executor(), cache,
 						annotation.namespace(), folder(annotation.folder()), annotation.request());
 
-		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id()));
+		info = info.annotation("@JPostmanRequest").id(annotationId(annotation.id())).debug(annotation.debug());
 		if (!isBlank(annotation.request())) {
 			info.requestId(annotation.id());
 		}
@@ -1718,6 +1723,7 @@ public final class JPostmanAnnotationRunner<C> {
 			return ctx;
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
+			debugOutputAfterFailure(testInstance, latest, info, annotation.debug());
 			failed(report(testInstance), info, latest, e);
 			throw executionFailure(testInstance, latest, info, e, annotation.debug());
 		}
@@ -2111,6 +2117,7 @@ public final class JPostmanAnnotationRunner<C> {
 			passed(report, info);
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
+			debugOutputAfterFailure(testInstance, latest, info, annotation.debug());
 			failed(report, info, latest, e);
 			throw executionFailure(testInstance, latest, info, e, annotation.debug());
 		}
@@ -2163,6 +2170,7 @@ public final class JPostmanAnnotationRunner<C> {
 			passed(report, info);
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
+			debugOutputAfterFailure(testInstance, latest, info, annotation.debug());
 			failed(report, info, latest, e);
 			throw executionFailure(testInstance, latest, info, e, annotation.debug());
 		}
@@ -2283,7 +2291,8 @@ public final class JPostmanAnnotationRunner<C> {
 			validateLocalDebug(annotation.debug(), info);
 			JPostmanInfo interceptorInfo = info
 					.childExact(method.getName(), "", info.executor, "", info.namespace, info.folder, info.request)
-					.annotation("@JPostmanExecutor intercept").id(annotationId(annotation.id()));
+					.annotation("@JPostmanExecutor intercept").id(annotationId(annotation.id()))
+					.debug(annotation.debug());
 			interceptorInfo = interceptorInfo.context(resolver.resolve(info.namespace).contextAnnotation);
 			interceptorInfo.method(method.getName());
 			resolver.info(interceptorInfo);
@@ -2893,10 +2902,13 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private void debugOutput(Object testInstance, C ctx, JPostmanInfo info, String annotationDebug) {
+		if (info != null && !info.markDebugOutputEmitted()) {
+			return;
+		}
 		try {
 			captureReportDiagnostics(report(testInstance), ctx, info);
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
-			// Report diagnostics must never affect request execution.
+			// Report details must never affect request execution.
 		}
 		JPostmanRuntimeOptions options = JPostmanRuntimeOptions.from(testInstance);
 		JPostmanDebugFile.execution(testInstance, info, annotationDebug, internalDiagnosticLog(ctx));
@@ -2906,6 +2918,12 @@ public final class JPostmanAnnotationRunner<C> {
 			return;
 		}
 		printDebugOutputHeader(testInstance, info);
+		if (!outputs.contains(JPostmanRuntimeOptions.DebugOutput.INFO)
+				&& !outputs.contains(JPostmanRuntimeOptions.DebugOutput.ALL)
+				&& (outputs.contains(JPostmanRuntimeOptions.DebugOutput.REQUEST)
+						|| outputs.contains(JPostmanRuntimeOptions.DebugOutput.RESPONSE))) {
+			printDebugScope(info);
+		}
 		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.ALL)) {
 			info.print(true);
 			framework.printContext(ctx);
@@ -2914,11 +2932,32 @@ public final class JPostmanAnnotationRunner<C> {
 		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.INFO)) {
 			info.print(false);
 		}
-		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.REQUEST)) {
+		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.REQUEST) && hasDebugOutput(ctx, true, false)) {
+			printDebugSectionHeader("********** SecureRequest: **********");
 			framework.printRequest(ctx);
 		}
-		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.RESPONSE)) {
+		if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.RESPONSE) && hasDebugOutput(ctx, false, true)) {
+			printDebugSectionHeader("**********SecureResponse: **********");
 			framework.printResponse(ctx);
+		}
+	}
+
+	/**
+	 * Emits ordinary debug output for a failed execution. Request, response, info,
+	 * and all use the same immediate output path for passing and failing
+	 * executions. The local error mode remains deferred to the report's JPostman
+	 * Errors section.
+	 */
+	private void debugOutputAfterFailure(Object testInstance, C ctx, JPostmanInfo info, String annotationDebug) {
+		try {
+			java.util.EnumSet<JPostmanRuntimeOptions.DebugOutput> outputs = JPostmanRuntimeOptions.from(testInstance)
+					.automaticOutput(annotationDebug, info);
+			if (outputs.contains(JPostmanRuntimeOptions.DebugOutput.NONE)) {
+				return;
+			}
+			debugOutput(testInstance, ctx, info, annotationDebug);
+		} catch (RuntimeException | LinkageError ignored) {
+			// Debug output must never replace the original execution failure.
 		}
 	}
 
@@ -2956,6 +2995,34 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 	}
 
+	private boolean hasDebugOutput(C ctx, boolean request, boolean response) {
+		try {
+			return !value(framework.diagnosticLog(ctx, request, response)).trim().isBlank();
+		} catch (RuntimeException | LinkageError ignored) {
+			return false;
+		}
+	}
+
+	private void printDebugScope(JPostmanInfo info) {
+		String scope = JPostmanRuntimeOptions.debugScope(info);
+		if (!scope.isBlank()) {
+			printDebugText(scope + JPostmanErrors.ENDL);
+		}
+	}
+
+	private void printDebugSectionHeader(String header) {
+		printDebugText(JPostmanErrors.ENDL + value(header) + JPostmanErrors.ENDL);
+	}
+
+	private void printDebugText(String text) {
+		if (text == null || text.isEmpty()) {
+			return;
+		}
+		if (!JPostmanOutputs.write(text)) {
+			System.out.print(text);
+		}
+	}
+
 	private void printDebugOutputHeader(Object testInstance, JPostmanInfo info) {
 		JPostmanRuntimeOptions.printMethodHeader(testInstance, info);
 	}
@@ -2980,7 +3047,7 @@ public final class JPostmanAnnotationRunner<C> {
 				}
 				io.jpostman.annotations.JPostmanReportContext options = JPostmanAnnotations.reportContext(field);
 				if (options != null)
-					report.configure(options.diagnostic(), options.fail());
+					report.configure(options.details(), options.fail());
 				if (result == null) {
 					result = report;
 				}
@@ -3619,7 +3686,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (isBlank(requestedProvider) && options.hasDefaultExecutor() && !hasExecutorProviderMethods(type)) {
 			String name = options.executorClass().getSimpleName();
 			JPostmanInfo executorInfo = info.child(name, info.executor, info.namespace, info.folder, info.request)
-					.annotation("@JPostmanContext executor").debug(info.debug);
+					.annotation("@JPostmanContext executor").debug("debug");
 			return new ExecutorCall<>(name, executorInfo, options.executorClass(), options.session());
 		}
 
@@ -3628,7 +3695,7 @@ public final class JPostmanAnnotationRunner<C> {
 		validateLocalDebug(annotation.debug(), info);
 		JPostmanInfo executorInfo = info
 				.child(method.getName(), info.executor, info.namespace, info.folder, info.request)
-				.annotation("@JPostmanExecutor").id(annotationId(annotation.id()));
+				.annotation("@JPostmanExecutor").id(annotationId(annotation.id())).debug(annotation.debug());
 		return new ExecutorCall<>(method, annotation, executorInfo);
 	}
 

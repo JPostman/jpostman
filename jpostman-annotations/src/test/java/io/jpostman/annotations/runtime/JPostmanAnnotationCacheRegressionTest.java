@@ -94,9 +94,9 @@ public class JPostmanAnnotationCacheRegressionTest {
 		@JPostman.Request(dependsOn = "getToken")
 		public void authRequest(JPostman.Test test, JPostman.Info info) {
 			authRequestCalls++;
-			assertEquals("token-123", test.get("token"));
-			assertEquals("token-123", test.get("#Ref1"));
-			info.sauth("oauth2", test.get("token"));
+			assertEquals("token-123", test.cache("token"));
+			assertEquals("token-123", test.cache("#Ref1"));
+			info.sauth("oauth2", test.cache("token"));
 		}
 
 		@JPostman.Response(request = "Get current auth user", dependsOn = "authRequest", verify = 200)
@@ -153,9 +153,9 @@ public class JPostmanAnnotationCacheRegressionTest {
 
 		@JPostman.Request(dependsOn = { "#Ref1", "#Ref2" })
 		public void prepare(JPostman.Test test) {
-			explicitIdToken = test.get("#Ref1:accessToken", String.class);
-			implicitToken = test.get("accessToken", String.class);
-			customToken = test.get("Ref1:accessToken", String.class);
+			explicitIdToken = test.cache("#Ref1:accessToken", String.class);
+			implicitToken = test.cache("accessToken", String.class);
+			customToken = test.cache("Ref1/accessToken", String.class);
 		}
 
 		@JPostman.Response(request = "Get current auth user", dependsOn = "prepare", verify = 200)

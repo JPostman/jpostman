@@ -22,21 +22,18 @@ import io.jpostman.annotations.runtime.JPostmanReport;
 public @interface JPostmanReportContext {
 
 	/**
-	 * Controls report diagnostics printed with the class summary.
+	 * Includes compact execution details after the class summary.
 	 *
-	 * <ul>
-	 * <li>{@code none} - disable general execution diagnostics. This is the
-	 * default.</li>
-	 * <li>{@code short} - append one compact line per recorded execution with the
-	 * method, namespace, folder, request, status code, duration, and method
-	 * chain.</li>
-	 * <li>{@code extend} - append the short line and the prepared request output
-	 * for each recorded execution.</li>
-	 * </ul>
+	 * <p>
+	 * Each recorded request is displayed on one line with its method, HTTP status
+	 * code, duration or skip state, resolved namespace, folder, request name, and
+	 * dependency chain when available. Request and response bodies remain
+	 * controlled by {@code debug} and {@code fail}.
+	 * </p>
 	 *
-	 * @return report diagnostic detail
+	 * @return {@code true} to include compact execution details
 	 */
-	String diagnostic() default "none";
+	boolean details() default false;
 
 	/**
 	 * Controls report behavior after a failed execution. Combine at most one action

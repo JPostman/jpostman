@@ -198,8 +198,8 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 
 			profileExecutions++;
 			int execution = profileExecutions;
-			String body = "{" + "\"id\":" + execution + "," + "\"firstName\":\"Emily-" + execution + "\","
-					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"gender\":\"female-" + execution + "\"" + "}";
+			String body = "{\"id\":" + execution + ",\"firstName\":\"Emily-" + execution + "\","
+					+ "\"lastName\":\"Johnson-" + execution + "\",\"gender\":\"female-" + execution + "\"}";
 			return okExecutor(body);
 		}
 	}
@@ -255,8 +255,8 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 
 			profileExecutions++;
 			int execution = profileExecutions;
-			String body = "{" + "\"id\":" + execution + "," + "\"firstName\":\"Emily-" + execution + "\","
-					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"gender\":\"female-" + execution + "\"" + "}";
+			String body = "{\"id\":" + execution + ",\"firstName\":\"Emily-" + execution + "\","
+					+ "\"lastName\":\"Johnson-" + execution + "\",\"gender\":\"female-" + execution + "\"}";
 			return okExecutor(body);
 		}
 	}
@@ -321,9 +321,9 @@ public class JPostmanAnnotationResponseFilterRegressionTest {
 
 			profileExecutions++;
 			int execution = profileExecutions;
-			String body = "{" + "\"id\":" + execution + "," + "\"firstName\":\"Emily-" + execution + "\","
-					+ "\"lastName\":\"Johnson-" + execution + "\"," + "\"maidenName\":\"Smith\","
-					+ "\"gender\":\"female-" + execution + "\"" + "}";
+			String body = "{\"id\":" + execution + ",\"firstName\":\"Emily-" + execution + "\","
+					+ "\"lastName\":\"Johnson-" + execution + "\",\"maidenName\":\"Smith\",\"gender\":\"female-"
+					+ execution + "\"}";
 			return okExecutor(body);
 		}
 	}

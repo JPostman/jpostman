@@ -174,7 +174,8 @@ public @interface JPostmanContext {
 	 * </ul>
 	 *
 	 * Request, response, and info may be combined. {@code none} and {@code all}
-	 * must each be used alone.
+	 * must each be used alone. Selected output is printed after each annotation
+	 * execution whether that execution passes or fails.
 	 *
 	 * @return automatic debug output settings
 	 */

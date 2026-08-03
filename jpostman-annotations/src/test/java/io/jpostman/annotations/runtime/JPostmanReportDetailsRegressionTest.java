@@ -16,12 +16,12 @@ import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanReportContext;
 import io.jpostman.junit.JUnitContext;
 
-class JPostmanReportDiagnosticRegressionTest {
+class JPostmanReportDetailsRegressionTest {
 
 	@Test
-	void reportAnnotationsExposeDiagnosticAndComposableFailValues() throws Exception {
+	void reportAnnotationsExposeDetailsAndComposableFailValues() throws Exception {
 		assertEquals(false, JPostman.ReportContext.class.getMethod("details").getDefaultValue());
-		assertEquals("ignore", ((String[]) JPostmanReportContext.class.getMethod("fail").getDefaultValue())[0]);
+		assertEquals(false, JPostmanReportContext.class.getMethod("details").getDefaultValue());
 		assertArrayEquals(new String[] { "ignore" },
 				(String[]) JPostman.ReportContext.class.getMethod("fail").getDefaultValue());
 		assertArrayEquals(new String[] { "ignore" },
@@ -91,19 +91,19 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
-	void diagnosticNonePrintsOnlySummary() {
+	void detailsFalsePrintsOnlySummary() {
 		JPostmanReport report = new JPostmanReport().configure(false, new String[] { "ignore" });
 		report.passed(requestInfo().requestLog("PREPARED REQUEST"));
 
 		String output = capture(report::summary).get(0);
 
 		assertTrue(output.contains("JPostman report"), output);
-		assertFalse(output.contains("JPostman Diagnostics:"), output);
+		assertFalse(output.contains("JPostman Execution Details:"), output);
 		assertFalse(output.contains("PREPARED REQUEST"), output);
 	}
 
 	@Test
-	void diagnosticShortPrintsExecutionLineWithoutRequest() {
+	void detailsTruePrintsExecutionLineWithoutRequest() {
 		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
 		report.passed(requestInfo().requestLog("PREPARED REQUEST"));
 
@@ -116,7 +116,7 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
-	void diagnosticShortMarksSkippedExecutionWithoutZeroDuration() {
+	void detailsMarkSkippedExecutionWithoutZeroDuration() {
 		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
 		JPostmanInfo skipped = new JPostmanInfo(new String[0], "", "addNewproduct", "product", "Product",
 				"Add a new product");
@@ -135,7 +135,7 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
-	void diagnosticShortIncludesStatusCodeForExecutedVerifySkip() {
+	void detailsIncludeStatusCodeForExecutedVerifySkip() {
 		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
 		JPostmanInfo skipped = new JPostmanInfo(new String[0], "", "testAuthRunner", "", "Auth",
 				"Get current authenticated user");
@@ -152,7 +152,7 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
-	void diagnosticExtendPrintsShortLineAndPreparedRequest() {
+	void detailsDoNotDuplicateDebugRequestOutput() {
 		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
 		report.passed(requestInfo().requestLog("PREPARED REQUEST"));
 
@@ -160,6 +160,7 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		assertTrue(output.contains("JPostman Execution Details:"), output);
 		assertTrue(output.contains("assertsVerify:  statusCode=201, duration="), output);
+		assertFalse(output.contains("PREPARED REQUEST"), output);
 	}
 
 	@Test
@@ -173,14 +174,14 @@ class JPostmanReportDiagnosticRegressionTest {
 
 		assertTrue(text.contains("JPostman report"), text);
 		assertFalse(text.contains("JPostman failures"), text);
-		assertFalse(text.contains("JPostman Diagnostics:"), text);
+		assertFalse(text.contains("JPostman Execution Details:"), text);
 		assertFalse(text.contains("assertsVerify:"), text);
 		assertFalse(text.contains("PREPARED REQUEST"), text);
 		assertFalse(text.contains("RECEIVED RESPONSE"), text);
 	}
 
 	@Test
-	void failureOptionsAppendSelectedDiagnosticsAfterReportSummary() {
+	void failureOptionsAppendSelectedOutputAfterReportSummary() {
 		JPostmanInfo info = requestInfo();
 		info.requestLog("PREPARED REQUEST").responseLog("RECEIVED RESPONSE");
 
@@ -207,7 +208,7 @@ class JPostmanReportDiagnosticRegressionTest {
 	}
 
 	@Test
-	void diagnosticShortDoesNotDuplicateFailedExecutionBeforeOrAfterSummary() {
+	void detailsDoNotDuplicateFailedExecutionBeforeOrAfterSummary() {
 		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
 		JPostmanInfo info = requestInfo();
 

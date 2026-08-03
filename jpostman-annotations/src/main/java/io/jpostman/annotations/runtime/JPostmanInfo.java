@@ -6,9 +6,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -154,6 +156,7 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 		private Request sourceRequest;
 		private String secureRequestLog = "";
 		private String secureResponseLog = "";
+		private final Set<String> emittedDebugOutputs = new HashSet<>();
 	}
 
 	/** Diagnostic request metadata shared by one annotation execution chain. */
@@ -168,6 +171,33 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	Request sourceRequest() {
 		return diagnosticState.sourceRequest;
+	}
+
+	/**
+	 * Marks ordinary debug output as emitted for this logical annotation step.
+	 *
+	 * <p>
+	 * Copies created through {@link #withTags(String...)},
+	 * {@link #debug(String...)}, {@link #context(JPostmanContext)}, and child
+	 * execution helpers share the same diagnostic state. Using a logical key here
+	 * prevents the same completed response from being printed by both an inner
+	 * execution failure handler and its outer annotation handler, while still
+	 * allowing distinct dependency, executor, and runner-request steps to print
+	 * independently.
+	 * </p>
+	 *
+	 * @return {@code true} only for the first output attempt for this logical step
+	 */
+	boolean markDebugOutputEmitted() {
+		String key = debugOutputKey();
+		synchronized (diagnosticState) {
+			return diagnosticState.emittedDebugOutputs.add(key);
+		}
+	}
+
+	private String debugOutputKey() {
+		return value(annotation) + '\u0000' + value(method) + '\u0000' + methodIndex + '\u0000' + value(namespace)
+				+ '\u0000' + value(folder) + '\u0000' + value(request) + '\u0000' + value(executor);
 	}
 
 	public JPostmanInfo statusCode(Integer value) {
@@ -1559,10 +1589,20 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	 */
 	public String log(boolean includeAll) {
 		StringBuilder builder = new StringBuilder();
+		StringBuilder info = new StringBuilder();
 
 		builder.append("JPostmanInfo {");
 		append(builder, "annotation", annotation);
-		append(builder, "id", id);
+
+		concatenate(info, "id", id);
+		concatenate(info, "namespace", namespace);
+		concatenate(info, "folder", folder);
+		concatenate(info, "request", request);
+		concatenate(info, "executor", executor);
+		concatenate(info, "cache", cache);
+		if (info.length() > 0) {
+			builder.append('\n').append(info);
+		}
 		if (tags.length > 0)
 			builder.append("\n  tags=").append(Arrays.toString(tags));
 		append(builder, "method", method);
@@ -1571,12 +1611,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 				builder.append("\n  methodIndex=").append(methodIndex);
 			builder.append("\n  methods=").append(methods);
 		}
-		append(builder, "namespace", namespace);
-		concatenate(builder, "folder", folder);
-		concatenate(builder, "request", request);
-		concatenate(builder, "executor", executor);
-		append(builder, "cache", cache);
-		append(builder, "data", data);
+		if (data != null && !data.isBlank())
+			builder.append("\n  data=").append(data);
 		if (body != null && body.size() > 0)
 			builder.append("\n  body=").append(masked(body, false));
 		if (query != null && query.size() > 0)
@@ -1603,7 +1639,8 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	private static void concatenate(StringBuilder builder, String key, String value) {
 		if (!isBlank(value)) {
-			builder.append(", ").append(key).append("=").append(value);
+			builder.append(builder.length() > 0 ? ", " : "  ");
+			builder.append(key).append("=").append(value);
 		}
 	}
 

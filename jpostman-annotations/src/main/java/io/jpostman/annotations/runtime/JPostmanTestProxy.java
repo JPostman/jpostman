@@ -7,6 +7,7 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -214,16 +215,12 @@ final class JPostmanTestProxy implements InvocationHandler {
 			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
 			return null;
 		}
-		if (("cache".equals(name) || "get".equals(name)) && args != null && args.length >= 1
-				&& args[0] instanceof String) {
-			Object value = "get".equals(name) ? resolveGetExpression(target, (String) args[0])
-					: resolveCacheExpression(target, (String) args[0]);
-			if (method.getParameterCount() == 2 && args.length == 2 && args[1] instanceof Class<?>) {
+		if (isCacheRead(method, name, args)) {
+			Object value = resolveCacheExpression(target, (String) args[0]);
+			if (method.getParameterCount() == 2) {
 				return JPostmanCacheValueConverter.convert(value, (Class<?>) args[1]);
 			}
-			if (method.getParameterCount() == 1) {
-				return value;
-			}
+			return value;
 		}
 
 		Object invocationTarget = target;
@@ -243,44 +240,67 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
 	}
 
-	private static Object resolveGetExpression(Object target, String expression) throws Throwable {
+	private static boolean isCacheRead(Method method, String name, Object[] args) {
+		if (!"cache".equals(name) || args == null || args.length == 0 || method.getParameterCount() == 0
+				|| method.getParameterTypes()[0] != String.class) {
+			return false;
+		}
+		if (method.getParameterCount() == 1) {
+			return true;
+		}
+		return method.getParameterCount() == 2 && method.getParameterTypes()[1] == Class.class;
+	}
+
+	private static Object resolveCacheExpression(Object target, String expression) throws Throwable {
 		String value = expression == null ? "" : expression.trim();
 		if (value.isBlank()) {
 			throw new IllegalArgumentException("JPostman cache expression is required.");
 		}
 
-		int separator = value.indexOf(':');
-		boolean idOnly = separator < 0 && value.startsWith("#");
+		if (value.startsWith("#")) {
+			int separator = value.indexOf(':');
+			String reference = separator >= 0 ? value.substring(0, separator).trim() : value;
+			String path = separator >= 0 ? value.substring(separator + 1).trim() : "";
+			String cacheKey = cacheKeyByAnnotationId(target, reference);
+			Object cached = readCache(target, cacheKey);
+			if (cached == null) {
+				throw new IllegalStateException("Cached dependency value not found for " + reference + ".");
+			}
+			return path.isBlank() ? cached : pathValue(cached, path);
+		}
+
+		int pathSeparator = value.indexOf('/');
+		if (pathSeparator > 0) {
+			String key = value.substring(0, pathSeparator).trim();
+			String path = value.substring(pathSeparator + 1).trim();
+			Object cached = readCache(target, key);
+			return cached == null || path.isBlank() ? cached : pathValue(cached, path);
+		}
 
 		/*
-		 * Preserve the pre-4.2.3 direct-key contract. A bare expression such as
-		 * get("token") first means "read cache key token". Only when that exact key is
-		 * absent does the 4.2.3 dependency-aware shorthand interpret the same
-		 * expression as a response path on the single cached direct dependency.
+		 * Preserve direct cache reads. A bare expression first means "read this exact
+		 * cache key". Only when that key is absent is the same expression interpreted
+		 * as a response path on the single cached direct dependency.
 		 */
-		if (separator < 0 && !idOnly) {
-			Object direct = readCache(target, value);
-			if (direct != null) {
-				return direct;
-			}
+		Object direct = readCache(target, value);
+		if (direct != null) {
+			return direct;
 		}
 
-		String reference = separator >= 0 ? value.substring(0, separator).trim() : idOnly ? value : "";
-		String path = separator >= 0 ? value.substring(separator + 1).trim() : idOnly ? "" : value;
-		String cacheKey;
-
-		if (!reference.isBlank()) {
-			cacheKey = reference.startsWith("#") ? cacheKeyByAnnotationId(target, reference) : reference;
-		} else {
-			cacheKey = inferSingleCachedDependency(target, path);
+		List<CacheDependency> configured = CACHE_DEPENDENCIES.get();
+		if (configured == null || configured.isEmpty()) {
+			return null;
 		}
 
+		String cacheKey = inferSingleCachedDependency(target, value);
+		if (cacheKey == null) {
+			return null;
+		}
 		Object cached = readCache(target, cacheKey);
 		if (cached == null) {
-			throw new IllegalStateException(
-					"Cached dependency value not found for " + (reference.isBlank() ? cacheKey : reference) + ".");
+			return null;
 		}
-		return path.isBlank() ? cached : pathValue(cached, path);
+		return pathValue(cached, value);
 	}
 
 	private static String cacheKeyByAnnotationId(Object target, String reference) throws Throwable {
@@ -320,16 +340,19 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return available.values().iterator().next().cacheKey;
 		}
 		if (available.isEmpty()) {
-			throw new IllegalStateException("No cached direct dependency is available for path \"" + path + "\".");
+			return null;
 		}
 
 		List<String> references = new ArrayList<>();
 		for (CacheDependency dependency : available.values()) {
 			references.add(dependency.reference.isBlank() ? dependency.cacheKey : dependency.reference);
 		}
+		CacheDependency first = available.values().iterator().next();
+		String suggestion = first.reference.startsWith("#") ? first.reference + ":" + path
+				: first.cacheKey + "/" + path;
 		throw new IllegalStateException("Cached path \"" + path + "\" is ambiguous. Cached direct dependencies: "
-				+ String.join(", ", references) + ". Use an explicit reference such as test.get(\"" + references.get(0)
-				+ ":" + path + "\").");
+				+ String.join(", ", references) + ". Use an explicit reference such as test.cache(\"" + suggestion
+				+ "\").");
 	}
 
 	private static Object readCache(Object target, String key) throws Throwable {
@@ -342,24 +365,6 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 	private static Object pathValue(Object cached, String path) throws Throwable {
 		if (cached == null || path == null || path.isBlank()) {
-			return cached;
-		}
-		Object cachedTarget = unwrap(cached);
-		Method pathMethod = findTargetMethod(cachedTarget, "path", new Object[] { path });
-		Object value = invokeTarget(pathMethod, cachedTarget, new Object[] { path });
-		return JPostmanCacheValueConverter.unwrap(value);
-	}
-
-	private static Object resolveCacheExpression(Object target, String expression) throws Throwable {
-		int separator = expression.indexOf('/');
-		String key = separator > 0 ? expression.substring(0, separator) : expression;
-		Method cacheMethod = findTargetMethod(target, "cache", new Object[] { key });
-		Object cached = invokeTarget(cacheMethod, target, new Object[] { key });
-		if (separator <= 0) {
-			return cached;
-		}
-		String path = expression.substring(separator + 1);
-		if (cached == null || path.isBlank()) {
 			return cached;
 		}
 		Object cachedTarget = unwrap(cached);
@@ -392,8 +397,9 @@ final class JPostmanTestProxy implements InvocationHandler {
 				return target == other || (target != null && target.equals(other));
 			}
 
-			Method targetMethod = findTargetMethod(target, name, args);
-			Object result = invokeTarget(targetMethod, target, args);
+			Object[] invocationArgs = optionalAllMatchMessage(method, args);
+			Method targetMethod = findTargetMethod(target, name, invocationArgs);
+			Object result = invokeTarget(targetMethod, target, invocationArgs);
 			return adaptAssertionReturn(proxy, method, result, soft);
 		}
 	}
@@ -438,6 +444,26 @@ final class JPostmanTestProxy implements InvocationHandler {
 				String text = message == null || String.valueOf(message).isBlank() ? "Assertion failed"
 						: String.valueOf(message);
 				throw new AssertionError(text);
+			}
+			if ("soft".equals(name) && method.getParameterCount() == 0) {
+				/*
+				 * soft() is a temporary method-scoped mode. It must never mutate the injected
+				 * hard AssertContext facade. Instead, obtain the exact same collector used by
+				 * jpostman.ctx().soft(), wrap it as a separate facade, and register that facade
+				 * for method-exit verification.
+				 */
+				if (soft) {
+					JPostman.Assert current = (JPostman.Assert) proxy;
+					JPostmanAssertionCleanup.registerExplicitSoft(current);
+					return current;
+				}
+				Object collector = invokeContext("soft", new Object[] { Boolean.FALSE });
+				if (collector == null) {
+					throw new IllegalStateException("JPostman soft(false) returned no assertion collector");
+				}
+				JPostman.Assert temporary = wrapAssert(collector, activeContextSupplier, true, false, false);
+				JPostmanAssertionCleanup.registerExplicitSoft(temporary);
+				return temporary;
 			}
 
 			/*
@@ -499,7 +525,8 @@ final class JPostmanTestProxy implements InvocationHandler {
 			}
 
 			Object value = assertionTarget();
-			Method targetMethod = findTargetMethod(value, name, args);
+			Object[] invocationArgs = optionalAllMatchMessage(method, args);
+			Method targetMethod = findTargetMethod(value, name, invocationArgs);
 			if (!isVerifyMethod(name) && !"soft".equals(name)) {
 				JPostmanAssertionCleanup.markCurrentMethod();
 				if (classScopedSoft) {
@@ -516,7 +543,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 			 */
 
 			AssertionError localSoftFailure = soft && !classScopedSoft && JPostmanRuntimeRunner.active()
-					? localSoftFailure(targetMethod, args, value)
+					? localSoftFailure(targetMethod, invocationArgs, value)
 					: null;
 			if (localSoftFailure != null) {
 				JPostmanRuntimeRunner.recordSoftFailure(localSoftFailure);
@@ -525,7 +552,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 			Object result;
 			try {
-				result = invokeTarget(targetMethod, value, args);
+				result = invokeTarget(targetMethod, value, invocationArgs);
 			} catch (AssertionError e) {
 				if (soft && isVerifyMethod(name) && JPostmanRuntimeRunner.active()) {
 					throw JPostmanRuntimeRunner.softFailure(e);
@@ -643,6 +670,27 @@ final class JPostmanTestProxy implements InvocationHandler {
 		}
 	}
 
+	/**
+	 * The secure TestNG/JUnit assertion implementations currently expose allMatch
+	 * overloads with a message parameter. The annotations facade additionally
+	 * exposes message-optional overloads. Route those calls to the existing
+	 * implementation with a blank message so its standard fallback diagnostic is
+	 * used.
+	 */
+	private static Object[] optionalAllMatchMessage(Method method, Object[] args) {
+		if (method == null || !"allMatch".equals(method.getName())) {
+			return args;
+		}
+		Class<?>[] parameterTypes = method.getParameterTypes();
+		if (parameterTypes.length == 0 || parameterTypes[parameterTypes.length - 1] == String.class) {
+			return args;
+		}
+		Object[] source = args == null ? new Object[0] : args;
+		Object[] expanded = Arrays.copyOf(source, source.length + 1);
+		expanded[source.length] = "";
+		return expanded;
+	}
+
 	private static Object adaptContextReturn(Object proxy, Method method, Object result,
 			Supplier<?> activeContextSupplier) {
 		Class<?> returnType = method.getReturnType();
@@ -652,10 +700,18 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return null;
 		}
 		if (returnType == JPostman.Assert.class) {
-			return wrapAssert(result, activeContextSupplier, "soft".equals(name));
+			JPostman.Assert assertions = wrapAssert(result, activeContextSupplier, "soft".equals(name));
+			if ("soft".equals(name)) {
+				JPostmanAssertionCleanup.registerExplicitSoft(assertions);
+			}
+			return assertions;
 		}
 		if (proxy instanceof JPostman.Test && ("asserts".equals(name) || "soft".equals(name))) {
-			return wrapAssert(result, activeContextSupplier, "soft".equals(name));
+			JPostman.Assert assertions = wrapAssert(result, activeContextSupplier, "soft".equals(name));
+			if ("soft".equals(name)) {
+				JPostmanAssertionCleanup.registerExplicitSoft(assertions);
+			}
+			return assertions;
 		}
 		if ("asserts".equals(name) || returnType == JPostmanTestAssertions.class || returnsTypeVariable(method, "A")) {
 			return wrapAssertions(result);

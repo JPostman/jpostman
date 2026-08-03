@@ -37,7 +37,7 @@ public class JPostmanDebugFileRegressionTest {
 			JPostmanInfo info = new JPostmanInfo("@JPostmanResponse", "getUser", "", "", "Get user");
 
 			JPostmanDebugFile.execution(new DebugFixture(), info, "none",
-					"--- REQUEST_UNRESOLVE ---\nUNRESOLVED REQUEST\n" + "--- REQUEST_RESOLVE ---\nRESOLVED REQUEST\n"
+					"--- REQUEST_UNRESOLVE ---\nUNRESOLVED REQUEST\n--- REQUEST_RESOLVE ---\nRESOLVED REQUEST\n"
 							+ "--- RESPONSE ---\nFULL RESPONSE");
 			JPostmanDebugFile.COLLECTIONS.put("Product", productRequests);
 			JPostmanDebugFile.info(new DebugFixture(), info, "none");
@@ -118,7 +118,7 @@ public class JPostmanDebugFileRegressionTest {
 
 			JPostmanDebugFile.call(fixture, info, "none");
 			JPostmanDebugFile.execution(fixture, info, "none", "--- REQUEST_UNRESOLVE ---\nUNRESOLVED REQUEST\n"
-					+ "--- REQUEST_RESOLVE ---\nRESOLVED REQUEST\n" + "--- RESPONSE ---\nFULL RESPONSE");
+					+ "--- REQUEST_RESOLVE ---\nRESOLVED REQUEST\n--- RESPONSE ---\nFULL RESPONSE");
 
 			String captured = Files.readString(output).replace("\r\n", "\n");
 			assertEquals(1, occurrences(captured, BEGIN_MARKER));

@@ -12,6 +12,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 
 import org.junit.jupiter.api.Test;
 
@@ -21,11 +23,33 @@ import io.jpostman.annotations.JPostman;
 public class JPostmanAssertContextLifecycleContractTest {
 
 	@Test
-	void publicAssertFacadeExposesVerifyButNotSoftOrAssertAll() throws Exception {
+	void publicAssertFacadeExposesTemporarySoftAndVerifyButNotAssertAll() throws Exception {
+		assertNotNull(JPostman.Assert.class.getMethod("soft"));
 		assertNotNull(JPostman.Assert.class.getMethod("verify"));
-		assertThrows(NoSuchMethodException.class, () -> JPostman.Assert.class.getMethod("soft"));
 		assertThrows(NoSuchMethodException.class, () -> JPostman.Assert.class.getMethod("assertAll"));
+		assertEquals(JPostman.Assert.class, JPostman.Assert.class.getMethod("soft").getReturnType());
 		assertEquals(JPostman.Test.class, JPostman.Assert.class.getMethod("verify").getReturnType());
+	}
+
+	@Test
+	void allMatchMessagesAreOptionalForEveryOverload() throws Exception {
+		assertNotNull(JPostman.Assert.class.getMethod("allMatch", String.class, Predicate.class));
+		assertNotNull(JPostman.Assert.class.getMethod("allMatch", String.class, BiPredicate.class));
+		assertNotNull(JPostman.Assert.class.getMethod("allMatch", String.class, Class.class, BiPredicate.class));
+	}
+
+	@Test
+	void messageOptionalAllMatchOverloadsDelegateWithBlankMessage() {
+		AllMatchContext context = new AllMatchContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context, false, true);
+
+		Predicate<Number> positive = value -> value.doubleValue() > 0;
+		BiPredicate<Object, Integer> nonNull = (value, index) -> value != null;
+		BiPredicate<String, Integer> nonBlank = (value, index) -> !value.isBlank();
+
+		asserts.allMatch("prices", positive).allMatch("items", nonNull).allMatch("names", String.class, nonBlank);
+
+		assertEquals(List.of("number:", "object:", "typed:"), context.target.calls);
 	}
 
 	@Test
@@ -42,6 +66,85 @@ public class JPostmanAssertContextLifecycleContractTest {
 		assertThrows(NoSuchMethodException.class, () -> io.jpostman.annotations.JPostmanRunner.class.getMethod("soft"));
 		assertThrows(NoSuchMethodException.class, () -> JPostman.Response.class.getMethod("soft"));
 		assertThrows(NoSuchMethodException.class, () -> JPostman.Runner.class.getMethod("soft"));
+	}
+
+	@Test
+	void temporarySoftIsVerifiedAfterResponseAndOriginalFacadeRemainsHard() throws Exception {
+		ProxyContext context = new ProxyContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context, false, true);
+		TemporarySoftFixture fixture = new TemporarySoftFixture(asserts);
+		Method response = TemporarySoftFixture.class.getDeclaredMethod("response");
+
+		JPostmanAnnotationEngine.beginAssertionCleanup(fixture, response);
+		try {
+			assertDoesNotThrow(() -> asserts.soft().isTrue(false).statusCode(200));
+			AssertionError failure = assertThrows(AssertionError.class,
+					() -> JPostmanAnnotationEngine.verifyExplicitSoftAssertions(response));
+			assertAggregate(failure);
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+
+		assertThrows(AssertionError.class, () -> asserts.isTrue(false),
+				"the injected facade must return to hard behavior for the next test");
+		assertEquals(1, context.softCalls);
+		assertEquals(1, context.hardCalls);
+	}
+
+	@Test
+	void temporarySoftIsAutomaticallyEligibleForCallMethods() throws Exception {
+		ProxyContext context = new ProxyContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context, false, true);
+		TemporarySoftFixture fixture = new TemporarySoftFixture(asserts);
+		Method call = TemporarySoftFixture.class.getDeclaredMethod("call");
+
+		JPostmanAnnotationEngine.beginAssertionCleanup(fixture, call);
+		try {
+			assertDoesNotThrow(() -> asserts.soft().isTrue(false));
+			AssertionError failure = assertThrows(AssertionError.class,
+					() -> JPostmanAnnotationEngine.verifyExplicitSoftAssertions(call));
+			assertTrue(failure.getMessage().contains("expected [true] but found [false]"), failure.getMessage());
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+	}
+
+	@Test
+	void runtimeContextSoftUsesTheSameAutomaticMethodExitVerification() throws Exception {
+		RuntimeStyleContext context = new RuntimeStyleContext();
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+		TemporarySoftFixture fixture = new TemporarySoftFixture(null);
+		Method response = TemporarySoftFixture.class.getDeclaredMethod("response");
+
+		JPostmanAnnotationEngine.beginAssertionCleanup(fixture, response);
+		try {
+			assertDoesNotThrow(() -> test.soft().isTrue(false));
+			AssertionError failure = assertThrows(AssertionError.class,
+					() -> JPostmanAnnotationEngine.verifyExplicitSoftAssertions(response));
+			assertTrue(failure.getMessage().contains("expected [true] but found [false]"), failure.getMessage());
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
+
+		assertEquals(1, context.softCalls);
+	}
+
+	@Test
+	void manualTemporarySoftVerifyPreventsDuplicateMethodExitFailure() throws Exception {
+		ProxyContext context = new ProxyContext();
+		JPostman.Assert asserts = JPostmanTestProxy.wrapAssert(() -> context, false, true);
+		TemporarySoftFixture fixture = new TemporarySoftFixture(asserts);
+		Method response = TemporarySoftFixture.class.getDeclaredMethod("response");
+
+		JPostmanAnnotationEngine.beginAssertionCleanup(fixture, response);
+		try {
+			JPostman.Assert temporary = asserts.soft();
+			temporary.isTrue(false);
+			assertThrows(AssertionError.class, temporary::verify);
+			assertDoesNotThrow(() -> JPostmanAnnotationEngine.verifyExplicitSoftAssertions(response));
+		} finally {
+			JPostmanAnnotationEngine.endAssertionCleanup();
+		}
 	}
 
 	@Test
@@ -148,6 +251,23 @@ public class JPostmanAssertContextLifecycleContractTest {
 		assertTrue(message.contains("Status code mismatch: expected [200] but found [201]"), message);
 	}
 
+	private static final class TemporarySoftFixture {
+		@JPostman.AssertContext
+		private final JPostman.Assert asserts;
+
+		private TemporarySoftFixture(JPostman.Assert asserts) {
+			this.asserts = asserts;
+		}
+
+		@JPostman.Response
+		private void response() {
+		}
+
+		@JPostman.Call
+		private void call() {
+		}
+	}
+
 	private static final class HardFixture {
 		@JPostman.AssertContext
 		private final JPostman.Assert asserts = new AssertHandler(false, 201).proxy();
@@ -176,6 +296,44 @@ public class JPostmanAssertContextLifecycleContractTest {
 
 		@SuppressWarnings("unused")
 		private void response() {
+		}
+	}
+
+	public static final class AllMatchContext {
+		private final AllMatchTarget target = new AllMatchTarget();
+
+		public AllMatchTarget asserts(boolean secure) {
+			return target;
+		}
+	}
+
+	public static final class AllMatchTarget {
+		private final List<String> calls = new ArrayList<>();
+
+		public AllMatchTarget allMatch(String path, Predicate<Number> predicate, String message) {
+			calls.add("number:" + message);
+			return this;
+		}
+
+		public AllMatchTarget allMatch(String path, BiPredicate<Object, Integer> predicate, String message) {
+			calls.add("object:" + message);
+			return this;
+		}
+
+		public <V> AllMatchTarget allMatch(String path, Class<V> type, BiPredicate<V, Integer> predicate,
+				String message) {
+			calls.add("typed:" + message);
+			return this;
+		}
+	}
+
+	public static final class RuntimeStyleContext {
+		private final AssertHandler soft = new AssertHandler(true, 201);
+		private int softCalls;
+
+		public JPostman.Assert soft() {
+			softCalls++;
+			return soft.proxy();
 		}
 	}
 

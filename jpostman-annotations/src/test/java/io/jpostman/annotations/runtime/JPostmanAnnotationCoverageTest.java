@@ -713,16 +713,15 @@ public class JPostmanAnnotationCoverageTest {
 		assertTrue(message.contains("- InvalidHelperFixture.invalidRequest()\n"));
 		message = message.replace("- InvalidHelperFixture.invalidRequest()\n", "");
 
-		assertTrue(message.contains("- InvalidHelperFixture.invalidCachedResponse()\n"));
-		message = message.replace("- InvalidHelperFixture.invalidCachedResponse()\n", "");
-
 		assertEquals(message, "Invalid JPostman annotation usage.\n\n"
 				+ "@JPostmanRequest methods must not be annotated with @Test.\n"
 				+ "They are request helper methods invoked by JPostman, not test methods invoked by the test framework.\n"
-				+ "\nInvalid helper methods:\n\n@JPostmanResponse(cache) cannot be used with @Test.\n"
-				+ "Remove @Test to use it as a cached dependency, or remove cache to keep it as a test.\n\n"
-				+ "Invalid cached response methods:\n");
-		assertEquals(2, error.getStackTrace().length);
+				+ "\nInvalid helper methods:\n");
+		assertEquals(1, error.getStackTrace().length);
+
+		assertDoesNotThrow(() -> JPostmanAnnotationValidator.validateTestClass(CachedResponseTestFixture.class));
+		Method cachedResponseTest = CachedResponseTestFixture.class.getDeclaredMethod("cachedResponseTest");
+		assertDoesNotThrow(() -> JPostmanAnnotationValidator.validateTestMethod(cachedResponseTest));
 
 		Constructor<JPostmanAnnotationValidator> constructor = JPostmanAnnotationValidator.class
 				.getDeclaredConstructor();
@@ -1168,7 +1167,7 @@ public class JPostmanAnnotationCoverageTest {
 		assertFalse(shortLog.contains("methods="));
 		assertFalse(shortLog.contains("created="));
 		assertTrue(shortLog.contains("method=defaultIntercept"));
-		assertTrue(shortLog.contains(", request=Get current auth user"));
+		assertTrue(shortLog.contains("request=Get current auth user"));
 	}
 
 	/**
@@ -1228,7 +1227,6 @@ public class JPostmanAnnotationCoverageTest {
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("none"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("debug"));
 		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("error,response"));
-		assertDoesNotThrow(() -> JPostmanRuntimeOptions.DebugMode.validateLocal("request,response"));
 
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.DebugMode.from("debug", "error"));
 		assertThrows(IllegalArgumentException.class, () -> JPostmanRuntimeOptions.DebugOutput.from("none", "info"));
@@ -3476,13 +3474,15 @@ public class JPostmanAnnotationCoverageTest {
 			return okExecutor("{}");
 		}
 
-		@Test
-		@JPostmanResponse(request = "Get current auth user", cache = "user")
-		void invalidCachedResponse() {
-		}
-
 		@JPostmanRequest(request = "Login user and get tokens", cache = "token")
 		void invalidCachedRequest() {
+		}
+	}
+
+	private static final class CachedResponseTestFixture {
+		@Test
+		@JPostmanResponse(request = "Get current auth user", cache = "user")
+		void cachedResponseTest() {
 		}
 	}
 
