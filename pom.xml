@@ -64,6 +64,7 @@
 		<jpostman.annotations.version>4.2.7</jpostman.annotations.version>
 		<!-- ${project.version} -->
 		<jpostman.version>4.2.1</jpostman.version>
+		<jpostman.api-schema.version>4.2.2</jpostman.api-schema.version>
 
 		<java.version>11</java.version>
 		<maven.compiler.release>${java.version}</maven.compiler.release>
@@ -163,7 +164,7 @@
 			<dependency>
 				<groupId>${project.groupId}</groupId>
 				<artifactId>jpostman-api-schema</artifactId>
-				<version>${jpostman.version}</version>
+				<version>${jpostman.api-schema.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>${project.groupId}</groupId>

@@ -110,6 +110,15 @@ public class PostmanImporter implements ApiSpecImporter {
 		operation.getQueryParams().addAll(resolveQueryParams(request.get("url")));
 		operation.getHeaders().addAll(resolveHeaders(request.get("header")));
 		operation.setBody(resolveBody(request.get("body")));
+		if (operation.getBody() != null && operation.getBody().getType() == ApiBodyType.GRAPHQL) {
+			operation.setProtocol(ApiProtocol.GRAPHQL);
+			String graphQlText = operation.getBody().getContent();
+			String normalized = graphQlText == null ? "" : graphQlText.toLowerCase();
+			operation.setGraphQlOperationType(
+					normalized.contains("\"query\" : \"mutation ") || normalized.contains("\"query\":\"mutation ")
+							? "MUTATION"
+							: "QUERY");
+		}
 		operation.setResponses(resolveResponses(item));
 		operation.setDescription(firstNonBlank(description(item.get("description")),
 				firstResponseDescription(operation.getResponses()), description(request.get("description"))));
@@ -186,6 +195,29 @@ public class PostmanImporter implements ApiSpecImporter {
 		if ("urlencoded".equals(mode)) {
 			return new ApiBody(ApiBodyType.X_WWW_FORM_URLENCODED,
 					bodyNode.get("urlencoded") == null ? null : bodyNode.get("urlencoded").toString());
+		}
+		if ("graphql".equalsIgnoreCase(mode)) {
+			JsonNode graphQlNode = bodyNode.get("graphql");
+			String query = graphQlNode == null ? null : text(graphQlNode.get("query"), "");
+			String variablesText = graphQlNode == null ? null : text(graphQlNode.get("variables"), "");
+
+			com.fasterxml.jackson.databind.node.ObjectNode envelope = mapper.createObjectNode();
+			envelope.put("query", query == null ? "" : query);
+			if (variablesText == null || variablesText.trim().isEmpty()) {
+				envelope.set("variables", mapper.createObjectNode());
+			} else {
+				try {
+					envelope.set("variables", mapper.readTree(variablesText));
+				} catch (Exception ignored) {
+					envelope.put("variables", variablesText);
+				}
+			}
+			try {
+				return new ApiBody(ApiBodyType.GRAPHQL,
+						mapper.writerWithDefaultPrettyPrinter().writeValueAsString(envelope));
+			} catch (Exception e) {
+				return new ApiBody(ApiBodyType.GRAPHQL, envelope.toString());
+			}
 		}
 		return new ApiBody(ApiBodyType.RAW, bodyNode.toString());
 	}

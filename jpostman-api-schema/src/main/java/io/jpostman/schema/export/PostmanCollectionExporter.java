@@ -18,6 +18,7 @@ import io.jpostman.schema.model.ApiFolder;
 import io.jpostman.schema.model.ApiHeader;
 import io.jpostman.schema.model.ApiOperation;
 import io.jpostman.schema.model.ApiParam;
+import io.jpostman.schema.model.ApiResponse;
 import io.jpostman.schema.model.ApiSpec;
 
 /**
@@ -108,7 +109,85 @@ public class PostmanCollectionExporter {
 			request.put("body", body);
 		}
 		item.put("request", request);
+		List<Map<String, Object>> responses = responses(operation);
+		if (!responses.isEmpty()) {
+			item.put("response", responses);
+		}
 		return item;
+	}
+
+	private List<Map<String, Object>> responses(ApiOperation operation) {
+		List<Map<String, Object>> result = new ArrayList<>();
+		if (operation == null || operation.getResponses() == null) {
+			return result;
+		}
+		for (ApiResponse response : operation.getResponses()) {
+			Map<String, Object> item = response(response);
+			if (item != null) {
+				result.add(item);
+			}
+		}
+		return result;
+	}
+
+	private Map<String, Object> response(ApiResponse response) {
+		if (response == null) {
+			return null;
+		}
+		ApiBody example = response.getExample() != null ? response.getExample() : response.getBody();
+		if (example == null || isBlank(example.getContent())) {
+			return null;
+		}
+		Map<String, Object> result = new LinkedHashMap<>();
+		String description = valueOrDefault(response.getDescription(), "Expected response");
+		int code = responseCode(response.getCode());
+		result.put("name", description);
+		result.put("status", statusText(code));
+		result.put("code", code);
+		String contentType = valueOrDefault(response.getContentType(), "application/json");
+		List<Map<String, Object>> headers = new ArrayList<>();
+		Map<String, Object> header = new LinkedHashMap<>();
+		header.put("key", "Content-Type");
+		header.put("value", contentType);
+		header.put("type", "text");
+		headers.add(header);
+		result.put("header", headers);
+		result.put("body", example.getContent());
+		return result;
+	}
+
+	private int responseCode(String value) {
+		if (!isBlank(value)) {
+			try {
+				return Integer.parseInt(value.trim());
+			} catch (NumberFormatException ignored) {
+				// Postman requires an integer response code; use the successful default.
+			}
+		}
+		return 200;
+	}
+
+	private String statusText(int code) {
+		switch (code) {
+		case 200:
+			return "OK";
+		case 201:
+			return "Created";
+		case 204:
+			return "No Content";
+		case 400:
+			return "Bad Request";
+		case 401:
+			return "Unauthorized";
+		case 403:
+			return "Forbidden";
+		case 404:
+			return "Not Found";
+		case 500:
+			return "Internal Server Error";
+		default:
+			return code >= 200 && code < 300 ? "Success" : "Response";
+		}
 	}
 
 	private List<Map<String, Object>> headers(ApiOperation operation) {
@@ -176,6 +255,10 @@ public class PostmanCollectionExporter {
 
 	private Map<String, Object> url(ApiSpec spec, ApiOperation operation) {
 		String rawPath = valueOrDefault(operation.getPath(), "/");
+		if (operation.getProtocol() != null && "GRAPHQL".equalsIgnoreCase(operation.getProtocol().name())
+				&& ("/".equals(rawPath) || "{{BASE_URL}}".equals(rawPath))) {
+			rawPath = "/graphql";
+		}
 		String raw = rawUrl(spec, operation, rawPath);
 		Map<String, Object> url = new LinkedHashMap<>();
 		url.put("raw", raw);
@@ -283,8 +366,9 @@ public class PostmanCollectionExporter {
 		if (body.getType() == ApiBodyType.GRAPHQL) {
 			result.put("mode", "graphql");
 			Map<String, Object> graphql = new LinkedHashMap<>();
-			graphql.put("query", body.getContent());
-			graphql.put("variables", "");
+			GraphQlBody graphQlBody = parseGraphQlBody(body.getContent());
+			graphql.put("query", graphQlBody.query());
+			graphql.put("variables", graphQlBody.variables());
 			result.put("graphql", graphql);
 			return result;
 		}
@@ -304,6 +388,45 @@ public class PostmanCollectionExporter {
 			result.put("options", options);
 		}
 		return result;
+	}
+
+	private GraphQlBody parseGraphQlBody(String content) {
+		if (isBlank(content)) {
+			return new GraphQlBody("", "");
+		}
+		try {
+			Map<?, ?> envelope = MAPPER.readValue(content, Map.class);
+			Object query = envelope.get("query");
+			Object variables = envelope.get("variables");
+			if (query instanceof String) {
+				String queryText = (String) query;
+				String variablesText = variables == null ? ""
+						: MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(variables);
+				return new GraphQlBody(queryText, variablesText);
+			}
+		} catch (Exception ignored) {
+			// Backward compatibility: older models may already contain a raw GraphQL
+			// document.
+		}
+		return new GraphQlBody(content, "");
+	}
+
+	private static final class GraphQlBody {
+		private final String query;
+		private final String variables;
+
+		private GraphQlBody(String query, String variables) {
+			this.query = query;
+			this.variables = variables;
+		}
+
+		private String query() {
+			return query;
+		}
+
+		private String variables() {
+			return variables;
+		}
 	}
 
 	private Object parsePostmanListBody(String content) {

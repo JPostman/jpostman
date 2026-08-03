@@ -579,4 +579,37 @@ class ApiSpecParserSmokeTest {
 		assertTrue(json.contains("\"version\":\"1.0.0\""));
 	}
 
+	@Test
+	void parsesGraphQlSchemaWithNestedSelectionsTypedVariablesAndResponseExample() throws Exception {
+		String schema = "type Query { chainResult(chainId: ID!): ChainResult currentUser(accessToken: String!): User }\n"
+				+ "type Mutation { login(input: LoginInput!): TokenResponse! }\n"
+				+ "input LoginInput { username: String! password: String! expiresInMins: Int = 30 }\n"
+				+ "type TokenResponse { accessToken: String! refreshToken: String! expiresInSeconds: Int! user: User! }\n"
+				+ "type User { id: ID! username: String! email: String! }\n"
+				+ "type ChainResult { chainId: ID! status: String! items: [ChainItem!]! }\n"
+				+ "type ChainItem { itemId: ID! quantity: Int! name: String! }\n";
+
+		ApiSpec spec = ApiSpecParser.parse(schema);
+		ApiOperation chain = spec.getFolders().get(0).getOperations().get(0);
+		ApiOperation login = spec.getFolders().get(1).getOperations().get(0);
+
+		Map<?, ?> chainBody = new ObjectMapper().readValue(chain.getBody().getContent(), Map.class);
+		String chainQuery = String.valueOf(chainBody.get("query"));
+		assertTrue(chainQuery.contains("chainResult(chainId: $chainId)"));
+		assertTrue(chainQuery.contains("chainId status items { itemId quantity name }"));
+		assertFalse(chainQuery.contains("__typename"));
+		assertEquals("{{chainId}}", ((Map<?, ?>) chainBody.get("variables")).get("chainId"));
+		assertTrue(chain.getResponses().get(0).getExample().getContent().contains("\"data\""));
+		assertTrue(chain.getResponses().get(0).getExample().getContent().contains("\"items\""));
+
+		Map<?, ?> loginBody = new ObjectMapper().readValue(login.getBody().getContent(), Map.class);
+		Map<?, ?> variables = (Map<?, ?>) loginBody.get("variables");
+		Map<?, ?> input = (Map<?, ?>) variables.get("input");
+		assertEquals("{{username}}", input.get("username"));
+		assertEquals("{{password}}", input.get("password"));
+		assertEquals(30, input.get("expiresInMins"));
+		assertTrue(String.valueOf(loginBody.get("query"))
+				.contains("accessToken refreshToken expiresInSeconds user { id username email }"));
+	}
+
 }
