@@ -31,9 +31,7 @@ public final class ApiSpecEnvScanner {
 		}
 
 		Map<String, Object> envs = spec.getEnvs();
-		if (spec.getBaseUrl() != null && !spec.getBaseUrl().isBlank()) {
-			envs.put("BASE_URL", spec.getBaseUrl());
-		}
+		BaseUrlVariable.record(spec);
 
 		for (ApiOperation operation : spec.getOperations()) {
 			ApiOperationEnvScanner.scan(operation, envs);

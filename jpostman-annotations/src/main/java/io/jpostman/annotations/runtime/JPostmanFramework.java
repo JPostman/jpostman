@@ -507,13 +507,19 @@ public interface JPostmanFramework<C> {
 		if (builder == null || auth == null || auth.isEmpty()) {
 			return;
 		}
-		// No collection auth parameters: preserve the legacy bearer-header fallback.
-		// Configured collection auth is applied later by JPostmanDefaultExecutorFactory
-		// through executor.auth().oauth2(token), so it is not duplicated in headers.
-		applyOAuth2Header(builder.headers(), auth);
+		/*
+		 * Preserve the bearer-header fallback used by the common executors. Updating an
+		 * existing Authorization header and creating a missing one are intentionally
+		 * separate operations. Some request builders accept set() for a missing key but
+		 * later discard that pending mutation instead of throwing, which previously
+		 * made info.auth("oauth2", token) work only for requests that already declared
+		 * an Authorization header.
+		 */
+		applyOAuth2Header(request, builder.headers(), auth);
 	}
 
-	private static void applyOAuth2Header(Request.RequestBuilder.ParamStep headers, Map<String, Object> auth) {
+	private static void applyOAuth2Header(Request request, Request.RequestBuilder.ParamStep headers,
+			Map<String, Object> auth) {
 		if (headers == null || auth == null || auth.isEmpty()) {
 			return;
 		}
@@ -528,7 +534,28 @@ public interface JPostmanFramework<C> {
 			return;
 		}
 
-		setOrAdd(headers, "Authorization", "Bearer " + value);
+		String authorization = "Bearer " + value;
+		if (hasHeader(request, "Authorization")) {
+			headers.set("Authorization", authorization);
+		} else {
+			headers.add("Authorization", authorization);
+		}
+	}
+
+	private static boolean hasHeader(Request request, String expected) {
+		if (request == null || request.getHeader() == null || expected == null || expected.isBlank()) {
+			return false;
+		}
+		Map<String, String> values = request.getHeader().getParams();
+		if (values == null || values.isEmpty()) {
+			return false;
+		}
+		for (String key : values.keySet()) {
+			if (key != null && expected.equalsIgnoreCase(key.trim())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static Object firstAuthValue(Map<String, Object> auth, String... keys) {
@@ -546,14 +573,6 @@ public interface JPostmanFramework<C> {
 			}
 		}
 		return null;
-	}
-
-	private static void setOrAdd(Request.RequestBuilder.ParamStep step, String key, Object value) {
-		try {
-			step.set(key, value);
-		} catch (IllegalArgumentException ex) {
-			step.add(key, value);
-		}
 	}
 
 	/**

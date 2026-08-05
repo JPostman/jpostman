@@ -2,11 +2,11 @@ package io.jpostman.annotations.runtime;
 
 import java.util.function.BiConsumer;
 
-/** Executes a runtime @JPostman.Call request for an injected runtime. */
+/** Executes an active manual call or void-executor proceed request. */
 interface JPostmanRuntimeRequest<C> {
 
 	/**
-	 * Executes the current runtime call.
+	 * Executes the current active request.
 	 *
 	 * @param action optional request customization callback
 	 * @return framework context after response execution

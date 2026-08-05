@@ -1507,14 +1507,21 @@ public class JPostmanAnnotationCoverageTest {
 				});
 
 		assertNotNull(runtime.call());
+		AtomicInteger responseCallbacks = new AtomicInteger();
 		assertNotNull(runtime.call((ctx, current) -> {
 			assertSame(context, ctx);
 			assertSame(info, current);
 			customized.incrementAndGet();
+		}).response((test, current) -> {
+			assertNotNull(test);
+			assertSame(info, current);
+			responseCallbacks.incrementAndGet();
 		}));
 		assertEquals(1, customized.get());
+		assertEquals(1, responseCallbacks.get());
 		assertNotNull(JPostman.Runtime.class.getMethod("call"));
 		assertNotNull(JPostman.Runtime.class.getMethod("call", java.util.function.BiConsumer.class));
+		assertNotNull(JPostman.Test.class.getMethod("response", java.util.function.BiConsumer.class));
 		assertNotNull(JPostman.Runtime.class.getMethod("getCollection"));
 		assertNotNull(JPostman.Runtime.class.getMethod("getCollection", String.class));
 		assertNotNull(JPostman.Runtime.class.getMethod("getEnvironment"));

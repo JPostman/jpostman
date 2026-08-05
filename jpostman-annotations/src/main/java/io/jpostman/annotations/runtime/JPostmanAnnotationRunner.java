@@ -1092,14 +1092,23 @@ public final class JPostmanAnnotationRunner<C> {
 
 		String cache = cacheKey(dependencyMethod, annotation.cache(), annotation.id());
 		/*
-		 * Response dependencies must use their own annotation location exactly. A blank
-		 * namespace/folder on @JPostmanResponse means the default context/root folder,
-		 * not the parent chain's current product namespace/folder.
+		 * Response dependencies use their own annotation location exactly. A blank
+		 * namespace resolves through the selected/default void executor namespace, and
+		 * a blank folder means the root folder; neither value is inherited from an
+		 * unrelated explicit parent location.
 		 */
 		JPostmanInfo info = parentInfo
 				.childExact(dependencyMethod.getName(), "", annotation.executor(), cache, annotation.namespace(),
 						folder(annotation.folder()), annotation.request())
 				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.debug());
+		/*
+		 * A blank dependency namespace still uses the selected/default void
+		 * 
+		 * @JPostman.Executor namespace. Resolve it before selecting the collection;
+		 * otherwise top-level methods run in the default executor namespace while a
+		 * nested response dependency incorrectly falls back to namespace "".
+		 */
+		applyDefaultExecutorNamespace(testInstance, info);
 		info = info.context(resolver.resolve(info.namespace).contextAnnotation);
 		registerCacheAlias(resolver, info.id, cache);
 		resolver.info(info);
@@ -1360,9 +1369,9 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanRequest annotation, String cache) {
 		/*
 		 * A request helper that owns a request attribute gets its own exact request
-		 * location. Blank namespace on that helper means the default namespace while
-		 * the helper runs. Helpers without a request continue to inherit the parent
-		 * context so they can act as generic setup/tag helpers.
+		 * location. A blank namespace resolves through the selected/default void
+		 * executor namespace while the helper runs. Helpers without a request continue
+		 * to inherit the parent context so they can act as generic setup/tag helpers.
 		 */
 		JPostmanInfo info = isBlank(annotation.request())
 				? parentInfo.child(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
@@ -1382,6 +1391,12 @@ public final class JPostmanAnnotationRunner<C> {
 
 		String cache = cacheKey(dependencyMethod, annotation.cache(), annotation.id());
 		JPostmanInfo dependencyInfo = requestDependencyInfo(parentInfo, dependencyMethod, annotation, cache);
+		/*
+		 * Request helpers that declare their own request use an exact location. When
+		 * that exact namespace is blank, it still resolves through the single/default
+		 * void executor namespace before collection lookup.
+		 */
+		applyDefaultExecutorNamespace(testInstance, dependencyInfo);
 		registerCacheAlias(resolver, dependencyInfo.id, cache);
 		resolver.info(dependencyInfo);
 		JPostmanReport report = report(testInstance);
@@ -1557,6 +1572,7 @@ public final class JPostmanAnnotationRunner<C> {
 				framework.secret(context, key, entry.getValue());
 			}
 		});
+		JPostmanTestProxy.registerEnvironment(context, environment);
 	}
 
 	private C prepareRequest(C context, Collection collection, JPostmanRequest annotation, JPostmanInfo info) {
@@ -1703,17 +1719,8 @@ public final class JPostmanAnnotationRunner<C> {
 			Object result = executor.result(testInstance, ctx);
 			verifyExecutorResult(result, executor.name, info);
 
-			info.start();
-			try {
-				ctx = framework.response(ctx, (ApiExecutor) result);
-				captureResponseStatus(ctx, info);
-				ctx = applyFilter(ctx, annotation.filter());
-			} finally {
-				info.end();
-			}
-			resolver.update(info.namespace, ctx);
-			framework.setCurrent(ctx);
-			runExecutorInterceptors(testInstance, resolver, ctx, info);
+			ctx = executeWithExecutorInterceptors(testInstance, resolver, ctx, info, (ApiExecutor) result,
+					completed -> applyFilter(completed, annotation.filter()));
 			resolver.info(info);
 			// @JPostman.Call is prepared before the test body, but its response exists
 			// only after runtime.call(...) executes. Verify here so the annotation status
@@ -2098,17 +2105,8 @@ public final class JPostmanAnnotationRunner<C> {
 			Object result = executor.result(testInstance, ctx);
 			verifyExecutorResult(result, executor.name, info);
 
-			info.start();
-			try {
-				ctx = framework.response(ctx, (ApiExecutor) result);
-				captureResponseStatus(ctx, info);
-				ctx = applyFilter(ctx, annotation.filter());
-			} finally {
-				info.end();
-			}
-			resolver.update(info.namespace, ctx);
-			framework.setCurrent(ctx);
-			runExecutorInterceptors(testInstance, resolver, ctx, info);
+			ctx = executeWithExecutorInterceptors(testInstance, resolver, ctx, info, (ApiExecutor) result,
+					completed -> applyFilter(completed, annotation.filter()));
 			resolver.info(info);
 			add(report, info);
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.debug());
@@ -2151,17 +2149,8 @@ public final class JPostmanAnnotationRunner<C> {
 			Object result = executor.result(testInstance, ctx);
 			verifyExecutorResult(result, executor.name, info);
 
-			info.start();
-			try {
-				ctx = framework.response(ctx, (ApiExecutor) result);
-				captureResponseStatus(ctx, info);
-				ctx = applyFilter(ctx, annotation.filter());
-			} finally {
-				info.end();
-			}
-			resolver.update(info.namespace, ctx);
-			framework.setCurrent(ctx);
-			runExecutorInterceptors(testInstance, resolver, ctx, info);
+			ctx = executeWithExecutorInterceptors(testInstance, resolver, ctx, info, (ApiExecutor) result,
+					completed -> applyFilter(completed, annotation.filter()));
 			resolver.info(info);
 			add(report, info);
 			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.debug());
@@ -2282,6 +2271,107 @@ public final class JPostmanAnnotationRunner<C> {
 			throw JPostmanErrors.usage(info, "Multiple @JPostmanExecutor interceptors match: " + requestedName);
 		}
 		return null;
+	}
+
+	private C executeWithExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx,
+			JPostmanInfo info, ApiExecutor apiExecutor, ContextStep<C> afterResponse) throws Exception {
+		RuntimeProceed<C> proceed = new RuntimeProceed<>(ctx);
+		JPostmanRuntimeRequest<C> activeRequest = action -> {
+			if (proceed.called) {
+				throw new IllegalStateException(
+						"runtime.call() may execute the current @JPostman.Executor request only once.");
+			}
+			proceed.called = true;
+			C active = proceed.context;
+			resolver.info(info);
+			info.start();
+			try {
+				if (action != null) {
+					action.accept(active, info);
+				}
+				active = framework.response(active, apiExecutor);
+				captureResponseStatus(active, info);
+				if (afterResponse != null) {
+					active = afterResponse.apply(active);
+				}
+				completeProceedResponse(resolver, proceed, info, active);
+			} catch (Exception e) {
+				active = syntheticErrorResponse(resolver, proceed, info, active, e);
+			} catch (Error e) {
+				proceed.failure = e;
+				completeProceedResponse(resolver, proceed, info, latestContext(resolver, info.namespace, active));
+			} finally {
+				info.end();
+			}
+			return proceed.context;
+		};
+
+		JPostmanRuntimeCall.activate(testInstance, framework.contextType(), activeRequest);
+		try {
+			runExecutorInterceptors(testInstance, resolver, ctx, info);
+		} finally {
+			JPostmanRuntimeCall.deactivate(testInstance, framework.contextType());
+		}
+
+		if (!proceed.called) {
+			activeRequest.execute(null);
+		}
+		if (proceed.failure != null) {
+			rethrowProceedFailure(proceed.failure);
+		}
+		return proceed.context;
+	}
+
+	private C syntheticErrorResponse(PreparedContexts<C> resolver, RuntimeProceed<C> proceed, JPostmanInfo info,
+			C active, Exception failure) {
+		JPostmanHttpErrorMapper.SyntheticResponse mapped = JPostmanHttpErrorMapper.map(failure);
+		info.syntheticError(mapped.statusCode(), mapped.reason(), mapped.original(), mapped.cause());
+		C latest = latestContext(resolver, info.namespace, active);
+		try {
+			C completed = framework.response(latest, () -> mapped.apiResponse());
+			captureResponseStatus(completed, info);
+			completeProceedResponse(resolver, proceed, info, completed);
+			return completed;
+		} catch (Exception | Error syntheticFailure) {
+			failure.addSuppressed(syntheticFailure);
+			proceed.failure = failure;
+			completeProceedResponse(resolver, proceed, info, latest);
+			return latest;
+		}
+	}
+
+	private void completeProceedResponse(PreparedContexts<C> resolver, RuntimeProceed<C> proceed, JPostmanInfo info,
+			C active) {
+		proceed.context = active;
+		if (active != null) {
+			resolver.update(info.namespace, active);
+			framework.setCurrent(active);
+		}
+	}
+
+	private void rethrowProceedFailure(Throwable failure) throws Exception {
+		if (failure instanceof Exception) {
+			throw (Exception) failure;
+		}
+		if (failure instanceof Error) {
+			throw (Error) failure;
+		}
+		throw new RuntimeException(failure);
+	}
+
+	@FunctionalInterface
+	private interface ContextStep<T> {
+		T apply(T context) throws Exception;
+	}
+
+	private static final class RuntimeProceed<T> {
+		private T context;
+		private Throwable failure;
+		private boolean called;
+
+		private RuntimeProceed(T context) {
+			this.context = context;
+		}
 	}
 
 	private void runExecutorInterceptors(Object testInstance, PreparedContexts<C> resolver, C ctx, JPostmanInfo info)
@@ -3569,7 +3659,7 @@ public final class JPostmanAnnotationRunner<C> {
 				message.append(JPostmanErrors.ENDL);
 			}
 			message.append("@JPostmanExecutor methods must return ApiExecutor or void.").append(JPostmanErrors.ENDL)
-					.append("ApiExecutor methods configure request execution; void methods run as post-response interceptors.")
+					.append("ApiExecutor methods configure request execution; void methods run immediately before each response execution.")
 					.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Invalid executor return methods:")
 					.append(JPostmanErrors.ENDL);
 			for (Method method : invalidReturns) {

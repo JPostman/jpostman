@@ -1,11 +1,15 @@
 package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -15,28 +19,117 @@ import io.jpostman.ApiResponse;
 import io.jpostman.annotations.JPostman;
 
 /**
- * Regression coverage for void @JPostman.Executor post-response interceptors.
+ * Regression coverage for void @JPostman.Executor interceptors that run
+ * immediately before each response execution.
  */
 public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 
 	private static final String COLLECTION = "classpath:annotation-test-collection.json";
 
 	@Test
-	public void voidExecutorRunsAfterDefaultExecutorAndBeforeVerificationFailure() throws Exception {
-		InterceptBeforeVerifyFixture fixture = new InterceptBeforeVerifyFixture();
-		InterceptBeforeVerifyFixture.UnauthorizedExecutor.applyCount = 0;
-
+	public void voidExecutorRunsBeforeAutoExecutionMappedFailure() throws Exception {
+		PreExecutionFailureFixture fixture = new PreExecutionFailureFixture();
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 
-		AssertionError error = assertThrows(AssertionError.class, () -> runTestNg(fixture, "profile"));
+		runTestNg(fixture, "profile");
 
-		assertTrue(error.getMessage().contains("Status code mismatch"), "Actual message: " + error.getMessage());
-		assertEquals(1, InterceptBeforeVerifyFixture.UnauthorizedExecutor.applyCount);
+		assertEquals(500, fixture.jpostman.info().statusCode());
+		assertTrue(fixture.jpostman.info().syntheticResponse());
+		assertEquals(1, fixture.providerCalls);
 		assertEquals(0, fixture.globalInterceptCalls);
 		assertEquals(1, fixture.interceptCalls);
-		assertEquals("unauthorized", fixture.interceptedMessage);
+		assertTrue(fixture.interceptorRanBeforeExecution);
+		assertTrue(fixture.responseExecutionStarted);
 		assertEquals("test", fixture.interceptedNamespace);
 		assertEquals("Get current auth user", fixture.interceptedRequest);
+	}
+
+	@Test
+	public void voidExecutorCanProceedCurrentResponseAndContinueAfterResponse() throws Exception {
+		RuntimeProceedFixture fixture = new RuntimeProceedFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.requestExecutions);
+		assertEquals(1, fixture.callbackCalls);
+		assertEquals(1, fixture.responseCallbackCalls);
+		assertEquals(1, fixture.afterCallCount);
+		assertTrue(fixture.callbackSawRequest);
+		assertTrue(fixture.responseCallbackSawResponse);
+		assertTrue(fixture.responseCallbackSawInfo);
+		assertTrue(fixture.afterCallSawResponse);
+	}
+
+	@Test
+	public void voidExecutorMapsIllegalStateExceptionToSynthetic500AndContinues() throws Exception {
+		RuntimeProceedFailureFixture fixture = new RuntimeProceedFailureFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.requestExecutions);
+		assertEquals(1, fixture.callbackCalls);
+		assertEquals(1, fixture.responseCallbackCalls);
+		assertTrue(fixture.responseCallbackSawSyntheticResponse);
+		assertTrue(fixture.continuedAfterFailure);
+		assertEquals(500, fixture.statusCode);
+		assertTrue(fixture.syntheticResponse);
+		assertEquals(IllegalStateException.class, fixture.errorType);
+	}
+
+	@Test
+	public void wrappedConnectExceptionMapsToSynthetic503AndPreservesCause() throws Exception {
+		RuntimeProceedConnectFailureFixture fixture = new RuntimeProceedConnectFailureFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+
+		assertEquals(1, fixture.requestExecutions);
+		assertTrue(fixture.continuedAfterFailure);
+		assertEquals(503, fixture.statusCode);
+		assertTrue(fixture.syntheticResponse);
+		assertEquals(ConnectException.class, fixture.errorCauseType);
+		assertTrue(fixture.responseLog.contains("\"synthetic\": true"), fixture.responseLog);
+		assertTrue(fixture.responseLog.contains("java.net.ConnectException"), fixture.responseLog);
+	}
+
+	@Test
+	public void commonStandardExceptionsHaveStableSyntheticMappings() {
+		assertEquals(503, JPostmanHttpErrorMapper.map(new ConnectException("refused")).statusCode());
+		assertEquals(504, JPostmanHttpErrorMapper.map(new SocketTimeoutException("timeout")).statusCode());
+		assertEquals(502, JPostmanHttpErrorMapper.map(new UnknownHostException("host")).statusCode());
+		assertEquals(400, JPostmanHttpErrorMapper.map(new IllegalArgumentException("bad input")).statusCode());
+		assertEquals(403, JPostmanHttpErrorMapper.map(new SecurityException("forbidden")).statusCode());
+		assertEquals(501, JPostmanHttpErrorMapper.map(new UnsupportedOperationException("unsupported")).statusCode());
+		assertEquals(500, JPostmanHttpErrorMapper.map(new IllegalStateException("failed")).statusCode());
+		assertEquals(500, JPostmanHttpErrorMapper.map(new RuntimeException("failed")).statusCode());
+	}
+
+	@Test
+	public void callTestRuntimeCallIsShadowedByExecutorProceedWithoutRecursion() throws Exception {
+		RuntimeProceedCallFixture fixture = new RuntimeProceedCallFixture();
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+
+		runTestNg(fixture, "profile");
+		fixture.profile();
+
+		assertEquals(1, fixture.requestExecutions);
+		assertEquals(1, fixture.interceptorCalls);
+		assertEquals(1, fixture.testBodyAfterCallCount);
+	}
+
+	@Test
+	public void voidExecutorRunsOnceForEveryRunnerRequest() throws Exception {
+		RunnerPerRequestInterceptorFixture fixture = new RunnerPerRequestInterceptorFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "runProductFolder");
+
+		assertEquals(3, fixture.requestExecutions);
+		assertEquals(3, fixture.interceptorCalls);
+		assertEquals(List.of("Folder request one", "Folder request two", "Folder request three"),
+				fixture.interceptedRequests);
 	}
 
 	@Test
@@ -162,6 +255,188 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
+	}
+
+	@JPostman.TestNG
+	private static final class RuntimeProceedFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		private int requestExecutions;
+		private int callbackCalls;
+		private int responseCallbackCalls;
+		private int afterCallCount;
+		private boolean callbackSawRequest;
+		private boolean responseCallbackSawResponse;
+		private boolean responseCallbackSawInfo;
+		private boolean afterCallSawResponse;
+
+		@JPostman.Response(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return () -> {
+				requestExecutions++;
+				return new ApiResponse(403, "{\"message\":\"forbidden\"}", "{\"message\":\"forbidden\"}".getBytes(),
+						Map.of());
+			};
+		}
+
+		@JPostman.Executor
+		public void intercept() {
+			runtime.call((test, info) -> {
+				callbackCalls++;
+				callbackSawRequest = test.request() != null && "Get current auth user".equals(info.attr().request);
+			}).response((test, info) -> {
+				responseCallbackCalls++;
+				responseCallbackSawResponse = test.response() != null && test.statusCode() == 403;
+				responseCallbackSawInfo = info != null && "Get current auth user".equals(info.attr().request);
+			});
+			afterCallCount++;
+			afterCallSawResponse = runtime.ctx() != null && runtime.ctx().response() != null;
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RuntimeProceedFailureFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		private int requestExecutions;
+		private int callbackCalls;
+		private int responseCallbackCalls;
+		private boolean responseCallbackSawSyntheticResponse;
+		private boolean continuedAfterFailure;
+		private Integer statusCode;
+		private boolean syntheticResponse;
+		private Class<?> errorType;
+
+		@JPostman.Response(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return () -> {
+				requestExecutions++;
+				throw new IllegalStateException("simulated runtime.call failure");
+			};
+		}
+
+		@JPostman.Executor
+		public void intercept() {
+			runtime.call((test, info) -> callbackCalls++).response((test, info) -> {
+				responseCallbackCalls++;
+				responseCallbackSawSyntheticResponse = test.response() != null && test.statusCode() == 500
+						&& info != null && info.syntheticResponse();
+			});
+			continuedAfterFailure = true;
+			statusCode = runtime.info().statusCode();
+			syntheticResponse = runtime.info().syntheticResponse();
+			errorType = runtime.info().errorCause() == null ? null : runtime.info().errorCause().getClass();
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RuntimeProceedConnectFailureFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		private int requestExecutions;
+		private boolean continuedAfterFailure;
+		private Integer statusCode;
+		private boolean syntheticResponse;
+		private Class<?> errorCauseType;
+		private String responseLog = "";
+
+		@JPostman.Response(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return () -> {
+				requestExecutions++;
+				throw new IllegalStateException("Failed to execute request",
+						new ConnectException("Connection refused"));
+			};
+		}
+
+		@JPostman.Executor
+		public void intercept() {
+			runtime.call();
+			continuedAfterFailure = true;
+			statusCode = runtime.info().statusCode();
+			syntheticResponse = runtime.info().syntheticResponse();
+			errorCauseType = runtime.info().errorCause() == null ? null : runtime.info().errorCause().getClass();
+			responseLog = runtime.ctx().response().log();
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RuntimeProceedCallFixture {
+		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		private int requestExecutions;
+		private int interceptorCalls;
+		private int testBodyAfterCallCount;
+
+		@JPostman.Call(request = "Get current auth user", verify = 0)
+		@org.testng.annotations.Test
+		public void profile() {
+			runtime.call();
+			testBodyAfterCallCount++;
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return () -> {
+				requestExecutions++;
+				return new ApiResponse(200, "{\"message\":\"ok\"}", "{\"message\":\"ok\"}".getBytes(), Map.of());
+			};
+		}
+
+		@JPostman.Executor
+		public void intercept() {
+			interceptorCalls++;
+			runtime.call();
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class RunnerPerRequestInterceptorFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-runner-per-request-collection.json", verifyStatusCode = 0)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int requestExecutions;
+		private int interceptorCalls;
+		private final List<String> interceptedRequests = new ArrayList<>();
+
+		@JPostman.Runner(folder = "Product", verify = 0)
+		@org.testng.annotations.Test
+		public void runProductFolder() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor executor() {
+			return () -> {
+				requestExecutions++;
+				return new ApiResponse(200, "{\"message\":\"ok\"}", "{\"message\":\"ok\"}".getBytes(), Map.of());
+			};
+		}
+
+		@JPostman.Executor
+		public void intercept(JPostman.Test test, JPostman.Info info) {
+			interceptorCalls++;
+			interceptedRequests.add(info.attr().request);
+		}
 	}
 
 	@JPostman.TestNG
@@ -324,17 +599,19 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 	}
 
 	@JPostman.TestNG
-	private static final class InterceptBeforeVerifyFixture {
+	private static final class PreExecutionFailureFixture {
 		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
 		private int globalInterceptCalls;
 		private int interceptCalls;
-		private String interceptedMessage;
+		private int providerCalls;
+		private boolean interceptorRanBeforeExecution;
+		private boolean responseExecutionStarted;
 		private String interceptedNamespace;
 		private String interceptedRequest;
 
-		@JPostman.Response(namespace = "test", request = "Get current auth user")
+		@JPostman.Response(namespace = "test", request = "Get current auth user", verify = 500)
 		@org.testng.annotations.Test
 		public void profile() {
 		}
@@ -342,28 +619,18 @@ public class JPostmanAnnotationExecutorInterceptorRegressionTest {
 		@JPostman.Executor(namespace = "test")
 		public void defaultIntercept(JPostman.Test test, JPostman.Info info) {
 			interceptCalls++;
-			interceptedMessage = test.path("message");
-			assertEquals("unauthorized", jpostman.ctx().path("message"));
+			interceptorRanBeforeExecution = !responseExecutionStarted;
 			interceptedNamespace = info.attr().namespace;
 			interceptedRequest = info.attr().request;
-			assertNotNull(test.log());
 		}
 
 		@JPostman.Executor
 		public ApiExecutor defaultExecutor() {
-			UnauthorizedExecutor.applyCount++;
-			return okResponseExecutor(401, "{\"message\":\"unauthorized\"}");
-		}
-
-		public static final class UnauthorizedExecutor {
-			private static int applyCount;
-
-			@SuppressWarnings("unused")
-			public static ApiExecutor apply(Object request) {
-				applyCount++;
-				return () -> new ApiResponse(401, "{\"message\":\"unauthorized\"}",
-						"{\"message\":\"unauthorized\"}".getBytes(), Map.of());
-			}
+			providerCalls++;
+			return () -> {
+				responseExecutionStarted = true;
+				throw new IllegalStateException("simulated execution failure");
+			};
 		}
 
 		@JPostman.Executor

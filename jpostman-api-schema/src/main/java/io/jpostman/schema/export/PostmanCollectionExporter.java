@@ -20,6 +20,7 @@ import io.jpostman.schema.model.ApiOperation;
 import io.jpostman.schema.model.ApiParam;
 import io.jpostman.schema.model.ApiResponse;
 import io.jpostman.schema.model.ApiSpec;
+import io.jpostman.schema.util.BaseUrlVariable;
 
 /**
  * Exports the normalized ApiSpec model as a Postman Collection v2.1 document.
@@ -255,15 +256,16 @@ public class PostmanCollectionExporter {
 
 	private Map<String, Object> url(ApiSpec spec, ApiOperation operation) {
 		String rawPath = valueOrDefault(operation.getPath(), "/");
+		String baseUrlToken = BaseUrlVariable.token(spec);
 		if (operation.getProtocol() != null && "GRAPHQL".equalsIgnoreCase(operation.getProtocol().name())
-				&& ("/".equals(rawPath) || "{{BASE_URL}}".equals(rawPath))) {
+				&& ("/".equals(rawPath) || baseUrlToken.equals(rawPath))) {
 			rawPath = "/graphql";
 		}
 		String raw = rawUrl(spec, operation, rawPath);
 		Map<String, Object> url = new LinkedHashMap<>();
 		url.put("raw", raw);
-		url.put("host", List.of("{{BASE_URL}}"));
-		List<String> segments = pathSegments(rawPath);
+		url.put("host", List.of(baseUrlToken));
+		List<String> segments = pathSegments(spec, rawPath);
 		if (!segments.isEmpty()) {
 			url.put("path", segments);
 		}
@@ -276,12 +278,13 @@ public class PostmanCollectionExporter {
 
 	private String rawUrl(ApiSpec spec, ApiOperation operation, String rawPath) {
 		String raw = rawPath;
-		if (isAbsoluteUrl(raw) || raw.startsWith("{{BASE_URL}}")) {
+		String baseUrlToken = BaseUrlVariable.token(spec);
+		if (isAbsoluteUrl(raw) || raw.startsWith(baseUrlToken)) {
 			// keep existing value
 		} else if (raw.startsWith("/")) {
-			raw = "{{BASE_URL}}" + raw;
+			raw = baseUrlToken + raw;
 		} else {
-			raw = "{{BASE_URL}}/" + raw;
+			raw = baseUrlToken + "/" + raw;
 		}
 		String query = queryString(operation);
 		if (!query.isEmpty() && !raw.contains("?")) {
@@ -325,10 +328,11 @@ public class PostmanCollectionExporter {
 		return String.join("&", parts);
 	}
 
-	private List<String> pathSegments(String rawPath) {
+	private List<String> pathSegments(ApiSpec spec, String rawPath) {
 		String path = rawPath == null ? "" : rawPath.trim();
-		if (path.startsWith("{{BASE_URL}}")) {
-			path = path.substring("{{BASE_URL}}".length());
+		String baseUrlToken = BaseUrlVariable.token(spec);
+		if (path.startsWith(baseUrlToken)) {
+			path = path.substring(baseUrlToken.length());
 		}
 		if (isAbsoluteUrl(path)) {
 			int protocolIndex = path.indexOf("://");

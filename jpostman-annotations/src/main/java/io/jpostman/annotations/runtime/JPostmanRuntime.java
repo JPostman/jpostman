@@ -332,15 +332,20 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		return new RunnerRules<>(() -> ctx(), () -> info());
 	}
 
-	/** {@inheritDoc} */
+	/**
+	 * Executes the active manual call or proceeds with the current void executor
+	 * interceptor request.
+	 */
 	public io.jpostman.annotations.JPostman.Test call() {
 		return call(null);
 	}
 
-	/** {@inheritDoc} */
+	/**
+	 * Executes the active request after applying an optional callback.
+	 */
 	public io.jpostman.annotations.JPostman.Test call(BiConsumer<C, io.jpostman.annotations.JPostman.Info> action) {
 		if (requestExecutor == null) {
-			throw new IllegalStateException("No active @JPostman.Call request executor is available.");
+			throw new IllegalStateException("No active JPostman request executor is available.");
 		}
 		C result;
 		try {
@@ -354,7 +359,9 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
-		return JPostmanTestProxy.wrap(result, () -> activeContextResolver == null ? null : activeContextResolver.get());
+		JPostmanInfo completedInfo = info();
+		return JPostmanTestProxy.wrap(result, () -> activeContextResolver == null ? null : activeContextResolver.get(),
+				() -> completedInfo);
 	}
 
 	/**

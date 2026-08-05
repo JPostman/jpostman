@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.jpostman.schema.env.ApiSpecEnvironmentUpdateRequest;
 import io.jpostman.schema.env.ApiSpecEnvironmentUpdater;
+import io.jpostman.schema.export.PostmanCollectionExporter;
+import io.jpostman.schema.export.PostmanEnvironmentExporter;
 import io.jpostman.schema.model.ApiBody;
 import io.jpostman.schema.model.ApiBodyType;
 import io.jpostman.schema.model.ApiExample;
@@ -28,6 +30,8 @@ import io.jpostman.schema.parser.ApiSpecParseException;
 import io.jpostman.schema.parser.ApiSpecParser;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
 import io.jpostman.schema.util.ApiOperationEnvScanner;
+import io.jpostman.schema.util.ApiSpecEnvScanner;
+import io.jpostman.schema.util.BaseUrlOverride;
 
 class ApiSpecParserSmokeTest {
 
@@ -166,6 +170,72 @@ class ApiSpecParserSmokeTest {
 		assertNotNull(operation.getBody());
 		assertNotNull(operation.getAuth());
 		assertEquals("{{accessToken}}", operation.getAuth().getValue());
+	}
+
+	@Test
+	void preservesLowercasePostmanBaseUrlVariableDuringParseAndExport() throws Exception {
+		String postman = "{\n  \"info\": { \"name\": \"Lowercase Base URL\" },\n"
+				+ "  \"item\": [ { \"name\": \"Health\", \"request\": { \"method\": \"GET\", \"url\": {"
+				+ " \"raw\": \"{{base_url}}/health\", \"host\": [ \"{{base_url}}\" ], \"path\": [ \"health\" ] } } } ]\n}";
+
+		ApiSpec spec = ApiSpecParser.parse(postman);
+
+		assertEquals("{{base_url}}", spec.getBaseUrl());
+		assertEquals("", spec.getEnvs().get("base_url"));
+		assertFalse(spec.getEnvs().containsKey("BASE_URL"));
+
+		String collectionJson = new ObjectMapper()
+				.writeValueAsString(new PostmanCollectionExporter().export(spec, "Lowercase Base URL"));
+		String environmentJson = new ObjectMapper()
+				.writeValueAsString(new PostmanEnvironmentExporter().export(spec, "Lowercase Base URL Environment"));
+
+		assertTrue(collectionJson.contains("{{base_url}}/health"));
+		assertTrue(collectionJson.contains("\"host\":[\"{{base_url}}\"]"));
+		assertTrue(environmentJson.contains("\"key\":\"base_url\""));
+		assertFalse(environmentJson.contains("https://{{base_url}}"));
+	}
+
+	@Test
+	void placeholderBasedBaseUrlDoesNotReplaceConcreteEnvironmentValue() throws Exception {
+		ApiSpec spec = new ApiSpec();
+		spec.setName("Mixed Base URL");
+		spec.setBaseUrl("https://{{base_url}}");
+		spec.getEnvs().put("BASE_URL", "http://127.0.0.1:8091");
+		ApiOperation operation = new ApiOperation();
+		operation.setName("Health");
+		operation.setMethod("GET");
+		operation.setPath("/health");
+		spec.getOperations().add(operation);
+
+		BaseUrlOverride.apply(spec);
+		ApiSpecEnvScanner.scan(spec);
+
+		assertEquals("http://127.0.0.1:8091", spec.getEnvs().get("BASE_URL"));
+		assertEquals("", spec.getEnvs().get("base_url"));
+
+		String collectionJson = new ObjectMapper()
+				.writeValueAsString(new PostmanCollectionExporter().export(spec, "Mixed Base URL"));
+		String environmentJson = new ObjectMapper()
+				.writeValueAsString(new PostmanEnvironmentExporter().export(spec, "Mixed Base URL Environment"));
+
+		assertTrue(collectionJson.contains("{{base_url}}/health"));
+		assertTrue(environmentJson.contains("http://127.0.0.1:8091"));
+		assertFalse(environmentJson.contains("https://{{base_url}}"));
+	}
+
+	@Test
+	void repairsLegacyGeneratedBaseUrlAliasDuringEnvironmentExport() throws Exception {
+		ApiSpec spec = new ApiSpec();
+		spec.setName("Legacy Placeholder Base URL");
+		spec.setBaseUrl("https://{{base_url}}");
+		spec.getEnvs().put("BASE_URL", "https://{{base_url}}");
+
+		String environmentJson = new ObjectMapper()
+				.writeValueAsString(new PostmanEnvironmentExporter().export(spec, "Legacy Environment"));
+
+		assertFalse(environmentJson.contains("\"key\":\"BASE_URL\""));
+		assertFalse(environmentJson.contains("https://{{base_url}}"));
+		assertTrue(environmentJson.contains("\"key\":\"base_url\""));
 	}
 
 	@Test

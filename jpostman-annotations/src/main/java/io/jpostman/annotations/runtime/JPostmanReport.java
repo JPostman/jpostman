@@ -250,6 +250,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private boolean record(List<JPostmanInfo> target, JPostmanInfo info) {
+		mergeCompletedDependencyIntoBlankTopLevel(info);
+		removeCompletedDependenciesWhenOwnerExecuted(info);
 		update(info);
 		if (!isReportableExecution(info)) {
 			return false;
@@ -258,6 +260,84 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		removeRecorded(info);
 		target.add(info);
 		return true;
+	}
+
+	/**
+	 * Removes intermediate response-dependency rows after the owning top-level
+	 * response successfully reaches its own HTTP execution. The dependency remains
+	 * visible only when it is the final completed request because the owner never
+	 * produced a response. This keeps execution details to one row per test method
+	 * without losing the useful dependency outcome on early failure.
+	 */
+	private void removeCompletedDependenciesWhenOwnerExecuted(JPostmanInfo info) {
+		if (info == null || !isTopLevel(info) || info.statusCode() == null) {
+			return;
+		}
+		String owner = topMethod(info);
+		if (owner.isBlank()) {
+			return;
+		}
+
+		removeDependencies(passed, owner);
+		removeDependencies(failed, owner);
+		removeDependencies(skipped, owner);
+	}
+
+	private void removeDependencies(List<JPostmanInfo> values, String owner) {
+		List<JPostmanInfo> removed = new ArrayList<>();
+		values.removeIf(candidate -> {
+			boolean match = isExecutedResponseDependency(candidate) && owner.equals(topMethod(candidate));
+			if (match) {
+				removed.add(candidate);
+			}
+			return match;
+		});
+		for (JPostmanInfo candidate : removed) {
+			failureDetails.remove(executionKey(candidate));
+		}
+	}
+
+	/**
+	 * Replaces a zero-response top-level placeholder with the completed response
+	 * dependency already recorded for the same test method.
+	 *
+	 * <p>
+	 * JUnit/TestNG can report the owning test after a nested response has already
+	 * completed. When the owner then fails before producing another response, both
+	 * records have the same displayed top method. Preserve the dependency's status,
+	 * duration, request location, and diagnostics, but keep the owner's final
+	 * pass/fail/skip classification as one report entry.
+	 * </p>
+	 */
+	private void mergeCompletedDependencyIntoBlankTopLevel(JPostmanInfo info) {
+		if (info == null || !isTopLevel(info) || info.statusCode() != null) {
+			return;
+		}
+		String owner = topMethod(info);
+		if (owner.isBlank()) {
+			return;
+		}
+
+		JPostmanInfo dependency = completedDependency(owner);
+		if (dependency == null) {
+			return;
+		}
+
+		passed.remove(dependency);
+		failed.remove(dependency);
+		skipped.remove(dependency);
+		failureDetails.remove(executionKey(dependency));
+		info.inheritExecutionOutcome(dependency);
+	}
+
+	private JPostmanInfo completedDependency(String owner) {
+		JPostmanInfo result = null;
+		for (JPostmanInfo candidate : all()) {
+			if (isExecutedResponseDependency(candidate) && owner.equals(topMethod(candidate))) {
+				result = candidate;
+			}
+		}
+		return result;
 	}
 
 	private String executionKey(JPostmanInfo info) {
@@ -455,7 +535,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				appendExecutionSeparator(output, previousHadAdditionalData);
 			}
 			first = false;
-			output.append(executionDetailsLine(value));
+			output.append(executionDetailsLine(value, failureDetails.get(executionKey(value))));
 			int detailStart = output.length();
 			if (failed.contains(value)) {
 				appendFailureDetails(output, value);
@@ -480,7 +560,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				appendExecutionSeparator(output, previousHadAdditionalData);
 			}
 			first = false;
-			output.append(executionDetailsLine(value));
+			output.append(executionDetailsLine(value, failureDetails.get(executionKey(value))));
 			int detailStart = output.length();
 			appendFailureDetails(output, value);
 			previousHadAdditionalData = output.length() > detailStart;
@@ -743,6 +823,15 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	String executionDetailsLine(JPostmanInfo info) {
+		return executionDetailsLine(info, null);
+	}
+
+	/**
+	 * Builds one compact execution result. When execution failed before an HTTP or
+	 * synthetic response was created, the failure message is printed on the next
+	 * indented line so a zero-duration row explains why no status code exists.
+	 */
+	private String executionDetailsLine(JPostmanInfo info, Throwable failure) {
 		StringBuilder out = new StringBuilder(topMethod(info)).append(":  ");
 		boolean skippedExecution = isSkipped(info);
 		if (skippedExecution) {
@@ -775,11 +864,59 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		}
 		out.append(", {").append(String.join(", ", scope)).append("}");
 
+		if (info == null || info.statusCode() == null) {
+			String message = compactFailureMessage(info, failure);
+			if (!message.isBlank()) {
+				out.append(System.lineSeparator()).append("\t\t ").append(message);
+			}
+		}
+
 		String chain = methodChain(info);
 		if (!chain.isBlank()) {
-			out.append(" (").append(chain).append(")");
+			out.append(System.lineSeparator()).append("\t\t (").append(chain).append(")");
 		}
 		return out.toString();
+	}
+
+	/**
+	 * Returns the first available exception message as one line. Newlines, tabs,
+	 * and repeated spaces are collapsed so compact report rows stay readable.
+	 */
+	private String compactFailureMessage(JPostmanInfo info, Throwable failure) {
+		Throwable current = failure;
+		for (int depth = 0; current != null && depth < 32; depth++) {
+			String message = value(JPostmanStackTraceCleaner.normalizeAssertionMessage(current.getMessage()))
+					.replaceAll("\\s+", " ").trim();
+			if (!message.isBlank()) {
+				if (message.startsWith("JPostman runner folder was not found.")) {
+					return compactRunnerFolderNotFound(info);
+				}
+				return message;
+			}
+			Throwable next = current.getCause();
+			if (next == current) {
+				break;
+			}
+			current = next;
+		}
+		return "";
+	}
+
+	/**
+	 * Builds the concise runner folder lookup message used by execution details.
+	 * The full annotation usage diagnostic remains available in the failure trace.
+	 */
+	private String compactRunnerFolderNotFound(JPostmanInfo info) {
+		String namespace = value(info == null ? null : info.namespace);
+		if (isDefault(namespace)) {
+			namespace = "";
+		}
+		String folder = value(info == null ? null : info.folder);
+		if (isDefault(folder)) {
+			folder = "";
+		}
+		return "JPostman runner folder was not found: \"" + folder + "\" (namespace=" + namespace + ", folder=" + folder
+				+ ")";
 	}
 
 	private String topMethod(JPostmanInfo info) {
@@ -796,12 +933,38 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		List<String> chain = new ArrayList<>();
 		for (String item : info.methods) {
 			String method = value(item);
-			if (method.isBlank() || isExecutorMethod(method)) {
+			if (method.isBlank()) {
+				break;
+			}
+			if (isExecutorMethod(method)) {
+				String executor = executorClassName(method);
+				if (!executor.isBlank() && (chain.isEmpty() || !executor.equals(chain.get(chain.size() - 1)))) {
+					chain.add(executor);
+				}
 				break;
 			}
 			chain.add(method);
 		}
 		return chain.size() < 2 ? "" : String.join(" -> ", chain);
+	}
+
+	/**
+	 * Returns the concise executor class/provider name used at the end of an
+	 * execution chain. Request-selection details such as {@code (#Ref1)} or a
+	 * quoted request name remain available in {@link JPostmanInfo#methods}, but are
+	 * omitted from the compact report.
+	 */
+	private String executorClassName(String method) {
+		String name = value(method).trim();
+		int detail = name.indexOf('(');
+		if (detail > 0) {
+			name = name.substring(0, detail);
+		}
+		int packageSeparator = name.lastIndexOf('.');
+		if (packageSeparator >= 0 && packageSeparator + 1 < name.length()) {
+			name = name.substring(packageSeparator + 1);
+		}
+		return name.trim();
 	}
 
 	private boolean isExecutorMethod(String method) {

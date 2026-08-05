@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -14,8 +16,8 @@ import io.jpostman.annotations.JPostman;
 import io.jpostman.testng.TestNgContext;
 
 /**
- * Regression coverage for request-helper namespace isolation and namespace
- * scoped void executor interceptors.
+ * Regression coverage for namespace-scoped void executor interceptors and the
+ * namespace supplied by the selected/default interceptor.
  */
 public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 
@@ -25,16 +27,15 @@ public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 	private static final String NAMESPACE = "test";
 
 	@Test
-	public void requestDependencyKeepsOwnDefaultNamespaceButParentResponseInterceptorUsesParentNamespace()
-			throws Exception {
+	public void singleInterceptorNamespaceIsTheDefaultForResponseAndRequestDependencies() throws Exception {
 		DependencyNamespaceFixture fixture = new DependencyNamespaceFixture();
 
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 		runTestNg(fixture, "filter");
 
-		assertEquals("", fixture.tokenNamespace);
-		assertEquals("", fixture.authRequestNamespace);
-		assertEquals(1, fixture.intercepts);
+		assertEquals(NAMESPACE, fixture.tokenNamespace);
+		assertEquals(NAMESPACE, fixture.authRequestNamespace);
+		assertEquals(2, fixture.intercepts);
 		assertEquals(NAMESPACE, fixture.interceptNamespace);
 		assertEquals("defaultIntercept", fixture.interceptMethod);
 		assertEquals("Get current auth user", fixture.interceptRequest);
@@ -44,6 +45,18 @@ public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 				"Actual methods: " + fixture.interceptMethods);
 		assertTrue(fixture.interceptMethods.contains("defaultIntercept"),
 				"Actual methods: " + fixture.interceptMethods);
+	}
+
+	@Test
+	public void defaultExecutorNamespaceFlowsThroughNestedDependencyChain() throws Exception {
+		DefaultNamespaceDependencyFixture fixture = new DefaultNamespaceDependencyFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		runTestNg(fixture, "profile");
+
+		assertEquals(2, fixture.interceptorCalls);
+		assertEquals(List.of("restage", "restage"), fixture.interceptorNamespaces);
+		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.interceptorRequests);
 	}
 
 	@Test
@@ -62,6 +75,43 @@ public class JPostmanAnnotationExecutorInterceptorNamespaceRegressionTest {
 	private static void runTestNg(Object fixture, String methodName) throws Exception {
 		Method method = fixture.getClass().getDeclaredMethod(methodName);
 		JPostmanAnnotationEngine.runTestNg(fixture, method);
+	}
+
+	@JPostman.TestNG
+	private static final class DefaultNamespaceDependencyFixture {
+
+		@JPostman.Context(config = "classpath:executor-default-namespace.properties", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int interceptorCalls;
+		private final List<String> interceptorNamespaces = new ArrayList<>();
+		private final List<String> interceptorRequests = new ArrayList<>();
+
+		@JPostman.Response(id = "Ref1", request = "Login user and get tokens")
+		public void login() {
+		}
+
+		@JPostman.Request(id = "Ref2", dependsOn = "#Ref1")
+		public void auth(JPostman.Info info) {
+			info.headers("Authorization", "Bearer token-123");
+		}
+
+		@JPostman.Response(request = "Get current auth user", dependsOn = "#Ref2")
+		@org.testng.annotations.Test
+		public void profile() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor provider() {
+			return okExecutor("{\"accessToken\":\"token-123\",\"id\":1}");
+		}
+
+		@JPostman.Executor(namespace = "restage")
+		public void restageInterceptor(JPostman.Info info) {
+			interceptorCalls++;
+			interceptorNamespaces.add(info.attr().namespace);
+			interceptorRequests.add(info.attr().request);
+		}
 	}
 
 	@JPostman.TestNG

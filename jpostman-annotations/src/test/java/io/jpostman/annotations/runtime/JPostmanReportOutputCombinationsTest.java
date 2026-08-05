@@ -42,7 +42,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 1, Failures: 0, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman Execution Details:\n\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)"),
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
 				output);
 	}
 
@@ -61,8 +61,9 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman Execution Details:\n\n"
-				+ "assertsVerify:  duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)\n"
-				+ "\nJPostman Errors:\n\njava.lang.AssertionError: REPORT ERROR\n"
+				+ "assertsVerify:  duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 REPORT ERROR\n		 (assertsVerify -> newProduct)\n\nJPostman Errors:\n"
+				+ "\njava.lang.AssertionError: REPORT ERROR\n"
 				+ "	at io.jpostman.annotations.runtime.JPostmanReportOutputCombinationsTest$ErrorOrigin.assertsVerify(ErrorOrigin.java)\n"
 				+ "	at io.jpostman.annotations.runtime.JPostmanReportOutputCombinationsTest$ErrorOrigin.assertsVerify(JPostmanReportOutputCombinationsTest.java:<line>)"),
 				output);
@@ -98,7 +99,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)"),
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
 				output);
 	}
 
@@ -113,7 +114,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
 				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
@@ -128,7 +129,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
 				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
@@ -141,7 +142,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
 				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
@@ -161,7 +162,7 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product} (assertsVerify -> newProduct)"),
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
 				output);
 	}
 

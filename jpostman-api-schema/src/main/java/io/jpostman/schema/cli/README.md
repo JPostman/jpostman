@@ -44,7 +44,7 @@ Use these when you want the CLI to parse Swagger/OpenAPI/Postman/GraphQL first.
 | `--file <path>` | Yes, unless `--stdin` is used | Reads the source API document from a file. |
 | `--stdin` | Yes, unless `--file` is used | Reads the source API document from standard input. |
 | `--base-url <url>` | No | Overrides or supplies the base URL used by the generated model. Useful for GraphQL schemas or specs without server information. |
-| `--override-url <true|false>` | No | Controls whether operation URLs are generated with `{{BASE_URL}}` included in each request path. |
+| `--override-url <true|false>` | No | Controls whether operation URLs are generated with the resolved base URL environment token included in each request path. |
 
 ## Existing Model Input Options
 
@@ -136,7 +136,7 @@ java -cp <classpath-or-jar> io.jpostman.schema.cli.ApiSchemaCli collection \
   --output src/test/resources/collection.json
 ```
 
-The generated collection uses `{{BASE_URL}}` as the Postman environment variable for the base URL.
+For concrete OpenAPI/GraphQL base URLs, the generated collection uses `{{BASE_URL}}`. When an imported Postman Collection already uses a base URL variable such as `{{base_url}}`, the original variable name and case are preserved. Placeholder-derived base URLs are exported with an empty environment value and never as a self-referential value such as `https://{{base_url}}`.
 
 ---
 

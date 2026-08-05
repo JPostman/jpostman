@@ -135,7 +135,10 @@ final class JPostmanContextRunner<C> {
 			 * request and response state. This preserves @BeforeClass/@BeforeAll overrides
 			 * while still giving each method a clean execution context.
 			 */
-			prepared.resolve(namespace).context = framework.copy(baseline.context(namespace));
+			C source = baseline.context(namespace);
+			C copy = framework.copy(source);
+			JPostmanTestProxy.copyValueSources(source, copy);
+			prepared.resolve(namespace).context = copy;
 		}
 	}
 
@@ -884,6 +887,7 @@ final class JPostmanContextRunner<C> {
 				framework.secret(ctx, key, entry.getValue());
 			}
 		});
+		JPostmanTestProxy.registerEnvironment(ctx, environment);
 	}
 
 	private Context loadJPostmanContext(String collectionLocation, String environmentLocation, Class<?> testClass)

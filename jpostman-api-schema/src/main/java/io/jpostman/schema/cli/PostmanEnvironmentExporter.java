@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import io.jpostman.schema.model.ApiSpec;
+import io.jpostman.schema.util.BaseUrlVariable;
 
 /**
  * Exports normalized ApiSpec environment values as Postman Environment JSON.
@@ -34,7 +35,7 @@ public class PostmanEnvironmentExporter {
 		if (spec == null || spec.getEnvs() == null) {
 			return values;
 		}
-		for (Map.Entry<String, Object> entry : spec.getEnvs().entrySet()) {
+		for (Map.Entry<String, Object> entry : BaseUrlVariable.valuesForExport(spec).entrySet()) {
 			if (entry.getKey() == null || entry.getKey().isBlank()) {
 				continue;
 			}

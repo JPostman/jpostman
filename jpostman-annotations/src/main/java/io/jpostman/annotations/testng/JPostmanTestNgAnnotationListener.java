@@ -3,11 +3,8 @@ package io.jpostman.annotations.testng;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -18,13 +15,11 @@ import org.testng.IHookable;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestClass;
-import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.ITestResult;
 import org.testng.SkipException;
 import org.testng.annotations.ITestAnnotation;
 
-import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.runtime.JPostmanAnnotationEngine;
 import io.jpostman.annotations.runtime.JPostmanAnnotationValidator;
 import io.jpostman.annotations.runtime.JPostmanAnnotations;
@@ -100,25 +95,10 @@ public final class JPostmanTestNgAnnotationListener
 		try {
 			JPostmanAnnotationEngine.completeTestClass(instance);
 		} finally {
-			writeCompletedClassReport(instance);
 			JPostmanAnnotationEngine.clearAssertionMethod(instance);
 			testResults.remove(instance);
 			completedAfterClassMethods.remove(instance);
 		}
-	}
-
-	private ITestResult lastTestResult(Object testInstance) {
-		Map<Method, ITestResult> results = testResults.get(testInstance);
-		if (results == null || results.isEmpty()) {
-			return null;
-		}
-		ITestResult last = null;
-		for (ITestResult result : results.values()) {
-			if (result != null && (last == null || result.getEndMillis() >= last.getEndMillis())) {
-				last = result;
-			}
-		}
-		return last;
 	}
 
 	/**
@@ -333,89 +313,6 @@ public final class JPostmanTestNgAnnotationListener
 			if (invokedMethod.isTestMethod()) {
 				TestNgContext.clearCurrent();
 			}
-		}
-	}
-
-	private void writeCompletedClassReport(Object testInstance) {
-		if (!JPostmanOutputs.isInstalled()) {
-			return;
-		}
-
-		ITestResult retained = lastTestResult(testInstance);
-		if (retained == null || retained.getTestContext() == null) {
-			return;
-		}
-
-		ITestContext context = retained.getTestContext();
-		List<ITestResult> passed = resultsFor(context.getPassedTests().getAllResults(), testInstance);
-		List<ITestResult> failed = resultsFor(context.getFailedTests().getAllResults(), testInstance);
-		List<ITestResult> skipped = resultsFor(context.getSkippedTests().getAllResults(), testInstance);
-		List<ITestResult> failedConfigurations = resultsFor(context.getFailedConfigurations().getAllResults(),
-				testInstance);
-		List<ITestResult> skippedConfigurations = resultsFor(context.getSkippedConfigurations().getAllResults(),
-				testInstance);
-
-		StringBuilder output = new StringBuilder("=== Completed TestNG report: ")
-				.append(testInstance.getClass().getSimpleName()).append(" ===\n");
-		appendResults(output, "PASSED", passed, false);
-		appendResults(output, "FAILED", failed, true);
-		appendResults(output, "FAILED CONFIGURATION", failedConfigurations, true);
-		appendResults(output, "SKIPPED", skipped, false);
-
-		int testsCompleted = passed.size() + failed.size() + skipped.size();
-		int reportedFailures = failed.size() + failedConfigurations.size();
-		int reportedPasses = Math.max(0, testsCompleted - reportedFailures - skipped.size());
-
-		output.append("Tests completed: ").append(testsCompleted).append('\n').append("Tests passed: ")
-				.append(reportedPasses).append('\n').append("Tests failed: ").append(reportedFailures).append('\n')
-				.append("Tests skipped: ").append(skipped.size()).append('\n').append("Configuration failures: 0\n")
-				.append("Configuration skips: ").append(skippedConfigurations.size()).append('\n')
-				.append("Reported failures: ").append(reportedFailures).append('\n')
-				.append("=== End TestNG report ===\n");
-
-		JPostmanOutputs.writeOrTrace(output.toString());
-	}
-
-	private List<ITestResult> resultsFor(Set<ITestResult> results, Object testInstance) {
-		List<ITestResult> values = new ArrayList<>();
-		for (ITestResult result : results) {
-			if (result != null && result.getInstance() == testInstance) {
-				values.add(result);
-			}
-		}
-		values.sort(Comparator.comparingLong(ITestResult::getStartMillis)
-				.thenComparing(result -> result.getName() == null ? "" : result.getName()));
-		return values;
-	}
-
-	private void appendResults(StringBuilder output, String status, List<ITestResult> results, boolean includeFailure) {
-		for (ITestResult result : results) {
-			output.append(status).append(": ");
-			if ("FAILED CONFIGURATION".equals(status) && result.getMethod() != null
-					&& result.getMethod().isAfterClassConfiguration()) {
-				output.append("@AfterClass ");
-			}
-			output.append(resultIdentifier(result)).append('\n');
-			if (includeFailure && result.getThrowable() != null) {
-				appendThrowable(output, result.getThrowable());
-			}
-			output.append('\n');
-		}
-	}
-
-	private String resultIdentifier(ITestResult result) {
-		Object instance = result.getInstance();
-		String className = instance == null ? result.getTestClass().getRealClass().getSimpleName()
-				: instance.getClass().getSimpleName();
-		String methodName = result.getMethod() == null ? result.getName() : result.getMethod().getMethodName();
-		return className + "." + methodName;
-	}
-
-	private void appendThrowable(StringBuilder output, Throwable throwable) {
-		output.append(throwable.getClass().getName()).append(": ").append(String.valueOf(throwable.getMessage()))
-				.append('\n');
-		for (StackTraceElement element : throwable.getStackTrace()) {
-			output.append("\tat ").append(element).append('\n');
 		}
 	}
 

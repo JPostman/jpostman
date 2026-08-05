@@ -7,21 +7,34 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Marks a method as a JPostman request executor provider or post-response
+ * Marks a method as a JPostman request executor provider or pre-execution
  * interceptor.
  *
  * <p>
  * Methods returning {@code ApiExecutor} provide request execution. Methods
- * returning {@code void} run after a response is received. A single method of a
- * role is selected automatically, even when it has an id. When multiple methods
- * of the same role are available, the method without an id is the default. Use
- * the annotation {@code executor} attribute only to select a named method, for
+ * returning {@code void} run immediately before each response execution. A void
+ * interceptor may call {@code runtime.call(...)} to execute the current request
+ * at that point, inspect the resulting context, and then continue. If it does
+ * not call {@code runtime.call(...)}, JPostman executes the request
+ * automatically after the interceptor returns. A single method of a role is
+ * selected automatically, even when it has an id. When multiple methods of the
+ * same role are available, the method without an id is the default. Use the
+ * annotation {@code executor} attribute only to select a named method, for
  * example {@code executor = "#audit"}.
  * </p>
  *
  * <p>
  * For void interceptors, an exact namespace match takes precedence over a
  * global interceptor whose namespace is empty.
+ * </p>
+ *
+ * <p>
+ * Request-execution exceptions are represented as synthetic responses so the
+ * interceptor continues after {@code runtime.call()}. Common mappings include
+ * connection failures to 503, timeouts to 504, gateway/DNS/SSL failures to 502,
+ * invalid arguments to 400, security failures to 403, unsupported operations to
+ * 501, and other state/runtime failures to 500. The original exception remains
+ * available through {@code runtime.info().error()}.
  * </p>
  */
 @Target(METHOD)

@@ -19,6 +19,7 @@ import io.jpostman.schema.model.ApiProtocol;
 import io.jpostman.schema.model.ApiResponse;
 import io.jpostman.schema.model.ApiSpec;
 import io.jpostman.schema.parser.ApiSpecParserOptions;
+import io.jpostman.schema.util.EnvVarExtractor;
 
 /**
  * Imports Postman Collection documents into the common JPostman API schema
@@ -398,6 +399,10 @@ public class PostmanImporter implements ApiSpecImporter {
 			return null;
 		}
 		String raw = urlNode.isTextual() ? urlNode.asText() : text(urlNode.get("raw"), null);
+		String placeholderBaseUrl = extractPlaceholderBaseUrl(urlNode, raw);
+		if (placeholderBaseUrl != null) {
+			return placeholderBaseUrl;
+		}
 		if (raw != null) {
 			try {
 				URI uri = URI.create(raw.replace("{{", "__L__").replace("}}", "__R__"));
@@ -426,6 +431,41 @@ public class PostmanImporter implements ApiSpecImporter {
 			return trimTrailingSlash(builder.toString());
 		}
 		return null;
+	}
+
+	/**
+	 * Extracts a base URL that is represented by a Postman environment token and
+	 * preserves the token's original case.
+	 */
+	private String extractPlaceholderBaseUrl(JsonNode urlNode, String raw) {
+		if (raw != null) {
+			String trimmed = raw.trim();
+			if (trimmed.startsWith("{{")) {
+				int tokenEnd = trimmed.indexOf("}}");
+				if (tokenEnd >= 0) {
+					String token = trimmed.substring(0, tokenEnd + 2);
+					String remainder = trimmed.substring(tokenEnd + 2);
+					if (EnvVarExtractor.singleKey(token) != null && (remainder.isEmpty() || remainder.startsWith("/")
+							|| remainder.startsWith("?") || remainder.startsWith("#"))) {
+						return token;
+					}
+				}
+			}
+		}
+
+		if (urlNode == null || urlNode.isTextual()) {
+			return null;
+		}
+		JsonNode host = urlNode.get("host");
+		if (host == null || !host.isArray() || host.size() != 1) {
+			return null;
+		}
+		String hostToken = host.get(0).asText();
+		if (EnvVarExtractor.singleKey(hostToken) == null) {
+			return null;
+		}
+		String protocol = text(urlNode.get("protocol"), null);
+		return protocol == null || protocol.isBlank() ? hostToken : protocol + "://" + hostToken;
 	}
 
 	/**

@@ -261,6 +261,105 @@ class JPostmanReportDetailsRegressionTest {
 	}
 
 	@Test
+	void blankTopLevelResultMergesCompletedDependencyAndUsesMultilineChain() {
+		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
+		JPostmanInfo parent = new JPostmanInfo(new String[0], "", "getCurrentAuthenticatedUser", "restage", "Auth",
+				"Get current authenticated user");
+		parent.annotation = "@JPostmanResponse";
+		parent.method("getCurrentAuthenticatedUser");
+
+		JPostmanInfo helper = parent.child("loginUserAndGetAccessRefreshTokensRequest", "restage", "Auth",
+				"Get current authenticated user");
+		helper.annotation = "@JPostmanRequest";
+		helper.method("loginUserAndGetAccessRefreshTokensRequest");
+
+		JPostmanInfo dependency = helper.childExact("loginUserAndGetAccessRefreshTokens", "restage", "Auth",
+				"Login user and get access/refresh tokens");
+		dependency.annotation = "@JPostmanResponse";
+		dependency.method("loginUserAndGetAccessRefreshTokens");
+		dependency.appendMethod("HttpClientExecutor(#Ref1)");
+		dependency.syntheticError(503, "Service Unavailable",
+				new IllegalStateException("Failed to execute request",
+						new java.net.ConnectException("Connection refused")),
+				new java.net.ConnectException("Connection refused"));
+
+		report.passed(dependency);
+		report.failed(parent, new IllegalStateException("Parent request did not complete"));
+
+		assertEquals(1, report.total());
+		assertEquals(0, report.passed.size());
+		assertEquals(1, report.failed.size());
+
+		String output = capture(report::summary).get(0);
+		String firstLine = "getCurrentAuthenticatedUser:  statusCode=503, duration=00:00.000, "
+				+ "{namespace = restage, folder = Auth, request = Login user and get access/refresh tokens}";
+		String chain = System.lineSeparator() + "\t\t (getCurrentAuthenticatedUser -> "
+				+ "loginUserAndGetAccessRefreshTokensRequest -> loginUserAndGetAccessRefreshTokens "
+				+ "-> HttpClientExecutor)";
+
+		assertTrue(output.contains(firstLine + chain), output);
+		assertEquals(1, occurrences(output, "getCurrentAuthenticatedUser:"), output);
+		assertFalse(output.contains("(synthetic"), output);
+		assertFalse(output.contains("ConnectException"), output);
+	}
+
+	@Test
+	void executionDetailsIncludeExecutorClassWithoutSelectionSuffix() {
+		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
+		JPostmanInfo direct = new JPostmanInfo(new String[0], "", "loginUserAndGetAccessRefreshTokens", "restage",
+				"Auth", "Login user and get access/refresh tokens");
+		direct.annotation = "@JPostmanResponse";
+		direct.method("loginUserAndGetAccessRefreshTokens");
+		direct.appendMethod("io.jpostman.httpclient.HttpClientExecutor(#Ref1)");
+		direct.statusCode(200);
+		report.passed(direct);
+
+		String output = capture(report::summary).get(0);
+		String expected = System.lineSeparator() + "\t\t (loginUserAndGetAccessRefreshTokens "
+				+ "-> HttpClientExecutor)";
+
+		assertTrue(output.contains(expected), output);
+		assertFalse(output.contains("HttpClientExecutor(#Ref1)"), output);
+		assertFalse(output.contains("io.jpostman.httpclient.HttpClientExecutor"), output);
+	}
+
+	@Test
+	void completedTopLevelResponseReplacesSuccessfulDependencyRow() {
+		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
+		JPostmanInfo parent = new JPostmanInfo(new String[0], "", "refreshAuthSessionToken", "restage", "Auth",
+				"Refresh auth session/token");
+		parent.annotation = "@JPostmanResponse";
+		parent.method("refreshAuthSessionToken");
+
+		JPostmanInfo helper = parent.child("loginUserAndGetAccessRefreshTokensRequest", "restage", "Auth",
+				"Refresh auth session/token");
+		helper.annotation = "@JPostmanRequest";
+		helper.method("loginUserAndGetAccessRefreshTokensRequest");
+
+		JPostmanInfo dependency = helper.childExact("loginUserAndGetAccessRefreshTokens", "restage", "Auth",
+				"Login user and get access/refresh tokens");
+		dependency.annotation = "@JPostmanResponse";
+		dependency.method("loginUserAndGetAccessRefreshTokens");
+		dependency.appendMethod("HttpClientExecutor(#Ref1)");
+		dependency.statusCode(200);
+		report.passed(dependency);
+
+		parent.statusCode(403);
+		report.failed(parent, new AssertionError("Expected status 200 but was 403"));
+
+		assertEquals(1, report.total());
+		assertEquals(0, report.passed.size());
+		assertEquals(1, report.failed.size());
+
+		String output = capture(report::summary).get(0);
+		assertEquals(1, occurrences(output, "refreshAuthSessionToken:"), output);
+		assertTrue(output.contains("statusCode=403"), output);
+		assertTrue(output.contains("request = Refresh auth session/token"), output);
+		assertFalse(output.contains("statusCode=200"), output);
+		assertFalse(output.contains("request = Login user and get access/refresh tokens}"), output);
+	}
+
+	@Test
 	void configurationFailuresAreCombinedIntoDisplayedFailures() {
 		JPostmanReport report = new JPostmanReport();
 		report.passed(topLevel("softAsserts"));

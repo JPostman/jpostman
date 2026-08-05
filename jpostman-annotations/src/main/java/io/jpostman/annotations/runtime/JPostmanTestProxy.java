@@ -10,10 +10,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
+import io.jpostman.Environment;
+import io.jpostman.Params;
 import io.jpostman.annotations.JPostman;
 import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.annotations.JPostmanTestAssertions;
@@ -24,6 +31,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 	private static final String CACHE_ID_ALIAS_PREFIX = "__jpostman_cache_id__";
 	private static final ThreadLocal<List<CacheDependency>> CACHE_DEPENDENCIES = new ThreadLocal<>();
+	private static final Map<Object, ValueSources> VALUE_SOURCES = Collections.synchronizedMap(new WeakHashMap<>());
 
 	static final class CacheDependency {
 		final String reference;
@@ -65,16 +73,82 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return id.isBlank() ? "" : CACHE_ID_ALIAS_PREFIX + id;
 	}
 
+	/** Records the original Postman environment used by a framework context. */
+	static void registerEnvironment(Object target, Environment environment) {
+		if (target == null || environment == null) {
+			return;
+		}
+		ValueSources sources = valueSources(target);
+		synchronized (sources) {
+			sources.environment.clear();
+			sources.environmentProtected.clear();
+			for (String key : environment.getParams().keySet()) {
+				Params.Entry entry = environment.entry(key);
+				if (entry == null) {
+					continue;
+				}
+				sources.environment.put(key, entry.getValue());
+				if (!entry.isEnabled()) {
+					sources.environmentProtected.add(key);
+				}
+			}
+		}
+	}
+
+	/** Test helper and framework-neutral environment registration. */
+	static void registerEnvironmentValues(Object target, Map<String, ?> values) {
+		if (target == null) {
+			return;
+		}
+		ValueSources sources = valueSources(target);
+		synchronized (sources) {
+			sources.environment.clear();
+			sources.environmentProtected.clear();
+			if (values != null) {
+				sources.environment.putAll(values);
+			}
+		}
+	}
+
+	/** Carries lookup-source metadata to a copied framework context. */
+	static void copyValueSources(Object source, Object target) {
+		if (source == null || target == null || source == target) {
+			return;
+		}
+		ValueSources existing;
+		synchronized (VALUE_SOURCES) {
+			existing = VALUE_SOURCES.get(source);
+		}
+		if (existing == null) {
+			return;
+		}
+		ValueSources copy = new ValueSources();
+		synchronized (existing) {
+			copy.environment.putAll(existing.environment);
+			copy.environmentProtected.addAll(existing.environmentProtected);
+			copy.plain.putAll(existing.plain);
+			copy.secret.putAll(existing.secret);
+		}
+		VALUE_SOURCES.put(target, copy);
+	}
+
 	private final Object target;
 	private final Supplier<?> activeContextSupplier;
+	private final Supplier<? extends JPostman.Info> responseInfoSupplier;
 
 	private JPostmanTestProxy(Object target) {
-		this(target, null);
+		this(target, null, null);
 	}
 
 	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier) {
+		this(target, activeContextSupplier, null);
+	}
+
+	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier,
+			Supplier<? extends JPostman.Info> responseInfoSupplier) {
 		this.target = target;
 		this.activeContextSupplier = activeContextSupplier;
+		this.responseInfoSupplier = responseInfoSupplier;
 	}
 
 	static JPostman.Test wrap(Object target) {
@@ -88,14 +162,40 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier) {
+		return wrap(target, activeContextSupplier, null);
+	}
+
+	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier,
+			Supplier<? extends JPostman.Info> responseInfoSupplier) {
 		if (target == null) {
 			return null;
 		}
-		if (target instanceof JPostman.Test) {
+		if (target instanceof JPostman.Test && Proxy.isProxyClass(target.getClass())) {
+			InvocationHandler handler = Proxy.getInvocationHandler(target);
+			if (handler instanceof JPostmanTestProxy) {
+				JPostmanTestProxy existing = (JPostmanTestProxy) handler;
+				Supplier<?> active = activeContextSupplier == null ? existing.activeContextSupplier
+						: activeContextSupplier;
+				Supplier<? extends JPostman.Info> responseInfo = responseInfoSupplier == null
+						? existing.responseInfoSupplier
+						: responseInfoSupplier;
+				if (responseInfo == existing.responseInfoSupplier && active == existing.activeContextSupplier) {
+					return (JPostman.Test) target;
+				}
+				return proxy(existing.target, active, responseInfo);
+			}
+		}
+		if (target instanceof JPostman.Test && responseInfoSupplier == null) {
 			return (JPostman.Test) target;
 		}
+		return proxy(target, activeContextSupplier, responseInfoSupplier);
+	}
+
+	private static JPostman.Test proxy(Object target, Supplier<?> activeContextSupplier,
+			Supplier<? extends JPostman.Info> responseInfoSupplier) {
 		return (JPostman.Test) Proxy.newProxyInstance(JPostman.Test.class.getClassLoader(),
-				new Class<?>[] { JPostman.Test.class }, new JPostmanTestProxy(target, activeContextSupplier));
+				new Class<?>[] { JPostman.Test.class },
+				new JPostmanTestProxy(target, activeContextSupplier, responseInfoSupplier));
 	}
 
 	static Object unwrap(Object value) {
@@ -197,6 +297,24 @@ final class JPostmanTestProxy implements InvocationHandler {
 			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
 			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
+		if ("get".equals(name) && method.getParameterCount() == 1 && args != null && args.length == 1
+				&& args[0] instanceof String) {
+			return resolveGet(target, (String) args[0]);
+		}
+		if ("response".equals(name) && method.getParameterCount() == 1
+				&& method.getParameterTypes()[0] == BiConsumer.class) {
+			if (responseInfoSupplier == null) {
+				throw new IllegalStateException(
+						"JPostman.Test.response(...) is available only on the result returned by runtime.call(...).");
+			}
+			@SuppressWarnings("unchecked")
+			BiConsumer<JPostman.Test, JPostman.Info> action = args == null || args.length == 0 ? null
+					: (BiConsumer<JPostman.Test, JPostman.Info>) args[0];
+			if (action != null) {
+				action.accept((JPostman.Test) proxy, responseInfoSupplier.get());
+			}
+			return proxy;
+		}
 		if ("print".equals(name) && JPostmanOutputs.isInstalled()) {
 			boolean resolve = args != null && args.length == 1 && Boolean.TRUE.equals(args[0]);
 			Object printTarget = target;
@@ -234,10 +352,201 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		Method targetMethod = findTargetMethod(invocationTarget, name, args);
 		Object result = invokeTarget(targetMethod, invocationTarget, args);
+		recordValueMutation(invocationTarget, method, name, args);
+		if ("copy".equals(name) && method.getParameterCount() == 0 && result != null) {
+			copyValueSources(invocationTarget, result);
+		}
 		if (("request".equals(name) || "response".equals(name)) && result != null) {
 			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
 		}
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
+	}
+
+	private static Object resolveGet(Object target, String key) throws Throwable {
+		String expression = key == null ? "" : key.trim();
+		if (expression.isBlank()) {
+			return null;
+		}
+
+		ValueSources sources = valueSources(target);
+		synchronized (sources) {
+			if (sources.secret.containsKey(expression)) {
+				return sources.secret.get(expression);
+			}
+			if (sources.plain.containsKey(expression)) {
+				return sources.plain.get(expression);
+			}
+		}
+
+		/*
+		 * Direct framework contexts can be mutated without going through this proxy.
+		 * Treat a current secure value as an explicit secret/plain override whenever it
+		 * differs from the environment snapshot.
+		 */
+		ResolvedSecureValue current = readCurrentSecureValue(target, expression);
+		EnvironmentValue environment;
+		synchronized (sources) {
+			environment = sources.environment.containsKey(expression)
+					? new EnvironmentValue(sources.environment.get(expression),
+							sources.environmentProtected.contains(expression))
+					: null;
+		}
+		if (current.present && (environment == null || !Objects.equals(current.value, environment.value)
+				|| current.protectedValue != environment.protectedValue)) {
+			return current.value;
+		}
+
+		Object cached = resolveCacheExpression(target, expression);
+		if (cached != null) {
+			return cached;
+		}
+
+		if (environment != null) {
+			return environment.value;
+		}
+
+		/* Preserve values supplied by non-annotation integrations. */
+		Method getMethod = findTargetMethod(target, "get", new Object[] { expression });
+		return invokeTarget(getMethod, target, new Object[] { expression });
+	}
+
+	private static void recordValueMutation(Object target, Method method, String name, Object[] args) {
+		if (target == null || method == null) {
+			return;
+		}
+		if ("plain".equals(name) || "secret".equals(name)) {
+			Map<String, Object> values = mutationValues(args);
+			if (values.isEmpty()) {
+				return;
+			}
+			ValueSources sources = valueSources(target);
+			synchronized (sources) {
+				Map<String, Object> destination = "secret".equals(name) ? sources.secret : sources.plain;
+				destination.putAll(values);
+			}
+			return;
+		}
+		if ("unsecret".equals(name)) {
+			String[] names = stringArguments(args);
+			ValueSources sources = valueSources(target);
+			synchronized (sources) {
+				for (String key : names) {
+					if (sources.secret.containsKey(key)) {
+						sources.plain.put(key, sources.secret.remove(key));
+					}
+				}
+			}
+		}
+	}
+
+	private static Map<String, Object> mutationValues(Object[] args) {
+		if (args == null || args.length == 0 || args[0] == null) {
+			return Collections.emptyMap();
+		}
+		Object value = args.length == 1 ? args[0] : args;
+		if (value instanceof Map<?, ?>) {
+			Map<String, Object> result = new LinkedHashMap<>();
+			((Map<?, ?>) value).forEach((key, item) -> {
+				if (key != null) {
+					result.put(String.valueOf(key), item);
+				}
+			});
+			return result;
+		}
+		if (value instanceof Environment) {
+			Map<String, Object> result = new LinkedHashMap<>();
+			Environment environment = (Environment) value;
+			environment.getParams().keySet().forEach(key -> result.put(key, environment.entry(key).getValue()));
+			return result;
+		}
+		Object[] pairs = value instanceof Object[] ? (Object[]) value : args;
+		Map<String, Object> result = new LinkedHashMap<>();
+		for (int index = 0; index + 1 < pairs.length; index += 2) {
+			if (pairs[index] != null) {
+				result.put(String.valueOf(pairs[index]), pairs[index + 1]);
+			}
+		}
+		return result;
+	}
+
+	private static String[] stringArguments(Object[] args) {
+		if (args == null || args.length == 0 || args[0] == null) {
+			return new String[0];
+		}
+		Object value = args.length == 1 ? args[0] : args;
+		if (value instanceof String[]) {
+			return (String[]) value;
+		}
+		if (value instanceof Object[]) {
+			Object[] items = (Object[]) value;
+			String[] result = new String[items.length];
+			for (int index = 0; index < items.length; index++) {
+				result[index] = String.valueOf(items[index]);
+			}
+			return result;
+		}
+		return new String[] { String.valueOf(value) };
+	}
+
+	private static ResolvedSecureValue readCurrentSecureValue(Object target, String key) {
+		try {
+			Method valuesMethod = findTargetMethod(target, "values", new Object[0]);
+			Object values = invokeTarget(valuesMethod, target, new Object[0]);
+			if (values == null) {
+				return ResolvedSecureValue.missing();
+			}
+			Method getMethod = findTargetMethod(values, "get", new Object[] { key });
+			Object secureValue = invokeTarget(getMethod, values, new Object[] { key });
+			if (secureValue == null) {
+				return ResolvedSecureValue.missing();
+			}
+			Method revealMethod = findTargetMethod(secureValue, "reveal", new Object[0]);
+			Object revealed = invokeTarget(revealMethod, secureValue, new Object[0]);
+			Method protectedMethod = findTargetMethod(secureValue, "isProtected", new Object[0]);
+			Object protectedValue = invokeTarget(protectedMethod, secureValue, new Object[0]);
+			return new ResolvedSecureValue(true, revealed, Boolean.TRUE.equals(protectedValue));
+		} catch (Throwable ignored) {
+			return ResolvedSecureValue.missing();
+		}
+	}
+
+	private static ValueSources valueSources(Object target) {
+		synchronized (VALUE_SOURCES) {
+			return VALUE_SOURCES.computeIfAbsent(target, ignored -> new ValueSources());
+		}
+	}
+
+	private static final class ValueSources {
+		private final Map<String, Object> environment = new LinkedHashMap<>();
+		private final Set<String> environmentProtected = new LinkedHashSet<>();
+		private final Map<String, Object> plain = new LinkedHashMap<>();
+		private final Map<String, Object> secret = new LinkedHashMap<>();
+	}
+
+	private static final class EnvironmentValue {
+		private final Object value;
+		private final boolean protectedValue;
+
+		private EnvironmentValue(Object value, boolean protectedValue) {
+			this.value = value;
+			this.protectedValue = protectedValue;
+		}
+	}
+
+	private static final class ResolvedSecureValue {
+		private final boolean present;
+		private final Object value;
+		private final boolean protectedValue;
+
+		private ResolvedSecureValue(boolean present, Object value, boolean protectedValue) {
+			this.present = present;
+			this.value = value;
+			this.protectedValue = protectedValue;
+		}
+
+		private static ResolvedSecureValue missing() {
+			return new ResolvedSecureValue(false, null, false);
+		}
 	}
 
 	private static boolean isCacheRead(Method method, String name, Object[] args) {

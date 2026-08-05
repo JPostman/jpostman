@@ -305,10 +305,15 @@ public final class JPostman {
 	}
 
 	/**
-	 * Marks a method as a JPostman executor provider or post-response interceptor.
+	 * Marks a method as a JPostman executor provider or pre-execution interceptor.
 	 * A single method of each role is selected automatically. With multiple
 	 * methods, the method without an id is the default and named methods are
 	 * selected with an annotation {@code executor} value such as {@code "#audit"}.
+	 * Request-execution exceptions are represented as synthetic responses so a void
+	 * interceptor can continue after {@code runtime.call()}. Common mappings
+	 * include connection failures to 503, timeouts to 504, gateway/DNS/SSL failures
+	 * to 502, invalid arguments to 400, security failures to 403, unsupported
+	 * operations to 501, and other state/runtime failures to 500.
 	 */
 	@Target(METHOD)
 	@Retention(RUNTIME)
@@ -958,7 +963,14 @@ public final class JPostman {
 		C ctx(String namespace);
 
 		/**
-		 * Alias for {@link #ctx()}.
+		 * Alias for {@link #ctx()}. Use this from an ordinary framework {@code @Test}
+		 * method instead of declaring {@code JPostman.Test} as a method parameter.
+		 *
+		 * <pre>{@code @Test
+		 * public void example() {
+		 * 	JPostman.Test test = runtime.test();
+		 * }
+		 * }</pre>
 		 *
 		 * @return active framework context
 		 */
@@ -974,7 +986,15 @@ public final class JPostman {
 		C test(String namespace);
 
 		/**
-		 * Returns the current execution info.
+		 * Returns the current execution info. Use this from an ordinary framework
+		 * {@code @Test} method instead of declaring {@code JPostman.Info} as a method
+		 * parameter.
+		 *
+		 * <pre>{@code @Test
+		 * public void example() {
+		 * 	JPostman.Info info = runtime.info();
+		 * }
+		 * }</pre>
 		 *
 		 * @return execution info
 		 */
@@ -1024,18 +1044,25 @@ public final class JPostman {
 		io.jpostman.annotations.runtime.JPostmanRuntime.RunnerRules<C> runner();
 
 		/**
-		 * Executes the request described by {@link Call} on the current test method.
+		 * Executes the active request. From a {@link Call} test method, this executes
+		 * that method's manual call. From a void {@link Executor} interceptor, this
+		 * proceeds with the current response execution and returns before the
+		 * interceptor continues.
 		 *
 		 * @return framework-neutral test context for assertions
 		 */
 		Test call();
 
 		/**
-		 * Executes the request described by {@link Call} after applying an optional
-		 * request customization callback.
+		 * Executes the active request after applying an optional request callback. From
+		 * a void {@link Executor} interceptor, the callback runs immediately before the
+		 * response is executed. The interceptor then continues with the latest response
+		 * context. Standard request-execution exceptions are converted to synthetic
+		 * HTTP-style responses so code after this call can inspect the mapped status,
+		 * response body, and original exception.
 		 *
-		 * @param action request customization callback receiving the framework context
-		 *               and execution info
+		 * @param action request callback receiving the framework context and execution
+		 *               info
 		 * @return framework-neutral test context for assertions
 		 */
 		Test call(BiConsumer<C, Info> action);
@@ -1347,6 +1374,37 @@ public final class JPostman {
 		 */
 		default String request() {
 			return attr().request;
+		}
+
+		/** Returns the latest HTTP or synthetic status code, when available. */
+		default Integer statusCode() {
+			return attr().statusCode();
+		}
+
+		/**
+		 * Returns true when JPostman generated the response from an execution
+		 * exception.
+		 */
+		default boolean syntheticResponse() {
+			return attr().syntheticResponse();
+		}
+
+		/**
+		 * Returns the original request-execution exception, or null for a real
+		 * response.
+		 */
+		default Throwable error() {
+			return attr().error();
+		}
+
+		/** Returns the nested cause used to select the synthetic status code. */
+		default Throwable errorCause() {
+			return attr().errorCause();
+		}
+
+		/** Returns the reason phrase assigned to the synthetic response. */
+		default String errorReason() {
+			return attr().errorReason();
 		}
 
 		/**
@@ -1731,8 +1789,8 @@ public final class JPostman {
 	 * <p>
 	 * Typed reads use {@code cache(expression, Type.class)}. Existing cache writes
 	 * remain supported through {@code cache(key, value)}. The inherited
-	 * {@code get(String)} method remains a secure-value lookup; cache expressions
-	 * are resolved only by {@code cache(...)}.
+	 * {@code get(String)} method provides a convenient combined lookup using this
+	 * precedence: secret, plain, cache expression, then Postman environment.
 	 * </p>
 	 *
 	 * <pre>
@@ -1753,6 +1811,46 @@ public final class JPostman {
 	 * </pre>
 	 */
 	public interface Test extends JPostmanTestContext<Test, Assert, Assert> {
+
+		/**
+		 * Resolves a value from the active test context.
+		 *
+		 * <p>
+		 * Sources are checked in this order:
+		 * </p>
+		 * <ol>
+		 * <li>Protected value registered through {@code secret(...)}.</li>
+		 * <li>Plain value registered through {@code plain(...)}.</li>
+		 * <li>Cache value using the same expression rules as
+		 * {@link #cache(String)}.</li>
+		 * <li>Original Postman environment value.</li>
+		 * </ol>
+		 *
+		 * <p>
+		 * A secret remains higher priority than a later plain value. Call
+		 * {@code unsecret(key)} before {@code plain(key, value)} when intentionally
+		 * replacing a secret with a plain value.
+		 * </p>
+		 *
+		 * <pre>
+		 * // In a parent Response callback:
+		 * test.secret("refreshToken", test.<String>path("refreshToken"));
+		 *
+		 * // In a dependent Request or Call callback:
+		 * String token = (String) test.get("refreshToken");
+		 * String explicit = (String) test.get("#login:accessToken");
+		 * </pre>
+		 *
+		 * @param key secure/plain key or cache expression
+		 * @return first resolved value, or {@code null} when no source contains it
+		 * @throws IllegalStateException when cache-path resolution is ambiguous or an
+		 *                               explicit cache dependency is unavailable
+		 */
+		@Override
+		default Object get(String key) {
+			throw new UnsupportedOperationException(
+					"JPostman.Test.get(...) is available only through an injected JPostman runtime context.");
+		}
 
 		/**
 		 * Reads a cache expression.
@@ -1847,6 +1945,34 @@ public final class JPostman {
 		default Test cache(String key, Object value) {
 			throw new UnsupportedOperationException(
 					"JPostman.Test.cache(...) is available only through an injected JPostman runtime context.");
+		}
+
+		/**
+		 * Runs a callback after {@link Runtime#call()} has completed and the active
+		 * real or synthetic response is available.
+		 *
+		 * <p>
+		 * This method is intended for fluent executor code:
+		 * </p>
+		 *
+		 * <pre>
+		 * runtime.call((test, info) -&gt; test.request().print()).response((test, info) -&gt; test.response().print());
+		 * </pre>
+		 *
+		 * <p>
+		 * The callback runs exactly once. The supplied test context is the context
+		 * returned by the completed call, and the supplied info is the same annotation
+		 * execution info associated with that call. The method returns the same test
+		 * context so additional fluent operations may follow.
+		 * </p>
+		 *
+		 * @param action response callback receiving the completed test context and
+		 *               execution information; {@code null} performs no action
+		 * @return the completed test context
+		 */
+		default Test response(BiConsumer<Test, Info> action) {
+			throw new UnsupportedOperationException(
+					"JPostman.Test.response(...) is available only on the result returned by runtime.call(...).");
 		}
 	}
 }

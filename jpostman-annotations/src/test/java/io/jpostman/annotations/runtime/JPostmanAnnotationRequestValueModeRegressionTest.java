@@ -275,6 +275,18 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	}
 
 	@Test
+	public void sauthOAuth2CreatesAuthorizationHeaderWhenRequestHasNoHeaderSection() throws Exception {
+		Request request = requestWithoutHeaders();
+		JPostmanInfo info = new JPostmanInfo("response", "", "Auth", "Get current authenticated user");
+
+		info.sauth("oauth2", "access-token");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		assertEquals("Bearer access-token", updated.getHeader().get("Authorization"));
+	}
+
+	@Test
 	public void secureValueMethodsNormalizeCachedSecretWrappersBeforeWrappingAgain() {
 		JPostmanInfo source = new JPostmanInfo("response", "", "", "Login");
 		source.sbody("refreshToken", "refresh-secret");
@@ -563,6 +575,13 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		public String log(boolean resolve) {
 			return request.log();
 		}
+	}
+
+	private static Request requestWithoutHeaders() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Get current authenticated user\",\"request\":{"
+				+ "\"method\":\"GET\",\"url\":\"https://example.com/auth/me\"}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject())
+				.getRequest("Get current authenticated user");
 	}
 
 	private static Request requestWithExistingBodyQueryAndHeader() throws Exception {

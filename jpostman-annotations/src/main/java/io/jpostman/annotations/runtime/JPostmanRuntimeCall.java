@@ -1,14 +1,20 @@
 package io.jpostman.annotations.runtime;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
-/** Thread-local registry for the active runtime @JPostman.Call execution. */
+/**
+ * Thread-local registry for manual @JPostman.Call execution and temporary
+ * void-executor proceed scopes.
+ */
 final class JPostmanRuntimeCall {
 
 	private static final ThreadLocal<Map<Key, Entry<?>>> CALLS = ThreadLocal.withInitial(LinkedHashMap::new);
+	private static final ThreadLocal<Map<Key, Deque<Entry<?>>>> ACTIVE = ThreadLocal.withInitial(LinkedHashMap::new);
 	private static final ThreadLocal<Function<Throwable, Throwable>> FAILURE_CLEANER = new ThreadLocal<>();
 	private static final ThreadLocal<Throwable> FAILURE_SOURCE = new ThreadLocal<>();
 
@@ -19,28 +25,85 @@ final class JPostmanRuntimeCall {
 			Function<Throwable, Throwable> failureCleaner) {
 		if (owner != null && contextType != null && request != null) {
 			CALLS.get().put(new Key(owner, contextType), new Entry<>(request, failureCleaner));
-			FAILURE_CLEANER.set(failureCleaner);
+			setFailureCleaner(failureCleaner);
 		}
+	}
+
+	static <C> void activate(Object owner, Class<?> contextType, JPostmanRuntimeRequest<C> request) {
+		if (owner == null || contextType == null || request == null) {
+			return;
+		}
+		Key key = new Key(owner, contextType);
+		Entry<?> current = current(key);
+		Function<Throwable, Throwable> cleaner = current == null ? null : current.failureCleaner;
+		ACTIVE.get().computeIfAbsent(key, ignored -> new ArrayDeque<>()).addLast(new Entry<>(request, cleaner));
+		restoreFailureCleaner(key);
+	}
+
+	static void deactivate(Object owner, Class<?> contextType) {
+		if (owner == null || contextType == null) {
+			return;
+		}
+		Key key = new Key(owner, contextType);
+		Deque<Entry<?>> entries = ACTIVE.get().get(key);
+		if (entries != null) {
+			if (!entries.isEmpty()) {
+				entries.removeLast();
+			}
+			if (entries.isEmpty()) {
+				ACTIVE.get().remove(key);
+			}
+		}
+		restoreFailureCleaner(key);
 	}
 
 	static void clear(Object owner, Class<?> contextType) {
 		if (owner != null && contextType != null) {
-			CALLS.get().remove(new Key(owner, contextType));
+			Key key = new Key(owner, contextType);
+			CALLS.get().remove(key);
+			ACTIVE.get().remove(key);
 			if (CALLS.get().isEmpty()) {
-				FAILURE_CLEANER.remove();
-				FAILURE_SOURCE.remove();
+				CALLS.remove();
 			}
+			if (ACTIVE.get().isEmpty()) {
+				ACTIVE.remove();
+			}
+			FAILURE_CLEANER.remove();
+			FAILURE_SOURCE.remove();
 		}
 	}
 
 	@SuppressWarnings("unchecked")
 	static <C> C execute(Object owner, Class<?> contextType, BiConsumer<C, JPostmanInfo> action) throws Exception {
-		Entry<?> entry = CALLS.get().get(new Key(owner, contextType));
+		Key key = new Key(owner, contextType);
+		Entry<?> entry = current(key);
 		if (entry == null) {
-			throw new IllegalStateException("No active @JPostman.Call request is available for this test method.");
+			throw new IllegalStateException(
+					"No active JPostman request is available. runtime.call() may be used from an @JPostman.Call test method or from a void @JPostman.Executor interceptor.");
 		}
-		FAILURE_CLEANER.set(entry.failureCleaner);
+		setFailureCleaner(entry.failureCleaner);
 		return ((JPostmanRuntimeRequest<C>) entry.request).execute(action);
+	}
+
+	private static Entry<?> current(Key key) {
+		Deque<Entry<?>> active = ACTIVE.get().get(key);
+		if (active != null && !active.isEmpty()) {
+			return active.peekLast();
+		}
+		return CALLS.get().get(key);
+	}
+
+	private static void restoreFailureCleaner(Key key) {
+		Entry<?> entry = current(key);
+		setFailureCleaner(entry == null ? null : entry.failureCleaner);
+	}
+
+	private static void setFailureCleaner(Function<Throwable, Throwable> cleaner) {
+		if (cleaner == null) {
+			FAILURE_CLEANER.remove();
+		} else {
+			FAILURE_CLEANER.set(cleaner);
+		}
 	}
 
 	static boolean hasFailureCleaner() {

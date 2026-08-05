@@ -28,13 +28,42 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 	}
 
 	@Test
-	public void getRemainsSecureValueLookupInsteadOfCacheLookup() {
+	public void getUsesSecretPlainCacheEnvironmentPrecedence() {
 		FakeContext context = new FakeContext();
 		context.cache("token", "cached-token");
+		JPostmanTestProxy.registerEnvironmentValues(context, Map.of("token", "environment-token"));
 		JPostman.Test test = JPostmanTestProxy.wrap(context);
 
-		assertEquals("secure-token", test.get("token"));
-		assertEquals("cached-token", test.cache("token"));
+		assertEquals("cached-token", test.get("token"));
+
+		test.plain("token", "plain-token");
+		assertEquals("plain-token", test.get("token"));
+
+		test.secret("token", "secret-token");
+		assertEquals("secret-token", test.get("token"));
+
+		// A later plain value cannot override a secret until unsecret is called.
+		test.plain("token", "ignored-plain-token");
+		assertEquals("secret-token", test.get("token"));
+
+		test.unsecret("token").plain("token", "replacement-plain-token");
+		assertEquals("replacement-plain-token", test.get("token"));
+	}
+
+	@Test
+	public void getFallsBackFromCacheExpressionToEnvironment() {
+		FakeContext context = new FakeContext();
+		JPostmanTestProxy.registerEnvironmentValues(context,
+				Map.of("accessToken", "environment-token", "region", "environment-region"));
+		context.cache("Ref1", new FakeResponse(Map.of("accessToken", "cached-access-token")));
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		try (JPostmanTestProxy.CacheScope ignored = JPostmanTestProxy
+				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "Ref1")))) {
+			assertEquals("cached-access-token", test.get("accessToken"));
+			assertEquals("environment-region", test.get("region"));
+			assertEquals(null, test.get("missing"));
+		}
 	}
 
 	@Test
@@ -107,6 +136,7 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 
 	private static final class FakeContext {
 		private final Map<String, Object> values = new LinkedHashMap<>();
+		private final Map<String, Object> configured = new LinkedHashMap<>();
 
 		@SuppressWarnings("unused")
 		public Object cache(String key) {
@@ -117,13 +147,45 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 			values.put(key, value);
 		}
 
+		@SuppressWarnings("unused")
+		public FakeContext cache(String key, Object value, Object... ignored) {
+			values.put(key, value);
+			return this;
+		}
+
+		@SuppressWarnings("unused")
+		public FakeContext plain(Object... pairs) {
+			putPairs(pairs);
+			return this;
+		}
+
+		@SuppressWarnings("unused")
+		public FakeContext secret(Object... pairs) {
+			putPairs(pairs);
+			return this;
+		}
+
+		@SuppressWarnings("unused")
+		public FakeContext unsecret(String... names) {
+			return this;
+		}
+
+		private void putPairs(Object[] pairs) {
+			if (pairs == null) {
+				return;
+			}
+			for (int index = 0; index + 1 < pairs.length; index += 2) {
+				configured.put(String.valueOf(pairs[index]), pairs[index + 1]);
+			}
+		}
+
 		private boolean containsCacheKey(String key) {
 			return values.containsKey(key);
 		}
 
 		@SuppressWarnings("unused")
 		public Object get(String key) {
-			return "secure-" + key;
+			return configured.get(key);
 		}
 	}
 

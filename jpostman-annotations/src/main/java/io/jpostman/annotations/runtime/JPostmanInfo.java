@@ -165,6 +165,18 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	/** HTTP status code captured for report diagnostics when available. */
 	private Integer statusCode;
 
+	/** Original request-execution exception represented by a synthetic response. */
+	private Throwable executionError;
+
+	/** Specific cause used to select the synthetic HTTP status. */
+	private Throwable mappedErrorCause;
+
+	/** HTTP reason phrase assigned to a synthetic response. */
+	private String syntheticReason = "";
+
+	/** True when the current response was generated locally from an exception. */
+	private boolean syntheticResponse;
+
 	void sourceRequest(Request request) {
 		this.diagnosticState.sourceRequest = request;
 	}
@@ -207,6 +219,67 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 
 	public Integer statusCode() {
 		return statusCode;
+	}
+
+	JPostmanInfo syntheticError(int statusCode, String reason, Throwable original, Throwable cause) {
+		this.statusCode = statusCode;
+		this.syntheticReason = reason == null ? "" : reason;
+		this.executionError = original;
+		this.mappedErrorCause = cause == null ? original : cause;
+		this.syntheticResponse = true;
+		return this;
+	}
+
+	/** Returns the original exception converted to a synthetic response. */
+	public Throwable error() {
+		return executionError;
+	}
+
+	/** Returns the specific nested cause used for HTTP error mapping. */
+	public Throwable errorCause() {
+		return mappedErrorCause;
+	}
+
+	/** Returns the reason phrase assigned to a synthetic response. */
+	public String errorReason() {
+		return syntheticReason;
+	}
+
+	/**
+	 * Returns true when no remote HTTP response existed and JPostman generated one.
+	 */
+	public boolean syntheticResponse() {
+		return syntheticResponse;
+	}
+
+	/**
+	 * Copies the completed request outcome from a nested execution into this
+	 * top-level execution record.
+	 *
+	 * <p>
+	 * This is used when a dependency request completed but the owning test method
+	 * later failed before its own request produced a response. The report should
+	 * keep one result for the test method while preserving the dependency status,
+	 * timing, location, and transport-error diagnostics.
+	 * </p>
+	 */
+	JPostmanInfo inheritExecutionOutcome(JPostmanInfo source) {
+		if (source == null || source.statusCode == null) {
+			return this;
+		}
+		this.namespace = source.namespace;
+		this.folder = source.folder;
+		this.request = source.request;
+		this.requestId = source.requestId;
+		this.statusCode = source.statusCode;
+		this.executionError = source.executionError;
+		this.mappedErrorCause = source.mappedErrorCause;
+		this.syntheticReason = source.syntheticReason;
+		this.syntheticResponse = source.syntheticResponse;
+		this.started = source.started;
+		this.ended = source.ended;
+		this.duration = source.duration;
+		return this;
 	}
 
 	public JPostmanInfo requestLog(String value) {
@@ -1291,12 +1364,16 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	private void applyLiveParams(Map<String, Object> values) {
-		if (liveParamConsumer == null || values == null || values.isEmpty()) {
+		applyLiveValues(values, liveParamConsumer);
+	}
+
+	private void applyLiveValues(Map<String, Object> values, BiConsumer<String, Object> consumer) {
+		if (consumer == null || values == null || values.isEmpty()) {
 			return;
 		}
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			if (entry.getKey() != null && !entry.getKey().isBlank()) {
-				liveParamConsumer.accept(entry.getKey(), JPostmanCacheValueConverter.unwrap(entry.getValue()));
+				consumer.accept(entry.getKey(), JPostmanCacheValueConverter.unwrap(entry.getValue()));
 			}
 		}
 	}
@@ -1629,6 +1706,13 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 			builder.append("\n  created=").append(date(created));
 			append(builder, "started", date(started));
 			append(builder, "ended", date(ended));
+		}
+		if (syntheticResponse) {
+			builder.append("\n  statusCode=").append(statusCode);
+			builder.append(" (synthetic)");
+			append(builder, "error", mappedErrorCause == null ? "" : mappedErrorCause.getClass().getName());
+			append(builder, "reason", syntheticReason);
+			append(builder, "message", mappedErrorCause == null ? "" : mappedErrorCause.getMessage());
 		}
 		if (duration > 0)
 			builder.append("\n  duration=").append(JPostmanInfo.formatDuration(duration, false));
