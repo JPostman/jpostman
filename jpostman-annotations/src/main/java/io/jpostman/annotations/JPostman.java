@@ -1837,19 +1837,65 @@ public final class JPostman {
 		 * test.secret("refreshToken", test.<String>path("refreshToken"));
 		 *
 		 * // In a dependent Request or Call callback:
-		 * String token = (String) test.get("refreshToken");
-		 * String explicit = (String) test.get("#login:accessToken");
+		 * String token = test.get("refreshToken");
+		 * String explicit = test.get("#login:accessToken");
+		 * Long attempts = test.get("attempts", Long.class);
 		 * </pre>
 		 *
 		 * @param key secure/plain key or cache expression
+		 * @param <T> resolved value type inferred by the caller
 		 * @return first resolved value, or {@code null} when no source contains it
 		 * @throws IllegalStateException when cache-path resolution is ambiguous or an
 		 *                               explicit cache dependency is unavailable
 		 */
 		@Override
-		default Object get(String key) {
+		default <T> T get(String key) {
 			throw new UnsupportedOperationException(
 					"JPostman.Test.get(...) is available only through an injected JPostman runtime context.");
+		}
+
+		/**
+		 * Resolves a value using {@link #get(String)} and converts it to the requested
+		 * Java type. This is useful when the stored representation differs from the
+		 * desired result type, such as converting a JSON number or numeric string to
+		 * {@link Long}.
+		 *
+		 * <pre>
+		 * String token = test.get("token", String.class);
+		 * Long attempts = test.get("attempts", Long.class);
+		 * </pre>
+		 *
+		 * @param key  secure/plain key or cache expression
+		 * @param type requested Java type
+		 * @param <T>  result type
+		 * @return converted resolved value
+		 */
+		default <T> T get(String key, Class<T> type) {
+			return JPostmanCacheValueConverter.convert(get(key), type);
+		}
+
+		/**
+		 * Resolves a value and wraps it in a mutable {@link JPostman.Ref}.
+		 *
+		 * @param key secure/plain key, cache expression, or environment key
+		 * @param <T> resolved value type inferred by the caller
+		 * @return mutable reference containing the resolved value
+		 */
+		default <T> JPostman.Ref<T> getRef(String key) {
+			return new JPostman.Ref<>(this.<T>get(key));
+		}
+
+		/**
+		 * Resolves and converts a value, then wraps it in a mutable
+		 * {@link JPostman.Ref}.
+		 *
+		 * @param key  secure/plain key, cache expression, or environment key
+		 * @param type requested Java type
+		 * @param <T>  resolved value type
+		 * @return mutable reference containing the converted value
+		 */
+		default <T> JPostman.Ref<T> getRef(String key, Class<T> type) {
+			return new JPostman.Ref<>(get(key, type));
 		}
 
 		/**

@@ -582,12 +582,26 @@ public final class JUnitContext implements JPostmanTestContext<JUnitContext, JUn
 	}
 
 	/**
-	 * Returns the original value for the given key.
+	 * Returns the original plain or protected value for the supplied key.
 	 *
-	 * @param key secure value key
+	 * <p>
+	 * The result type is inferred by the caller. No value conversion is performed;
+	 * the requested type must be compatible with the value originally stored.
+	 * </p>
+	 *
+	 * <pre>
+	 * String token = context.get("token");
+	 * Integer attempts = context.get("attempts");
+	 * </pre>
+	 *
+	 * @param key value key
+	 * @param <T> resolved value type inferred by the caller
 	 * @return original value, or {@code null} if the key does not exist
+	 * @throws ClassCastException if the inferred type is incompatible with the
+	 *                            stored value
 	 */
-	public Object get(String key) {
+	@Override
+	public <T> T get(String key) {
 		return secure.get(key);
 	}
 

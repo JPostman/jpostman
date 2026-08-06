@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.0
+
+### Changed
+
+- Changed `JUnitContext.get(String)` to return a caller-inferred generic type (`<T> T`) in line with the shared `JPostmanTestContext` contract.
+- Updated regression coverage to avoid ambiguous overloaded assertions for unresolved generic values.
+
 ## 1.2.7
 
 ### Changed

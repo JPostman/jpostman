@@ -99,7 +99,27 @@ public interface JPostmanTestContext<C, A, S> {
 
 	boolean hasKey(String key);
 
-	Object get(String key);
+	/**
+	 * Returns the original plain or protected value for the supplied key.
+	 *
+	 * <p>
+	 * The result type is inferred from the assignment or invocation context. This
+	 * method performs an unchecked cast only; it does not convert the stored value.
+	 * Callers should request a type compatible with the value originally stored.
+	 * </p>
+	 *
+	 * <pre>
+	 * String token = context.get("token");
+	 * Integer attempts = context.get("attempts");
+	 * </pre>
+	 *
+	 * @param key value key
+	 * @param <T> resolved value type inferred by the caller
+	 * @return original value, or {@code null} if the key does not exist
+	 * @throws ClassCastException if the inferred type is incompatible with the
+	 *                            stored value
+	 */
+	<T> T get(String key);
 
 	String asString(String key);
 

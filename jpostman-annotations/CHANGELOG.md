@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.3.0
+
+### Changed
+
+- Changed `JPostman.Test.get(String)` to override the shared generic `<T> T get(String)` contract, allowing assignments such as `String token = test.get("token")` without an explicit cast.
+- Retained `get(String, Class<T>)` for value conversion when the stored representation differs from the requested Java type.
+- Updated regression coverage to avoid ambiguous overloaded assertions for unresolved generic values.
+
 ## 4.2.6
 
 ### Added

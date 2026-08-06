@@ -182,7 +182,8 @@ public class JUnitContextTest {
 		assertNotNull(cxt.secure());
 		assertNotNull(cxt.redactionPolicy());
 
-		assertEquals(cxt.get("secretKey"), "secretValue");
+		String secretValue = cxt.get("secretKey");
+		assertEquals(secretValue, "secretValue");
 		assertEquals(cxt.asString("secretKey"), "secretValue");
 
 		assertNotNull(cxt.from(request));

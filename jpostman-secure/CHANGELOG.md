@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.0
+
+### Changed
+
+- Changed `JPostmanTestContext.get(String)` and `SecureContext.get(String)` to return a caller-inferred generic type (`<T> T`) instead of `Object`.
+- Clarified that generic `get(...)` performs an unchecked cast and does not convert the stored value.
+
 ## 1.2.7
 
 ### Added

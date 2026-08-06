@@ -566,13 +566,23 @@ public final class SecureContext {
 	}
 
 	/**
-	 * Returns the current secure values.
+	 * Returns the original plain or protected value for the supplied key.
 	 *
-	 * @return current secure values
+	 * <p>
+	 * The result type is inferred by the caller. No value conversion is performed;
+	 * the requested type must be compatible with the value originally stored.
+	 * </p>
+	 *
+	 * @param key value key
+	 * @param <T> resolved value type inferred by the caller
+	 * @return original value, or {@code null} if the key does not exist
+	 * @throws ClassCastException if the inferred type is incompatible with the
+	 *                            stored value
 	 */
-	public Object get(String key) {
+	@SuppressWarnings("unchecked")
+	public <T> T get(String key) {
 		SecureValue value = values().get(key);
-		return value == null ? null : value.reveal();
+		return value == null ? null : (T) value.reveal();
 	}
 
 	/**
@@ -842,11 +852,12 @@ public final class SecureContext {
 	/**
 	 * Executes the response using the current context.
 	 *
-	 * @param executor function that receives this context and returns the API response
+	 * @param executor function that receives this context and returns the API
+	 *                 response
 	 * @return this context with the response stored
 	 */
 	public SecureContext response(Function<SecureContext, ApiResponse> executor) {
-	    return response(executor.apply(this));
+		return response(executor.apply(this));
 	}
 
 	/**

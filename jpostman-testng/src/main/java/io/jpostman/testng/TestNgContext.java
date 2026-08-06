@@ -582,12 +582,20 @@ public final class TestNgContext implements JPostmanTestContext<TestNgContext, T
 	}
 
 	/**
-	 * Returns the original value for the given key.
+	 * Returns the original plain or protected value for the supplied key.
 	 *
-	 * @param key secure value key
+	 * <p>
+	 * The result type is inferred by the caller. No value conversion is performed;
+	 * the requested type must be compatible with the value originally stored.
+	 * </p>
+	 *
+	 * @param key value key
+	 * @param <T> resolved value type inferred by the caller
 	 * @return original value, or {@code null} if the key does not exist
+	 * @throws ClassCastException if the inferred type is incompatible with the
+	 *                            stored value
 	 */
-	public Object get(String key) {
+	public <T> T get(String key) {
 		return secure.get(key);
 	}
 

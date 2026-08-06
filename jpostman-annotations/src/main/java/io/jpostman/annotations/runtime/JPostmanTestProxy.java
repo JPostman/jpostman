@@ -297,10 +297,6 @@ final class JPostmanTestProxy implements InvocationHandler {
 			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
 			return active == null ? proxy : wrap(active, activeContextSupplier);
 		}
-		if ("get".equals(name) && method.getParameterCount() == 1 && args != null && args.length == 1
-				&& args[0] instanceof String) {
-			return resolveGet(target, (String) args[0]);
-		}
 		if ("response".equals(name) && method.getParameterCount() == 1
 				&& method.getParameterTypes()[0] == BiConsumer.class) {
 			if (responseInfoSupplier == null) {
@@ -333,6 +329,21 @@ final class JPostmanTestProxy implements InvocationHandler {
 			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
 			return null;
 		}
+
+		if (isGetRead(method, name, args)) {
+			Object value = resolveGet(target, (String) args[0]);
+
+			if (method.getParameterCount() == 2) {
+				value = JPostmanCacheValueConverter.convert(value, (Class<?>) args[1]);
+			}
+
+			if ("getRef".equals(name)) {
+				return new JPostman.Ref<>(value);
+			}
+
+			return value;
+		}
+
 		if (isCacheRead(method, name, args)) {
 			Object value = resolveCacheExpression(target, (String) args[0]);
 			if (method.getParameterCount() == 2) {
@@ -360,6 +371,25 @@ final class JPostmanTestProxy implements InvocationHandler {
 			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
 		}
 		return adaptContextReturn(proxy, method, result, activeContextSupplier);
+	}
+
+	private static boolean isGetRead(Method method, String name, Object[] args) {
+
+		if (!"get".equals(name) && !"getRef".equals(name)) {
+			return false;
+		}
+
+		if (args == null || args.length == 0 || !(args[0] instanceof String)) {
+			return false;
+		}
+
+		int parameterCount = method.getParameterCount();
+
+		if (parameterCount == 1) {
+			return true;
+		}
+
+		return parameterCount == 2 && args.length >= 2 && args[1] instanceof Class<?>;
 	}
 
 	private static Object resolveGet(Object target, String key) throws Throwable {

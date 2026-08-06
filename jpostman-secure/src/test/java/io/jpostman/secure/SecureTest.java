@@ -682,8 +682,8 @@ public class SecureTest {
 						+ "**********SecureResponse: **********\nStatus Code: 200\nBody: {\n"
 						+ "  \"creditCard\": \"1234-4567-7890-0987\"\n}\n");
 
-		assertEquals(secure.get("key1"), "value1");
-		assertEquals(secure.get("key2"), "secret2");
+		assertEquals(secure.<String>get("key1"), "value1");
+		assertEquals(secure.<String>get("key2"), "secret2");
 		assertEquals(secure.asString("key2"), "secret2");
 	}
 

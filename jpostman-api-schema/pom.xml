@@ -7,13 +7,11 @@
 	<parent>
 		<groupId>io.github.jpostman</groupId>
 		<artifactId>jpostman-parent</artifactId>
-		<version>4.2.1</version>
+		<version>4.3.0</version>
 	</parent>
 
 	<artifactId>jpostman-api-schema</artifactId>
 	<packaging>jar</packaging>
-	<!-- Update jpostman.api-schema.version in parent -->
-	<version>4.2.3</version>
 
 	<name>JPostman API Schema</name>
 	<description>Pure Java library for importing, transforming, and exporting OpenAPI, Postman Collection, and GraphQL API schemas.</description>

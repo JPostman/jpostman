@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.3.0
+
+### Changed
+
+- Changed `TestNgContext.get(String)` to return a caller-inferred generic type (`<T> T`) in line with the shared `JPostmanTestContext` contract.
+- Updated regression assertions to select an explicit generic type where TestNG's overloaded `assertEquals(...)` methods would otherwise be ambiguous.
+
 ## 1.2.7
 
 ### Changed

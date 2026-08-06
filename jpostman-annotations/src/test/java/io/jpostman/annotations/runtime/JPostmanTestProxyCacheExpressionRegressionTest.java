@@ -51,6 +51,22 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 	}
 
 	@Test
+	public void getSupportsGenericInferenceAndExplicitConversion() {
+		FakeContext context = new FakeContext();
+		context.cache("name", "JPostman");
+		context.cache("attempts", 3);
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		String name = test.get("name");
+		Integer attempts = test.get("attempts");
+		Long convertedAttempts = test.get("attempts", Long.class);
+
+		assertEquals("JPostman", name);
+		assertEquals(Integer.valueOf(3), attempts);
+		assertEquals(Long.valueOf(3L), convertedAttempts);
+	}
+
+	@Test
 	public void getFallsBackFromCacheExpressionToEnvironment() {
 		FakeContext context = new FakeContext();
 		JPostmanTestProxy.registerEnvironmentValues(context,
@@ -62,7 +78,8 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 				.openCacheScope(List.of(new JPostmanTestProxy.CacheDependency("#Ref1", "Ref1")))) {
 			assertEquals("cached-access-token", test.get("accessToken"));
 			assertEquals("environment-region", test.get("region"));
-			assertEquals(null, test.get("missing"));
+			Object missing = test.get("missing");
+			assertEquals(null, missing);
 		}
 	}
 

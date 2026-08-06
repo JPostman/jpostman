@@ -170,7 +170,7 @@ public class TestNgContextTest {
 		assertNotNull(cxt.secure());
 		assertNotNull(cxt.redactionPolicy());
 
-		assertEquals(cxt.get("secretKey"), "secretValue");
+		assertEquals(cxt.<String>get("secretKey"), "secretValue");
 		assertEquals(cxt.asString("secretKey"), "secretValue");
 
 		assertNotNull(cxt.from(request));
