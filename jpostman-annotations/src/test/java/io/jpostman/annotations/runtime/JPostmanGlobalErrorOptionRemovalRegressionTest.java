@@ -27,13 +27,9 @@ class JPostmanGlobalErrorOptionRemovalRegressionTest {
 	}
 
 	@Test
-	void reportContextFailRejectsError() {
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-				() -> new JPostmanReport().configure("error"));
-		assertTrue(
-				error.getMessage()
-						.contains("Allowed values: ignore, skipAll, terminate, request, response, info, all."),
-				error.getMessage());
+	void reportContextFailAcceptsError() {
+		assertDoesNotThrow(() -> new JPostmanReport().configure("error"));
+		assertDoesNotThrow(() -> new JPostmanReport().configure("response", "error"));
 	}
 
 	@Test

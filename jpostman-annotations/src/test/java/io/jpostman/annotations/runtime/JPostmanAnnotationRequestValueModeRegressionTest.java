@@ -467,6 +467,23 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	}
 
 	@Test
+	public void helperOverridePreservesOtherEnvironmentTokensIncludingUnquotedJsonNumber() throws Exception {
+		Request request = loginRequestWithEnvironmentPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "restage", "Auth", "Login user");
+		info.params("BASE_URL", "http://127.0.0.1:8091", "username", "environment-user", "password", "emilyspass",
+				"expiresInMins", "30").body("username", "emilys");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("emilys", body.get("username").getAsString());
+		assertEquals("emilyspass", body.get("password").getAsString());
+		assertEquals(30, body.get("expiresInMins").getAsInt(),
+				"An unrelated body override must not erase an unquoted environment placeholder.");
+		assertTrue(updated.log().contains("http://127.0.0.1:8091/auth/login"), updated.log());
+	}
+
+	@Test
 	public void wrappedKeysStillResolvePlaceholderNamesWithoutAddingFields() throws Exception {
 		Request request = requestWithDifferentFieldAndPlaceholderNames();
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
@@ -484,6 +501,15 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		assertEquals("header-token", updated.getHeader().get("X-Token"));
 		assertEquals("50", updated.getUrl().get("limit"));
 		assertTrue(updated.log().contains("/products/101?limit=50"), updated.log());
+	}
+
+	private static Request loginRequestWithEnvironmentPlaceholders() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Login user\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"{{BASE_URL}}/auth/login\",\"host\":[\"{{BASE_URL}}\"],"
+				+ "\"path\":[\"auth\",\"login\"]},"
+				+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\n  \\\"username\\\" : \\\"{{username}}\\\",\\n  \\\"password\\\" : \\\"{{password}}\\\",\\n  \\\"expiresInMins\\\" : {{expiresInMins}}\\n}\","
+				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Login user");
 	}
 
 	private static Request requestWithDifferentFieldAndPlaceholderNames() throws Exception {

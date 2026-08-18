@@ -149,6 +149,7 @@ public interface JPostmanFramework<C> {
 
 		C result = response(context, () -> filtered);
 		copyCache(context, result);
+		copyRuntimeValues(context, result);
 		return result;
 	}
 
@@ -211,8 +212,44 @@ public interface JPostmanFramework<C> {
 		if (info != null) {
 			info.sourceRequest(request);
 		}
-		C result = request(context, applyRequestValues(request, info));
+
+		/*
+		 * A request helper can force Request.builder().build() before the framework
+		 * context sees the request. For raw JSON, build() necessarily finalizes
+		 * unresolved tokens; an unquoted token such as {{expiresInMins}} can therefore
+		 * become an empty JSON value when the helper only overrides a different field
+		 * (for example username). Resolve every request token that already exists in
+		 * the active context before applying component-specific helper overrides.
+		 */
+		Map<String, Object> contextValues = info != null && info.hasRequestValues()
+				? contextRequestValues(context, request)
+				: Map.of();
+		C result = request(context, applyRequestValues(request, info, contextValues));
 		applySecureRequestMetadata(result, info);
+		return result;
+	}
+
+	private Map<String, Object> contextRequestValues(C context, Request request) {
+		if (context == null || request == null) {
+			return Map.of();
+		}
+
+		Map<String, String> configuredParams = configuredRequestParams(request);
+		if (configuredParams.isEmpty()) {
+			return Map.of();
+		}
+
+		java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+		for (String configuredKey : configuredParams.keySet()) {
+			String key = placeholderKey(configuredKey);
+			if (key.isBlank()) {
+				continue;
+			}
+			Object resolved = value(context, key);
+			if (resolved != null) {
+				result.put(key, resolved);
+			}
+		}
 		return result;
 	}
 
@@ -242,6 +279,10 @@ public interface JPostmanFramework<C> {
 
 	/** Applies request values collected in {@link JPostmanInfo} to a request. */
 	static Request applyRequestValues(Request request, JPostmanInfo info) {
+		return applyRequestValues(request, info, Map.of());
+	}
+
+	private static Request applyRequestValues(Request request, JPostmanInfo info, Map<String, Object> inheritedParams) {
 		if (request == null || info == null || !info.hasRequestValues()) {
 			return request;
 		}
@@ -262,7 +303,7 @@ public interface JPostmanFramework<C> {
 				: request.getHeader().getParams();
 		Map<String, String> urlQueryParams = request.getUrl() == null || request.getUrl().getParams() == null ? Map.of()
 				: request.getUrl().getParams();
-		Map<String, String> requestTokenParams = request.params() == null ? Map.of() : request.params();
+		Map<String, String> requestTokenParams = configuredRequestParams(request);
 
 		/*
 		 * Global params are request variables, not component field names. Resolve them
@@ -270,9 +311,10 @@ public interface JPostmanFramework<C> {
 		 * cleanup. This handles URL paths, query values, headers and raw/JSON bodies
 		 * uniformly.
 		 */
-		applyResolve(builder.url(), requestTokenParams, info.params);
-		applyResolve(builder.headers(), requestTokenParams, info.params);
-		applyResolve(builder.body(), requestTokenParams, info.params);
+		Map<String, Object> globalParams = mergedParams(inheritedParams, info.params);
+		applyResolve(builder.url(), requestTokenParams, globalParams);
+		applyResolve(builder.headers(), requestTokenParams, globalParams);
+		applyResolve(builder.body(), requestTokenParams, globalParams);
 
 		// Component-specific values target the visible field name first. When an
 		// existing field contains a differently named {{placeholder}}, resolve that
@@ -287,9 +329,54 @@ public interface JPostmanFramework<C> {
 				key -> bodyFieldPlaceholder(request, key), true);
 		applySetOrAdd(builder.url(), requestTokenParams, info.path, key -> pathFieldPlaceholder(request, key) != null,
 				key -> pathFieldPlaceholder(request, key), true);
-		applyAuth(request, builder, mergedParams(info.params, info.auth));
+		applyAuth(request, builder, mergedParams(globalParams, info.auth));
 
 		return builder.build();
+	}
+
+	private static Map<String, String> configuredRequestParams(Request request) {
+		if (request == null) {
+			return Map.of();
+		}
+
+		java.util.LinkedHashMap<String, String> result = new java.util.LinkedHashMap<>();
+		if (request.params() != null) {
+			result.putAll(request.params());
+		}
+
+		/*
+		 * Older core Request implementations do not always expose raw-body tokens from
+		 * request.params(). Scan the body/header/query templates too so unquoted JSON
+		 * placeholders are never missed during helper-driven request rebuilding.
+		 */
+		if (request.getBody() != null) {
+			collectPlaceholders(request.getBody().getRaw(), result);
+		}
+		if (request.getHeader() != null && request.getHeader().getParams() != null) {
+			for (String value : request.getHeader().getParams().values()) {
+				collectPlaceholders(value, result);
+			}
+		}
+		if (request.getUrl() != null && request.getUrl().getParams() != null) {
+			for (String value : request.getUrl().getParams().values()) {
+				collectPlaceholders(value, result);
+			}
+		}
+		return result;
+	}
+
+	private static void collectPlaceholders(String template, Map<String, String> target) {
+		if (template == null || template.isBlank() || target == null) {
+			return;
+		}
+		java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*\\}\\}")
+				.matcher(template);
+		while (matcher.find()) {
+			String key = matcher.group(1).trim();
+			if (!key.isBlank()) {
+				target.putIfAbsent(key, "{{" + key + "}}");
+			}
+		}
 	}
 
 	private static void applyResolve(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
@@ -990,8 +1077,9 @@ public interface JPostmanFramework<C> {
 	 *
 	 * <p>
 	 * The annotation runner uses this when it creates a clean execution context for
-	 * a new test method. Cache entries are preserved, but request-scoped state such
-	 * as filters and responses is not reused.
+	 * a new test method. Cache entries are preserved alongside class-runtime values
+	 * copied by {@link #copyRuntimeValues(Object, Object)}, while request-scoped
+	 * state such as filters and responses is not reused.
 	 * </p>
 	 *
 	 * @param source context that owns the current cache values
@@ -1018,6 +1106,37 @@ public interface JPostmanFramework<C> {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			// Older context implementations may not expose the cache map.
 		}
+	}
+
+	/**
+	 * Copies annotation-runtime plain and secret values from one context to
+	 * another.
+	 *
+	 * <p>
+	 * These values are test-class runtime state. They must survive clean context
+	 * creation between annotated methods, while request/response-local state
+	 * remains isolated. The destination keeps its own loaded environment object;
+	 * lookup-source metadata is mirrored from the source context so
+	 * {@code Test.get(...)} keeps the same precedence after context
+	 * transformations.
+	 * </p>
+	 *
+	 * @param source context that owns the current runtime values
+	 * @param target context that should receive those values
+	 */
+	default void copyRuntimeValues(C source, C target) {
+		if (source == null || target == null || source == target) {
+			return;
+		}
+
+		for (Map.Entry<String, Object> entry : JPostmanTestProxy.plainValues(source).entrySet()) {
+			plain(target, entry.getKey(), entry.getValue());
+		}
+		for (Map.Entry<String, Object> entry : JPostmanTestProxy.secretValues(source).entrySet()) {
+			secret(target, entry.getKey(), entry.getValue());
+		}
+
+		JPostmanTestProxy.copyValueSources(source, target);
 	}
 
 	/** Prints the full framework context when supported. */

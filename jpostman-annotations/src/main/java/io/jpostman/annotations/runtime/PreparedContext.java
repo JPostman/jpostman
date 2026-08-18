@@ -99,15 +99,15 @@ final class PreparedContext<C> {
 		}
 		try {
 			field.setAccessible(true);
-			field.set(owner, fieldValue(field, context));
+			field.set(owner, fieldValue(owner, field, context));
 		} catch (IllegalAccessException e) {
 			throw new IllegalStateException("Unable to update @JPostmanTestContext field: " + field.getName(), e);
 		}
 	}
 
-	private Object fieldValue(Field field, C context) {
+	private Object fieldValue(Object owner, Field field, C context) {
 		if (JPostman.Test.class.isAssignableFrom(field.getType())) {
-			return JPostmanTestProxy.wrap(context);
+			return JPostmanTestProxy.wrap(context, null, null, owner);
 		}
 		return context;
 	}

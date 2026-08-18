@@ -17,6 +17,7 @@ import java.util.function.Predicate;
 
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.testng.annotations.Listeners;
 
@@ -27,6 +28,7 @@ import io.jpostman.annotations.runtime.JPostmanDataLoader;
 import io.jpostman.annotations.runtime.JPostmanInfo;
 import io.jpostman.annotations.testng.JPostmanTestNgAnnotationListener;
 import io.jpostman.junit.JPostmanJUnitExtension;
+import io.jpostman.junit.JPostmanJUnitMethodOrderer;
 import io.jpostman.secure.JPostmanAssertions;
 import io.jpostman.secure.JPostmanTestContext;
 
@@ -65,6 +67,7 @@ public final class JPostman {
 	@Target(TYPE)
 	@Retention(RUNTIME)
 	@TestInstance(Lifecycle.PER_CLASS)
+	@TestMethodOrder(JPostmanJUnitMethodOrderer.class)
 	@ExtendWith(JPostmanJUnitExtension.class)
 	public @interface JUnit {
 
@@ -281,9 +284,11 @@ public final class JPostman {
 		 * <ul>
 		 * <li>{@code ignore} - continue after the failure without adding automatic
 		 * failure details to the report. This is the default.</li>
-		 * <li>{@code skipAll} - skip all remaining JPostman-managed tests.</li>
+		 * <li>{@code skipAll} - after the first failure, skip and report all remaining
+		 * JPostman-managed tests.</li>
 		 * <li>{@code terminate} - print the report summary and failure details, then
 		 * terminate the process.</li>
+		 * <li>{@code error} - include the cleaned failure error and stack trace.</li>
 		 * <li>{@code request} - include the prepared request.</li>
 		 * <li>{@code response} - include the received response.</li>
 		 * <li>{@code info} - include runtime annotation information.</li>
@@ -295,8 +300,8 @@ public final class JPostman {
 		 * output value is configured. It starts with the current short report line and
 		 * then appends the selected diagnostics. Examples: {@code fail = "request"},
 		 * {@code fail = { "request", "response" }},
-		 * {@code fail = { "skipAll", "all" }}, or
-		 * {@code fail = { "terminate", "request" }}.
+		 * {@code fail = { "response", "error" }}, {@code fail = { "skipAll", "all" }},
+		 * or {@code fail = { "terminate", "request" }}.
 		 * </p>
 		 *
 		 * @return failure action and optional diagnostics
@@ -894,11 +899,13 @@ public final class JPostman {
 		 * Enables request/response runner lifecycle callbacks.
 		 *
 		 * <p>
-		 * The default {@code false} invokes blank-request {@code @JPostman.Request}
-		 * dependencies once for each selected collection request after that request is
-		 * prepared, then invokes the runner method body after the response. Set this to
-		 * {@code true} to keep dependencies as one-time runner setup and enable the
-		 * before-request/response lifecycle used by
+		 * The default {@code false} invokes the runner method body once after all
+		 * selected collection requests reach runner completion, including aggregate
+		 * HTTP/verification failures. Blank-request {@code @JPostman.Request}
+		 * dependencies still apply per selected request. Set this to {@code true} to
+		 * keep dependencies as one-time runner setup and invoke the runner body after
+		 * each attempted HTTP request (including completed failed responses), with the
+		 * before-request phase additionally enabled for fluent runner rules used by
 		 * {@code jpostman.runner().start(...)}, {@code jpostman.runner().request(...)},
 		 * or {@code jpostman.runner().response(...)}.
 		 * </p>
@@ -1825,6 +1832,13 @@ public final class JPostman {
 		 * {@link #cache(String)}.</li>
 		 * <li>Original Postman environment value.</li>
 		 * </ol>
+		 *
+		 * <p>
+		 * Plain and secret values registered through the annotation runtime are
+		 * retained across annotated methods and namespaces for the same test-class
+		 * instance. They are class-runtime values, not request/response-local values
+		 * and not process-wide globals.
+		 * </p>
 		 *
 		 * <p>
 		 * A secret remains higher priority than a later plain value. Call

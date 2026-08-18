@@ -1,7 +1,6 @@
 package io.jpostman.annotations.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.testng.Assert.assertEquals;
 
@@ -42,8 +41,8 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 1, Failures: 0, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman Execution Details:\n\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
-				output);
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)"), output);
 	}
 
 	@Test
@@ -85,9 +84,12 @@ class JPostmanReportOutputCombinationsTest {
 	}
 
 	@Test
-	void failErrorIsRejected() {
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> report(FailError.class));
-		assertContains(error.getMessage(), "Allowed values: ignore, skipAll, terminate, request, response, info, all.");
+	void failErrorPrintsCleanedFailure() {
+		String output = failedSummary(FailError.class);
+
+		assertFailureSection(output);
+		assertContains(output, "FAILED:", "java.lang.AssertionError: " + ERROR);
+		assertNotContains(output, "JPostmanInfo {");
 	}
 
 	@Test
@@ -99,8 +101,8 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
-				output);
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)"), output);
 	}
 
 	@Test
@@ -114,8 +116,8 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
-				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)\n\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
 
@@ -129,8 +131,8 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
-				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)\n\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
 
@@ -142,16 +144,30 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)\n"
-				+ "\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)\n\nJPostmanInfo {\n  annotation=@JPostmanResponse\n"
 				+ "  namespace=product, folder=Product, request=Add a new product\n  method=assertsVerify\n}"), output);
 	}
 
 	@Test
-	void failErrorAndRequestIsRejected() {
-		IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-				() -> report(FailErrorRequest.class));
-		assertContains(error.getMessage(), "Allowed values: ignore, skipAll, terminate, request, response, info, all.");
+	void failErrorAndRequestPrintsSelectedFailureDetails() {
+		String output = failedSummary(FailErrorRequest.class);
+
+		assertFailureSection(output);
+		assertContains(output, "FAILED:", "java.lang.AssertionError: " + ERROR);
+		assertNotContains(output, "JPostmanInfo {");
+	}
+
+	@Test
+	void detailsWithResponseAndErrorPrintsErrorInExecutionDetails() {
+		JPostmanReport report = report(DetailsResponseError.class);
+		report.failed(info(), failure());
+
+		String output = summary(report);
+
+		assertReportBefore(output, "JPostman Execution Details:");
+		assertContains(output, "FAILED:", "java.lang.AssertionError: " + ERROR);
+		assertNotContains(output, "JPostman failures", "JPostmanInfo {");
 	}
 
 	@Test
@@ -162,8 +178,8 @@ class JPostmanReportOutputCombinationsTest {
 		assertEquals(normalize("===============================================\nJPostman report\n"
 				+ "Total tests run: 1, Passes: 0, Failures: 1, Skips: 0, Duration: <duration>\n"
 				+ "===============================================\n\nJPostman failures\n"
-				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n\t\t (assertsVerify -> newProduct)"),
-				output);
+				+ "assertsVerify:  statusCode=201, duration=00:00.000, {namespace = product, folder = Product, request = Add a new product}\n"
+				+ "		 (assertsVerify -> newProduct)"), output);
 	}
 
 	private String failedSummary(Class<?> fixture) {
@@ -291,6 +307,11 @@ class JPostmanReportOutputCombinationsTest {
 
 	private static final class FailRequestResponse {
 		@JPostman.ReportContext(fail = { "request", "response" })
+		private JPostman.Report report;
+	}
+
+	private static final class DetailsResponseError {
+		@JPostman.ReportContext(details = true, fail = { "response", "error" })
 		private JPostman.Report report;
 	}
 }

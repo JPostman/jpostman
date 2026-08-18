@@ -1,0 +1,15 @@
+{
+  "info": {
+    "name": "JUnit External Response Regression Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/auth/login"
+      }
+    }
+  ]
+}

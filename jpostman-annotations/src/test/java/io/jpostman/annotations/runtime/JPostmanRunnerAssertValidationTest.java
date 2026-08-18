@@ -25,25 +25,25 @@ public class JPostmanRunnerAssertValidationTest {
 	private static final String COLLECTION = "classpath:annotation-test-collection.json";
 
 	@Test
-	public void junitRunnerVerifyOverrideFailsFastOnStatusMismatch() throws Exception {
+	public void junitRunnerVerifyOverrideReportsAllStatusMismatches() throws Exception {
 		JUnitRunnerVerifyOverrideFixture fixture = new JUnitRunnerVerifyOverrideFixture();
 		Method method = JUnitRunnerVerifyOverrideFixture.class.getDeclaredMethod("runProducts");
 
 		AssertionError error = assertThrows(AssertionError.class,
 				() -> JPostmanAnnotationEngine.runJUnit(fixture, method, () -> invokeUnchecked(fixture, method)));
 
-		assertStatusOnlyFailure(error, "400");
+		assertAggregatedStatusFailure(error, "400", 2);
 	}
 
 	@Test
-	public void junitRunnerUsesContextVerifyStatusWhenVerifyDefault() throws Exception {
+	public void junitRunnerUsesContextVerifyStatusAndReportsAllMismatches() throws Exception {
 		JUnitContextVerifyDefaultFixture fixture = new JUnitContextVerifyDefaultFixture();
 		Method method = JUnitContextVerifyDefaultFixture.class.getDeclaredMethod("runProducts");
 
 		AssertionError error = assertThrows(AssertionError.class,
 				() -> JPostmanAnnotationEngine.runJUnit(fixture, method, () -> invokeUnchecked(fixture, method)));
 
-		assertStatusOnlyFailure(error, "400");
+		assertAggregatedStatusFailure(error, "400", 2);
 	}
 
 	@Test
@@ -108,25 +108,25 @@ public class JPostmanRunnerAssertValidationTest {
 	}
 
 	@Test
-	public void testNgRunnerVerifyOverrideFailsFastOnStatusMismatch() throws Exception {
+	public void testNgRunnerVerifyOverrideReportsAllStatusMismatches() throws Exception {
 		TestNgRunnerVerifyOverrideFixture fixture = new TestNgRunnerVerifyOverrideFixture();
 		Method method = TestNgRunnerVerifyOverrideFixture.class.getDeclaredMethod("runProducts");
 
 		AssertionError error = assertThrows(AssertionError.class,
 				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeUnchecked(fixture, method)));
 
-		assertStatusOnlyFailure(error, "400");
+		assertAggregatedStatusFailure(error, "400", 2);
 	}
 
 	@Test
-	public void testNgRunnerUsesContextVerifyStatusWhenVerifyDefault() throws Exception {
+	public void testNgRunnerUsesContextVerifyStatusAndReportsAllMismatches() throws Exception {
 		TestNgContextVerifyDefaultFixture fixture = new TestNgContextVerifyDefaultFixture();
 		Method method = TestNgContextVerifyDefaultFixture.class.getDeclaredMethod("runProducts");
 
 		AssertionError error = assertThrows(AssertionError.class,
 				() -> JPostmanAnnotationEngine.runTestNg(fixture, method, () -> invokeUnchecked(fixture, method)));
 
-		assertStatusOnlyFailure(error, "400");
+		assertAggregatedStatusFailure(error, "400", 2);
 	}
 
 	@Test
@@ -311,11 +311,13 @@ public class JPostmanRunnerAssertValidationTest {
 		assertFalse(message.contains("org.junit."), message);
 	}
 
-	private static void assertStatusOnlyFailure(AssertionError error, String expectedStatus) {
+	private static void assertAggregatedStatusFailure(AssertionError error, String expectedStatus,
+			int expectedRequests) {
 		String message = error.getMessage();
+		assertTrue(message.contains("JPostman runner failed for " + expectedRequests + " requests."), message);
 		assertTrue(message.contains("Status code mismatch"), message);
 		assertTrue(message.contains(expectedStatus), message);
-		assertFalse(message.contains("JPostman runner failed"), message);
+		assertEquals(expectedRequests, countOccurrences(message, "Status code mismatch"), message);
 		assertFalse(message.contains("Error1"), message);
 	}
 
@@ -442,7 +444,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.AssertContext
 		private JPostman.Assert asserts;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitAssertContextHardRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitAssertContextHardRunner", lifecycle = true)
 		void runProducts() {
 			applyFirstHardRunnerRule(jpostman, asserts);
 		}
@@ -458,7 +460,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 400)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitRuntimeHardAssertRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitRuntimeHardAssertRunner", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().asserts();
 			applyFirstHardRunnerRule(jpostman, asserts);
@@ -475,7 +477,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitLocalSoft")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitLocalSoft", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().soft();
 			applyRunnerRules(jpostman, asserts);
@@ -495,7 +497,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.AssertContext(soft = true)
 		private JPostman.Assert asserts;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitAssertContext")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitAssertContext", lifecycle = true)
 		void runProducts() {
 			applyRunnerRules(jpostman, asserts);
 		}
@@ -511,7 +513,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitLocalSoftHardRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#junitLocalSoftHardRunner", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().soft();
 			applyRunnerRules(jpostman, asserts);
@@ -563,7 +565,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.AssertContext
 		private JPostman.Assert asserts;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgAssertContextHardRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgAssertContextHardRunner", lifecycle = true)
 		void runProducts() {
 			applyFirstHardRunnerRule(jpostman, asserts);
 		}
@@ -579,7 +581,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 400)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgRuntimeHardAssertRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgRuntimeHardAssertRunner", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().asserts();
 			applyFirstHardRunnerRule(jpostman, asserts);
@@ -596,7 +598,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoft")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoft", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().soft();
 			applyRunnerRules(jpostman, asserts);
@@ -616,7 +618,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.AssertContext(soft = true)
 		private JPostman.Assert asserts;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgAssertContext")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgAssertContext", lifecycle = true)
 		void runProducts() {
 			applyRunnerRules(jpostman, asserts);
 		}
@@ -632,7 +634,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoftHardRunner")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoftHardRunner", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().soft();
 			applyRunnerRules(jpostman, asserts);
@@ -649,7 +651,7 @@ public class JPostmanRunnerAssertValidationTest {
 		@JPostman.Context(config = "", collection = COLLECTION)
 		private JPostman.Runtime<JPostman.Test> jpostman;
 
-		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoftHardRunnerStatus")
+		@JPostman.Runner(verify = 0, enabled = true, executor = "#testNgLocalSoftHardRunnerStatus", lifecycle = true)
 		void runProducts() {
 			JPostman.Assert asserts = jpostman.ctx().soft();
 			applyRunnerRules(jpostman, asserts);

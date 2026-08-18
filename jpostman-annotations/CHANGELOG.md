@@ -1,5 +1,20 @@
 # Changelog
 
+## 4.3.1
+
+### Changed
+
+- Runner lifecycle=false now executes the body once after all requests.
+- Runner lifecycle=true executes after every completed HTTP request, including failed verification.
+- Runner collects multiple HTTP/status failures into one aggregate failure.
+- skipAll keeps the failed request as FAILED and marks remaining requests SKIPPED.
+- Non-@Test @JPostman.Response methods with verify can execute and cache returned values.
+- JUnit execution ordering now runs Response → Call → normal tests → Runner by default.
+- ReportContext.fail now supports error with request/response/info diagnostics.
+- test.plain() / secret() values persist across annotation methods and namespaces within the test class.
+- Request helper overrides no longer break unrelated placeholders or raw JSON values.
+- Fixed duplicate Runner debug/report output and improved Response dependency reporting.
+
 ## 4.3.0
 
 ### Changed

@@ -1750,9 +1750,81 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
-	 * Verifies the JUnit extension still calls Invocation.proceed() for runner
-	 * methods. JUnit requires this call in the interceptor chain, while JPostman
-	 * still needs to run the body after each runner request.
+	 * lifecycle=false is a whole-runner callback. The JUnit test body must execute
+	 * exactly once after all selected requests complete, while runtime.info() still
+	 * points at the final runner request.
+	 */
+	@Test
+	public void junitRunnerLifecycleFalseInvokesBodyOnceAfterAllRequests() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		JUnitRunnerLifecycleOnceFixture fixture = new JUnitRunnerLifecycleOnceFixture();
+		Method method = JUnitRunnerLifecycleOnceFixture.class.getDeclaredMethod("runProducts");
+		AtomicInteger proceedCalls = new AtomicInteger();
+
+		assertDoesNotThrow(() -> extension.interceptTestMethod(invocation(() -> {
+			proceedCalls.incrementAndGet();
+			invokeUnchecked(fixture, method);
+		}), reflectiveInvocation(method), extensionContext(fixture)));
+
+		assertEquals(2, fixture.executorCount);
+		assertEquals(1, proceedCalls.get());
+		assertEquals(1, fixture.bodyCount);
+		assertEquals(List.of("Get current auth user"), fixture.bodyRequests);
+	}
+
+	/**
+	 * lifecycle=false must still invoke the JUnit body exactly once after all
+	 * runner requests have been attempted when the runner ends with aggregate HTTP
+	 * failures. The original runner failure remains the framework result and
+	 * runtime.info() sees the final attempted request.
+	 */
+	@Test
+	public void junitRunnerLifecycleFalseInvokesBodyOnceAfterFailedRequests() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		JUnitRunnerLifecycleOnceFailureFixture fixture = new JUnitRunnerLifecycleOnceFailureFixture();
+		Method method = JUnitRunnerLifecycleOnceFailureFixture.class.getDeclaredMethod("runProducts");
+		AtomicInteger proceedCalls = new AtomicInteger();
+
+		AssertionError error = assertThrows(AssertionError.class, () -> extension.interceptTestMethod(invocation(() -> {
+			proceedCalls.incrementAndGet();
+			invokeUnchecked(fixture, method);
+		}), reflectiveInvocation(method), extensionContext(fixture)));
+
+		assertTrue(error.getMessage().contains("JPostman runner failed for 2 requests"), error.getMessage());
+		assertEquals(2, fixture.executorCount);
+		assertEquals(1, proceedCalls.get(), "The whole-runner callback must use Invocation.proceed() exactly once.");
+		assertEquals(1, fixture.bodyCount);
+		assertEquals(List.of("Get current auth user"), fixture.bodyRequests);
+	}
+
+	/**
+	 * lifecycle=true is request-scoped even for failed HTTP verification. A 401
+	 * must not bypass the runner body; the next request must still receive its own
+	 * callback before the aggregate runner failure is reported.
+	 */
+	@Test
+	public void junitRunnerLifecycleTrueInvokesBodyAfterFailedHttpRequest() throws Throwable {
+		JPostmanJUnitExtension extension = new JPostmanJUnitExtension();
+		JUnitRunnerLifecycleFailureFixture fixture = new JUnitRunnerLifecycleFailureFixture();
+		Method method = JUnitRunnerLifecycleFailureFixture.class.getDeclaredMethod("runProducts");
+		AtomicInteger proceedCalls = new AtomicInteger();
+
+		AssertionError error = assertThrows(AssertionError.class, () -> extension.interceptTestMethod(invocation(() -> {
+			proceedCalls.incrementAndGet();
+			invokeUnchecked(fixture, method);
+		}), reflectiveInvocation(method), extensionContext(fixture)));
+
+		assertTrue(error.getMessage().contains("Status code mismatch"), error.getMessage());
+		assertEquals(2, fixture.executorCount);
+		assertEquals(1, proceedCalls.get(), "JUnit Invocation.proceed() must still be used exactly once.");
+		assertEquals(2, fixture.bodyCount);
+		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.bodyRequests);
+	}
+
+	/**
+	 * Verifies the JUnit extension still calls Invocation.proceed() for a
+	 * lifecycle=true runner body. JUnit requires this call in the interceptor
+	 * chain, while JPostman may invoke later request callbacks reflectively.
 	 */
 	@Test
 	public void junitRunnerExtensionCallsInvocationProceedForRunnerBody() throws Throwable {
@@ -2970,6 +3042,76 @@ public class JPostmanAnnotationCoverageTest {
 		}
 	}
 
+	private static final class JUnitRunnerLifecycleOnceFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int executorCount;
+		private int bodyCount;
+		private final List<String> bodyRequests = new java.util.ArrayList<>();
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#lifecycleOnce", verify = 200, lifecycle = false)
+		void runProducts() {
+			bodyCount++;
+			bodyRequests.add(jpostman.info().request());
+		}
+
+		@JPostmanExecutor(id = "lifecycleOnce")
+		ApiExecutor executor(JUnitContext context) {
+			executorCount++;
+			return okExecutor("{\"id\":" + executorCount + "}");
+		}
+	}
+
+	private static final class JUnitRunnerLifecycleOnceFailureFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int executorCount;
+		private int bodyCount;
+		private final List<String> bodyRequests = new java.util.ArrayList<>();
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#lifecycleOnceFailure", verify = 200, lifecycle = false)
+		void runProducts() {
+			bodyCount++;
+			bodyRequests.add(jpostman.info().request());
+		}
+
+		@JPostmanExecutor(id = "lifecycleOnceFailure")
+		ApiExecutor executor(JUnitContext context, JPostmanInfo info) {
+			executorCount++;
+			int status = "Login user and get tokens".equals(info.request) ? 401 : 403;
+			String json = "{\"status\":" + status + "}";
+			return () -> new ApiResponse(status, json, json.getBytes(), Map.of());
+		}
+	}
+
+	private static final class JUnitRunnerLifecycleFailureFixture {
+		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION, verifyStatusCode = 200)
+		private io.jpostman.annotations.JPostman.Runtime<io.jpostman.annotations.JPostman.Test> jpostman;
+
+		private int executorCount;
+		private int bodyCount;
+		private final List<String> bodyRequests = new java.util.ArrayList<>();
+
+		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
+				"Get current auth user" }, executor = "#lifecycleFailure", verify = 200, lifecycle = true)
+		void runProducts() {
+			bodyCount++;
+			bodyRequests.add(jpostman.info().request());
+		}
+
+		@JPostmanExecutor(id = "lifecycleFailure")
+		ApiExecutor executor(JUnitContext context, JPostmanInfo info) {
+			executorCount++;
+			int status = "Login user and get tokens".equals(info.request) ? 401 : 200;
+			String json = "{\"status\":" + status + "}";
+			return () -> new ApiResponse(status, json, json.getBytes(), Map.of());
+		}
+	}
+
 	private static final class JUnitRunnerBodyFailureFixture {
 		@io.jpostman.annotations.JPostman.Context(config = "", collection = COLLECTION)
 		private io.jpostman.annotations.JPostman.Runtime<JUnitContext> jpostman;
@@ -2977,7 +3119,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#junitRunner", verify = 200)
+				"Get current auth user" }, executor = "#junitRunner", verify = 200, lifecycle = true)
 		void runProducts() {
 			bodyCount++;
 			io.jpostman.junit.JUnitAssertions<?> asserts1 = jpostman.ctx().asserts();
@@ -3022,7 +3164,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#junitRunnerSoft", verify = 200)
+				"Get current auth user" }, executor = "#junitRunnerSoft", verify = 200, lifecycle = true)
 		void runProducts() {
 			bodyCount++;
 			JPostman.Assert asserts1 = jpostman.ctx().soft();
@@ -3050,7 +3192,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int ended;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200)
+				"Get current auth user" }, executor = "#testNgRunnerSoft", verify = 200, lifecycle = true)
 		void runProducts() {
 			bodyCount++;
 			JPostman.Assert asserts1 = jpostman.ctx().soft();
@@ -3081,7 +3223,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#junitRunnerSoftAssertContext", verify = 200)
+				"Get current auth user" }, executor = "#junitRunnerSoftAssertContext", verify = 200, lifecycle = true)
 		void runProducts() {
 			bodyCount++;
 			jpostman.runner().has("Login user and get tokens").then(test -> {
@@ -3108,7 +3250,7 @@ public class JPostmanAnnotationCoverageTest {
 		private int bodyCount;
 
 		@io.jpostman.annotations.JPostman.Runner(include = { "Login user and get tokens",
-				"Get current auth user" }, executor = "#testNgRunnerSoftAssertContext", verify = 200)
+				"Get current auth user" }, executor = "#testNgRunnerSoftAssertContext", verify = 200, lifecycle = true)
 		void runProducts() {
 			bodyCount++;
 			jpostman.runner().has("Login user and get tokens").then(test -> {

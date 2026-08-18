@@ -62,6 +62,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 	private final Supplier<C> activeContextResolver;
 	private final Supplier<JPostmanInfo> infoSupplier;
 	private final JPostmanRuntimeRequest<C> requestExecutor;
+	private final Object runtimeOwner;
 
 	/**
 	 * Creates a runtime view.
@@ -105,6 +106,14 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
 			Supplier<JPostmanRuntimeOptions> optionsSupplier, JPostmanRuntimeRequest<C> requestExecutor,
 			Function<String, JPostman.Context> loadedContextResolver) {
+		this(context, namespace, contextResolver, activeContextResolver, infoSupplier, optionsSupplier, requestExecutor,
+				loadedContextResolver, null);
+	}
+
+	JPostmanRuntime(JPostman.Context context, String namespace, Function<String, C> contextResolver,
+			Supplier<C> activeContextResolver, Supplier<JPostmanInfo> infoSupplier,
+			Supplier<JPostmanRuntimeOptions> optionsSupplier, JPostmanRuntimeRequest<C> requestExecutor,
+			Function<String, JPostman.Context> loadedContextResolver, Object runtimeOwner) {
 		this.context = context;
 		this.namespace = namespace == null ? "" : namespace;
 		this.contextResolver = contextResolver;
@@ -112,6 +121,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		this.activeContextResolver = activeContextResolver;
 		this.infoSupplier = infoSupplier;
 		this.requestExecutor = requestExecutor;
+		this.runtimeOwner = runtimeOwner;
 	}
 
 	/**
@@ -361,7 +371,7 @@ public class JPostmanRuntime<C> implements io.jpostman.annotations.JPostman.Runt
 		}
 		JPostmanInfo completedInfo = info();
 		return JPostmanTestProxy.wrap(result, () -> activeContextResolver == null ? null : activeContextResolver.get(),
-				() -> completedInfo);
+				() -> completedInfo, runtimeOwner);
 	}
 
 	/**

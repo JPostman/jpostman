@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -65,47 +66,133 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 	}
 
 	@Test
-	public void defaultLifecycleRunsBlankRequestDependencyBeforeEachFolderRequestAndBody() throws Exception {
+	public void defaultLifecycleRunsBlankRequestDependencyPerRequestAndBodyOnceAtEnd() throws Exception {
 		PerRequestRunnerFixture fixture = new PerRequestRunnerFixture();
 
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 		Method method = PerRequestRunnerFixture.class.getDeclaredMethod("runProductFolder");
 		JPostmanAnnotationEngine.runTestNg(fixture, method, fixture::recordRunnerBody);
 
-		assertEquals(
-				List.of("helper:Folder request one", "executor:Folder request one", "body:Folder request one",
-						"helper:Folder request two", "executor:Folder request two", "body:Folder request two",
-						"helper:Folder request three", "executor:Folder request three", "body:Folder request three"),
-				fixture.events);
+		assertEquals(List.of("helper:Folder request one", "executor:Folder request one", "helper:Folder request two",
+				"executor:Folder request two", "helper:Folder request three", "executor:Folder request three",
+				"body:Folder request three"), fixture.events);
 	}
 
 	@Test
-	public void defaultLifecycleUsesRootRequestsWhenDependencyFolderIsBlank() throws Exception {
+	public void defaultLifecycleUsesRootRequestsAndInvokesBodyOnceAtEnd() throws Exception {
 		PerRequestRunnerFixture fixture = new PerRequestRunnerFixture();
 
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 		Method method = PerRequestRunnerFixture.class.getDeclaredMethod("runRoot");
 		JPostmanAnnotationEngine.runTestNg(fixture, method, fixture::recordRunnerBody);
 
-		assertEquals(
-				List.of("root-helper:Root request one", "executor:Root request one", "body:Root request one",
-						"root-helper:Root request two", "executor:Root request two", "body:Root request two"),
-				fixture.events);
+		assertEquals(List.of("root-helper:Root request one", "executor:Root request one",
+				"root-helper:Root request two", "executor:Root request two", "body:Root request two"), fixture.events);
 	}
 
 	@Test
-	public void lifecycleModeKeepsBlankRequestDependencyAsOneTimeSetup() throws Exception {
+	public void lifecycleModeKeepsBlankRequestDependencyPerRequest() throws Exception {
 		PerRequestRunnerFixture fixture = new PerRequestRunnerFixture();
 
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 		Method method = PerRequestRunnerFixture.class.getDeclaredMethod("runProductFolderLifecycle");
 		JPostmanAnnotationEngine.runTestNg(fixture, method, fixture::recordRunnerBody);
 
-		assertEquals(1, fixture.lifecycleHelperCalls);
-		assertEquals("", fixture.lifecycleHelperRequest);
-		assertEquals(List.of("lifecycle-helper:<none>", "executor:Folder request one", "body:Folder request one",
-				"executor:Folder request two", "body:Folder request two", "executor:Folder request three",
+		assertEquals(3, fixture.lifecycleHelperCalls);
+		assertEquals("Folder request three", fixture.lifecycleHelperRequest);
+		assertEquals(List.of("lifecycle-helper:Folder request one", "executor:Folder request one",
+				"body:Folder request one", "lifecycle-helper:Folder request two", "executor:Folder request two",
+				"body:Folder request two", "lifecycle-helper:Folder request three", "executor:Folder request three",
 				"body:Folder request three"), fixture.events);
+	}
+
+	@Test
+	public void runnerExecutesVerifiedExternalResponseBeforeRemainingFolderRequests() throws Exception {
+		VerifiedExternalResponseFixture fixture = new VerifiedExternalResponseFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = VerifiedExternalResponseFixture.class.getDeclaredMethod("testAuthRunner");
+		JPostmanAnnotationEngine.runTestNg(fixture, method);
+
+		assertEquals(List.of("request-helper:Login user and get tokens", "executor:Login user and get tokens",
+				"response-body:Login user and get tokens", "executor:Get current auth user"), fixture.events);
+		assertEquals(2, fixture.executorBodies.size());
+		assertEquals(Map.of("username", "{{username}}"), fixture.executorBodies.get(0));
+		assertTrue(fixture.executorBodies.get(1).isEmpty(),
+				"Request values created inside the external Response dependency must not leak into the next Runner request.");
+		assertEquals("token-123", fixture.runtime.test().cache("token"));
+		JPostmanReport report = (JPostmanReport) fixture.report;
+		assertEquals(2, report.total(), "The external Response and remaining Runner request must both be reported.");
+		assertEquals(2, report.passed.size());
+		assertNotNull(report.execution("loginUserAndGetAccessRefreshTokens"));
+	}
+
+	@Test
+	public void externalResponseWithoutExplicitVerifyRemainsFilteredFromRunner() throws Exception {
+		DefaultVerifyExternalResponseFixture fixture = new DefaultVerifyExternalResponseFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = DefaultVerifyExternalResponseFixture.class.getDeclaredMethod("testAuthRunner");
+		JPostmanAnnotationEngine.runTestNg(fixture, method);
+
+		assertEquals(0, fixture.responseBodyCalls);
+		assertEquals(List.of("Get current auth user"), fixture.executedRequests);
+	}
+
+	@Test
+	public void runnerContinuesAfterVerifiedRequestFailureForNonTerminatingReportModes() throws Exception {
+		ContinueAfterFailureFixture fixture = new ContinueAfterFailureFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = ContinueAfterFailureFixture.class.getDeclaredMethod("testAuthRunner");
+		assertThrows(AssertionError.class, () -> JPostmanAnnotationEngine.runTestNg(fixture, method));
+
+		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.executedRequests,
+				"A 401 on the first request must not prevent the next folder request from executing.");
+		JPostmanReport report = (JPostmanReport) fixture.report;
+		assertEquals(1, report.failed.size());
+		assertEquals(1, report.passed.size());
+	}
+
+	@Test
+	public void runnerSkipAllRecordsLaterFolderRequestsAsSkippedAfterFirstFailure() throws Exception {
+		SkipAllAfterFailureFixture fixture = new SkipAllAfterFailureFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = SkipAllAfterFailureFixture.class.getDeclaredMethod("testAuthRunner");
+		assertThrows(AssertionError.class, () -> JPostmanAnnotationEngine.runTestNg(fixture, method));
+
+		assertEquals(List.of("Login user and get tokens"), fixture.executedRequests,
+				"The request after the first failure must not execute when fail=skipAll.");
+		JPostmanReport report = (JPostmanReport) fixture.report;
+		assertTrue(report.skipRemaining());
+		assertEquals(2, report.total(), "The failed request and the skipped remainder must both be reported.");
+		assertEquals(1, report.failed.size());
+		assertEquals(1, report.skipped.size());
+		assertEquals("Login user and get tokens", report.failed.get(0).request);
+		assertEquals("Get current auth user", report.skipped.get(0).request);
+		assertNull(report.skipped.get(0).statusCode(), "A skipAll remainder must not execute an HTTP request.");
+	}
+
+	@Test
+	public void externalResponsePassThenRunnerFailureSkipsEveryLaterRequest() throws Exception {
+		ExternalResponseSkipAllFixture fixture = new ExternalResponseSkipAllFixture();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = ExternalResponseSkipAllFixture.class.getDeclaredMethod("testProductRunner");
+		assertThrows(AssertionError.class, () -> JPostmanAnnotationEngine.runTestNg(fixture, method));
+
+		assertEquals(List.of("Folder request one", "Folder request two"), fixture.executedRequests,
+				"The external Response must run first, then the runner must stop after its first failure.");
+		JPostmanReport report = (JPostmanReport) fixture.report;
+		assertEquals(3, report.total());
+		assertEquals(1, report.passed.size());
+		assertEquals(1, report.failed.size());
+		assertEquals(1, report.skipped.size());
+		assertEquals("prepareProductRequest", report.passed.get(0).method);
+		assertEquals("Folder request two", report.failed.get(0).request);
+		assertEquals("Folder request three", report.skipped.get(0).request);
+		assertNull(report.skipped.get(0).statusCode());
 	}
 
 	@Test
@@ -148,8 +235,8 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		public void lifecycleSetup(TestNgContext ctx, JPostman.Info compactInfo) {
 			lifecycleHelperCalls++;
 			lifecycleHelperRequest = compactInfo.attr().request;
-			assertNull(ctx.request(), "Lifecycle mode keeps the existing one-time setup dependency behavior.");
-			events.add("lifecycle-helper:<none>");
+			assertNotNull(ctx.request(), "Lifecycle mode must not change per-request @Request dependency scope.");
+			events.add("lifecycle-helper:" + compactInfo.attr().request);
 		}
 
 		@JPostman.Runner(dependsOn = "#productScope", verify = 0)
@@ -279,4 +366,158 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 			return () -> new ApiResponse(200, "{\"id\":1}", "{\"id\":1}".getBytes(), Map.of());
 		}
 	}
+
+	@JPostman.TestNG
+	private static final class VerifiedExternalResponseFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.ReportContext(details = true)
+		private JPostman.Report report;
+
+		private final List<String> events = new ArrayList<>();
+		private final List<Map<String, Object>> executorBodies = new ArrayList<>();
+
+		@JPostman.Response(id = "Ref1", cache = "token", dependsOn = "#Ref2", verify = 200)
+		public String loginUserAndGetAccessRefreshTokens() {
+			events.add("response-body:Login user and get tokens");
+			return runtime.test().path("accessToken");
+		}
+
+		@JPostman.Request(id = "Ref2", request = "Login user and get tokens")
+		public void loginUserAndGetAccessRefreshTokensRequest(JPostman.Test test, JPostman.Info info) {
+			events.add("request-helper:" + info.attr().request);
+			info.body("username", "{{username}}");
+		}
+
+		@JPostman.Runner(verify = 200)
+		@org.testng.annotations.Test
+		public void testAuthRunner() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String request = info.request;
+			events.add("executor:" + request);
+			executorBodies.add(new LinkedHashMap<>(info.body));
+			return () -> {
+				String json = "Login user and get tokens".equals(request) ? "{\"accessToken\":\"token-123\"}"
+						: "{\"ok\":true}";
+				return new ApiResponse(200, json, json.getBytes(), Map.of());
+			};
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class DefaultVerifyExternalResponseFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		private int responseBodyCalls;
+		private final List<String> executedRequests = new ArrayList<>();
+
+		@JPostman.Response(id = "Ref1", request = "Login user and get tokens", cache = "token")
+		public String loginUserAndGetAccessRefreshTokens() {
+			responseBodyCalls++;
+			return runtime.test().path("accessToken");
+		}
+
+		@JPostman.Runner(verify = 200)
+		@org.testng.annotations.Test
+		public void testAuthRunner() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executedRequests.add(info.request);
+			String json = "{\"ok\":true}";
+			return () -> new ApiResponse(200, json, json.getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ExternalResponseSkipAllFixture {
+
+		@JPostman.Context(config = "classpath:annotation-test-runner-per-request.properties", verifyStatusCode = 200)
+		private JPostman.Runtime<TestNgContext> runtime;
+
+		@JPostman.ReportContext(details = true, fail = "skipAll")
+		private JPostman.Report report;
+
+		private final List<String> executedRequests = new ArrayList<>();
+
+		@JPostman.Response(id = "Ref1", namespace = "product", folder = "Product", request = "Folder request one", cache = "token", verify = 200)
+		public String prepareProductRequest() {
+			return "token-123";
+		}
+
+		@JPostman.Runner(namespace = "product", folder = "Product", verify = 200)
+		@org.testng.annotations.Test
+		public void testProductRunner() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String request = info.request;
+			executedRequests.add(request);
+			int status = "Folder request two".equals(request) ? 401 : 200;
+			String json = "{\"status\":" + status + "}";
+			return () -> new ApiResponse(status, json, json.getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class ContinueAfterFailureFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.ReportContext(details = true, fail = "response")
+		private JPostman.Report report;
+
+		private final List<String> executedRequests = new ArrayList<>();
+
+		@JPostman.Runner(verify = 200)
+		@org.testng.annotations.Test
+		public void testAuthRunner() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String request = info.request;
+			executedRequests.add(request);
+			int status = "Login user and get tokens".equals(request) ? 401 : 200;
+			String json = "{\"status\":" + status + "}";
+			return () -> new ApiResponse(status, json, json.getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class SkipAllAfterFailureFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.ReportContext(details = true, fail = "skipAll")
+		private JPostman.Report report;
+
+		private final List<String> executedRequests = new ArrayList<>();
+
+		@JPostman.Runner(verify = 200)
+		@org.testng.annotations.Test
+		public void testAuthRunner() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			String request = info.request;
+			executedRequests.add(request);
+			int status = "Login user and get tokens".equals(request) ? 401 : 200;
+			String json = "{\"status\":" + status + "}";
+			return () -> new ApiResponse(status, json, json.getBytes(), Map.of());
+		}
+	}
+
 }

@@ -183,14 +183,19 @@ public final class JPostmanTestNgAnnotationListener
 		JPostmanAnnotationEngine.beginVerificationOutcome();
 		try {
 			if (runnerMethod) {
+				/*
+				 * JPostmanAnnotationRunner owns both callback contracts: lifecycle=true invokes
+				 * the body after each attempted request, while lifecycle=false invokes it once
+				 * at whole-runner completion, including aggregate HTTP failure completion.
+				 */
 				JPostmanAnnotationEngine.runTestNg(testInstance, testMethod,
 						() -> runTestBodyWithAssertionCleanup(testInstance, testMethod, callBack, testResult, true));
+
 				/*
-				 * A runner may complete successfully without invoking the user callback (for
-				 * example, when the runner itself owns all request iterations). TestNG requires
-				 * an IHookable invocation to either invoke the callback or explicitly
-				 * transition the result out of STARTED. Mark successful framework-owned
-				 * completion here.
+				 * A lifecycle runner may complete successfully without invoking the user
+				 * callback (for example, when every request is handled by an explicit
+				 * annotation). TestNG still needs a final SUCCESS state when no callback
+				 * changed the result.
 				 */
 				if (testResult.getStatus() == ITestResult.STARTED) {
 					testResult.setStatus(ITestResult.SUCCESS);

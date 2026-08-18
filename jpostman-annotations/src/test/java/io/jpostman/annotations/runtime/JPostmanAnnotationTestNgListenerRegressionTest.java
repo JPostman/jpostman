@@ -133,7 +133,8 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@Test
-	public void listenerDoesNotRunRunnerBodyAfterRunnerStatusFailure() throws Exception {
+	public void listenerLifecycleFalseRunsBodyAfterRunnerStatusFailureWithoutReplacingPrimaryFailure()
+			throws Exception {
 		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
 		RunnerStatusFailureFixture fixture = new RunnerStatusFailureFixture();
 		Method method = RunnerStatusFailureFixture.class.getDeclaredMethod("runProducts");
@@ -143,8 +144,8 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 
 		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
 
-		assertEquals(0, fixture.bodyCalls,
-				"Runner body should not run after a fail-fast runner status verification failure.");
+		assertEquals(1, fixture.bodyCalls,
+				"lifecycle=false must run the body once after the runner reaches aggregate failure completion.");
 		assertEquals(ITestResult.FAILURE, status.get());
 		assertNotNull(throwable.get());
 		assertTrue(throwable.get().getMessage().contains("Status code mismatch: expected [400] but found [200]"),
@@ -175,6 +176,63 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 				"The user test body should see the latest active response context after each request.");
 		assertEquals(ITestResult.SUCCESS, status.get());
 		assertEquals(null, throwable.get());
+	}
+
+	@Test
+	public void listenerLifecycleFalseRunsBodyOnceAfterAllRequests() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		LifecycleFalseRunnerFixture fixture = new LifecycleFalseRunnerFixture();
+		Method method = LifecycleFalseRunnerFixture.class.getDeclaredMethod("runProducts");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(ITestResult.SUCCESS, status.get());
+		assertEquals(null, throwable.get());
+		assertEquals(2, fixture.executorCalls);
+		assertEquals(1, fixture.bodyCalls);
+		assertEquals(List.of("Get current auth user"), fixture.bodyRequests);
+	}
+
+	@Test
+	public void listenerLifecycleFalseRunsBodyOnceAfterFailedRequests() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		LifecycleFalseFailureRunnerFixture fixture = new LifecycleFalseFailureRunnerFixture();
+		Method method = LifecycleFalseFailureRunnerFixture.class.getDeclaredMethod("runProducts");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(ITestResult.FAILURE, status.get());
+		assertNotNull(throwable.get());
+		assertTrue(throwable.get().getMessage().contains("JPostman runner failed for 2 requests"),
+				throwable.get().getMessage());
+		assertEquals(2, fixture.executorCalls);
+		assertEquals(1, fixture.bodyCalls);
+		assertEquals(List.of("Get current auth user"), fixture.bodyRequests);
+	}
+
+	@Test
+	public void listenerLifecycleTrueRunsBodyAfterFailedHttpRequest() throws Exception {
+		JPostmanTestNgAnnotationListener listener = new JPostmanTestNgAnnotationListener();
+		LifecycleTrueFailureRunnerFixture fixture = new LifecycleTrueFailureRunnerFixture();
+		Method method = LifecycleTrueFailureRunnerFixture.class.getDeclaredMethod("runProducts");
+		AtomicReference<Throwable> throwable = new AtomicReference<>();
+		AtomicInteger status = new AtomicInteger(ITestResult.SUCCESS);
+		ITestResult result = testResult(fixture, method, throwable, status);
+
+		listener.run(hookCallBack(() -> invoke(fixture, method)), result);
+
+		assertEquals(ITestResult.FAILURE, status.get());
+		assertNotNull(throwable.get());
+		assertTrue(throwable.get().getMessage().contains("Status code mismatch"), throwable.get().getMessage());
+		assertEquals(2, fixture.executorCalls);
+		assertEquals(2, fixture.bodyCalls);
+		assertEquals(List.of("Login user and get tokens", "Get current auth user"), fixture.bodyRequests);
 	}
 
 	/**
@@ -407,6 +465,82 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 	}
 
 	@JPostman.TestNG
+	private static final class LifecycleFalseRunnerFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int executorCalls;
+		private int bodyCalls;
+		private final List<String> bodyRequests = new ArrayList<>();
+
+		@JPostman.Runner(verify = 200, lifecycle = false)
+		@org.testng.annotations.Test
+		public void runProducts() {
+			bodyCalls++;
+			bodyRequests.add(jpostman.info().attr().request);
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executorCalls++;
+			return okExecutor("{\"id\":" + executorCalls + "}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class LifecycleFalseFailureRunnerFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int executorCalls;
+		private int bodyCalls;
+		private final List<String> bodyRequests = new ArrayList<>();
+
+		@JPostman.Runner(verify = 200, lifecycle = false)
+		@org.testng.annotations.Test
+		public void runProducts() {
+			bodyCalls++;
+			bodyRequests.add(jpostman.info().attr().request);
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executorCalls++;
+			int code = "Login user and get tokens".equals(info.request) ? 401 : 403;
+			String json = "{\"status\":" + code + "}";
+			return () -> new ApiResponse(code, json, json.getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class LifecycleTrueFailureRunnerFixture {
+
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		private int executorCalls;
+		private int bodyCalls;
+		private final List<String> bodyRequests = new ArrayList<>();
+
+		@JPostman.Runner(verify = 200, lifecycle = true)
+		@org.testng.annotations.Test
+		public void runProducts() {
+			bodyCalls++;
+			bodyRequests.add(jpostman.info().attr().request);
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			executorCalls++;
+			int code = "Login user and get tokens".equals(info.request) ? 401 : 200;
+			String json = "{\"status\":" + code + "}";
+			return () -> new ApiResponse(code, json, json.getBytes(), Map.of());
+		}
+	}
+
+	@JPostman.TestNG
 	private static final class SuccessfulRunnerBodyFixture {
 
 		@JPostman.Context(config = "", collection = "classpath:annotation-test-collection.json", verifyStatusCode = 200)
@@ -418,7 +552,7 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 		private boolean sawLatestInfo;
 		private boolean sawLatestResponse;
 
-		@JPostman.Runner(verify = 0)
+		@JPostman.Runner(verify = 0, lifecycle = true)
 		@org.testng.annotations.Test
 		public void printLatestRunnerInfo() {
 			bodyCalls++;
@@ -466,7 +600,7 @@ public class JPostmanAnnotationTestNgListenerRegressionTest {
 			info.sauth("oauth2", ctx.cache("token"));
 		}
 
-		@JPostman.Runner(namespace = "product", folder = "Product", verify = 0, dependsOn = "productRequest")
+		@JPostman.Runner(namespace = "product", folder = "Product", verify = 0, dependsOn = "productRequest", lifecycle = true)
 		@org.testng.annotations.Test
 		public void products() {
 			bodyCalls++;

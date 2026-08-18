@@ -81,7 +81,8 @@ final class JPostmanContextRunner<C> {
 		prepareNamedContexts(testInstance, prepared);
 		applyBaseline(prepared, baseline);
 		prepareActiveContexts(testInstance, prepared);
-		preservePreviousCaches(prepared, previous);
+		preservePreviousState(prepared, previous);
+		applyRuntimeValues(testInstance, prepared);
 
 		return prepared;
 	}
@@ -96,6 +97,10 @@ final class JPostmanContextRunner<C> {
 		if (testInstance != null && contexts != null) {
 			BASELINE_CONTEXTS.get().put(contextKey(testInstance), contexts);
 		}
+	}
+
+	PreparedContexts<C> activeContexts(Object testInstance) {
+		return currentContexts(testInstance);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -137,22 +142,22 @@ final class JPostmanContextRunner<C> {
 			 */
 			C source = baseline.context(namespace);
 			C copy = framework.copy(source);
-			JPostmanTestProxy.copyValueSources(source, copy);
+			framework.copyRuntimeValues(source, copy);
 			prepared.resolve(namespace).context = copy;
 		}
 	}
 
-	private void preservePreviousCaches(PreparedContexts<C> prepared, PreparedContexts<C> previous) {
+	private void preservePreviousState(PreparedContexts<C> prepared, PreparedContexts<C> previous) {
 		if (prepared == null || previous == null) {
 			return;
 		}
 
 		for (String namespace : prepared.namespaces()) {
-			copyPreviousCache(previous, prepared, namespace);
+			copyPreviousState(previous, prepared, namespace);
 		}
 	}
 
-	private void copyPreviousCache(PreparedContexts<C> previous, PreparedContexts<C> prepared, String namespace) {
+	private void copyPreviousState(PreparedContexts<C> previous, PreparedContexts<C> prepared, String namespace) {
 		if (previous == null || prepared == null || !previous.contains(namespace) || !prepared.contains(namespace)) {
 			return;
 		}
@@ -160,21 +165,48 @@ final class JPostmanContextRunner<C> {
 		C previousContext = previous.context(namespace);
 		PreparedContext<C> preparedContext = prepared.resolve(namespace);
 		/*
-		 * Keep each prepared context fresh between test method executions. Only cache
-		 * is carried forward; request, response, filter, soft/log, and other per-run
-		 * state must not be reused from the previous context.
+		 * Keep each prepared context fresh between test method executions. Cache plus
+		 * explicit plain/secret variables are class-runtime state and are carried
+		 * forward. Request, response, filter, soft/log, and other per-run state must
+		 * not be reused from the previous context.
 		 */
 		framework.copyCache(previousContext, preparedContext.context);
+		framework.copyRuntimeValues(previousContext, preparedContext.context);
 	}
 
-	private C copyPreviousCache(PreparedContexts<C> previous, String namespace, C target) {
+	private C copyPreviousState(PreparedContexts<C> previous, String namespace, C target) {
 		if (previous == null || target == null || !previous.contains(namespace)) {
 			return target;
 		}
 
 		C previousContext = previous.context(namespace);
 		framework.copyCache(previousContext, target);
+		framework.copyRuntimeValues(previousContext, target);
 		return target;
+	}
+
+	private void applyRuntimeValues(Object testInstance, PreparedContexts<C> prepared) {
+		if (testInstance == null || prepared == null) {
+			return;
+		}
+		for (C context : prepared.contexts()) {
+			applyRuntimeValues(testInstance, context);
+		}
+	}
+
+	private void applyRuntimeValues(Object testInstance, C context) {
+		if (testInstance == null || context == null) {
+			return;
+		}
+		Map<String, Object> plain = JPostmanTestProxy.runtimePlainValues(testInstance);
+		Map<String, Object> secret = JPostmanTestProxy.runtimeSecretValues(testInstance);
+		for (Map.Entry<String, Object> entry : plain.entrySet()) {
+			framework.plain(context, entry.getKey(), entry.getValue());
+		}
+		for (Map.Entry<String, Object> entry : secret.entrySet()) {
+			framework.secret(context, entry.getKey(), entry.getValue());
+		}
+		JPostmanTestProxy.registerRuntimeValues(context, plain, secret);
 	}
 
 	private void validateContextDefinitions(Object testInstance) {
@@ -245,6 +277,7 @@ final class JPostmanContextRunner<C> {
 					C existing = existingContext(testInstance, field);
 					if (existing != null) {
 						framework.copyCache(existing, context.context);
+						framework.copyRuntimeValues(existing, context.context);
 
 						/*
 						 * Preserve the old inactive-context behavior. An inactive
@@ -322,6 +355,7 @@ final class JPostmanContextRunner<C> {
 					C existing = existingContext(testInstance, field);
 					if (existing != null) {
 						framework.copyCache(existing, source.context);
+						framework.copyRuntimeValues(existing, source.context);
 
 						/*
 						 * active = true is a latest-active mirror, not a namespace mirror. Do not
@@ -385,7 +419,8 @@ final class JPostmanContextRunner<C> {
 		if (source.contextAnnotation != null) {
 			PreparedContext<C> created = createNamespaceContext(source.contextAnnotation, testInstance.getClass(),
 					namespace, source);
-			created.context = copyPreviousCache(previous, namespace, created.context);
+			created.context = copyPreviousState(previous, namespace, created.context);
+			applyRuntimeValues(testInstance, created.context);
 			return created;
 		}
 
@@ -393,7 +428,8 @@ final class JPostmanContextRunner<C> {
 		if (source.loaded != null) {
 			loadEnvironment(ctx, source.loaded.getEnvironment());
 		}
-		ctx = copyPreviousCache(previous, namespace, ctx);
+		ctx = copyPreviousState(previous, namespace, ctx);
+		applyRuntimeValues(testInstance, ctx);
 		return new PreparedContext<>(ctx, source.loaded, source.contextAnnotation, source.dataloadLocations,
 				source.assertionRules);
 	}
@@ -470,12 +506,12 @@ final class JPostmanContextRunner<C> {
 
 	private void setTestContextField(Object testInstance, Field field, C context) throws IllegalAccessException {
 		field.setAccessible(true);
-		field.set(testInstance, testContextFieldValue(field, context));
+		field.set(testInstance, testContextFieldValue(testInstance, field, context));
 	}
 
-	private Object testContextFieldValue(Field field, C context) {
+	private Object testContextFieldValue(Object testInstance, Field field, C context) {
 		if (io.jpostman.annotations.JPostman.Test.class.isAssignableFrom(field.getType())) {
-			return JPostmanTestProxy.wrap(context);
+			return JPostmanTestProxy.wrap(context, null, null, testInstance);
 		}
 		return context;
 	}
@@ -524,6 +560,7 @@ final class JPostmanContextRunner<C> {
 					C existing = existingContext(testInstance, field);
 					if (hasResponse(existing)) {
 						framework.copyCache(context, existing);
+						framework.copyRuntimeValues(context, existing);
 						prepared.context = existing;
 						context = existing;
 					}
@@ -626,22 +663,29 @@ final class JPostmanContextRunner<C> {
 		if (compactTestRuntime) {
 			return new JPostmanRuntime<>(context, namespace,
 					name -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).context(name),
-							() -> activeContexts(testInstance, contexts).activeContext()),
+							() -> activeContexts(testInstance, contexts).activeContext(), null, testInstance),
 					() -> JPostmanTestProxy.wrap(activeContexts(testInstance, contexts).activeContext(),
-							() -> activeContexts(testInstance, contexts).activeContext()),
+							() -> activeContexts(testInstance, contexts).activeContext(), null, testInstance),
 					() -> activeContexts(testInstance, contexts).info(),
 					() -> JPostmanRuntimeOptions.from(testInstance),
-					action -> JPostmanTestProxy.wrap(JPostmanRuntimeCall.execute(testInstance, framework.contextType(),
-							(ctx, info) -> action.accept(JPostmanTestProxy.wrap(ctx,
-									() -> activeContexts(testInstance, contexts).activeContext()), info)),
-							() -> activeContexts(testInstance, contexts).activeContext()),
-					name -> activeContexts(testInstance, contexts).resolve(name).loaded);
+					action -> JPostmanTestProxy.wrap(
+							JPostmanRuntimeCall
+									.execute(
+											testInstance, framework.contextType(), (ctx,
+													info) -> action.accept(
+															JPostmanTestProxy.wrap(ctx,
+																	() -> activeContexts(testInstance, contexts)
+																			.activeContext(),
+																	null, testInstance),
+															info)),
+							() -> activeContexts(testInstance, contexts).activeContext(), null, testInstance),
+					name -> activeContexts(testInstance, contexts).resolve(name).loaded, testInstance);
 		}
 		return new JPostmanRuntime<>(context, namespace, name -> activeContexts(testInstance, contexts).context(name),
 				() -> activeContexts(testInstance, contexts).activeContext(),
 				() -> activeContexts(testInstance, contexts).info(), () -> JPostmanRuntimeOptions.from(testInstance),
 				action -> JPostmanRuntimeCall.execute(testInstance, framework.contextType(), action),
-				name -> activeContexts(testInstance, contexts).resolve(name).loaded);
+				name -> activeContexts(testInstance, contexts).resolve(name).loaded, testInstance);
 	}
 
 	private boolean compactTestRuntime(Field field) {
@@ -851,6 +895,7 @@ final class JPostmanContextRunner<C> {
 
 		if (existingContext != null) {
 			framework.copyCache(existingContext, ctx);
+			framework.copyRuntimeValues(existingContext, ctx);
 		}
 
 		return new PreparedContext<>(ctx, loaded, null, java.util.Collections.emptyList(),

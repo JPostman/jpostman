@@ -13,8 +13,12 @@ import java.lang.annotation.Target;
  * <p>
  * This annotation behaves like {@link JPostmanResponse}, but the request names
  * are discovered from the selected Postman folder instead of being declared one
- * by one. Explicit {@link JPostmanResponse} methods for the same namespace,
- * folder, and request name are skipped by the runner.
+ * by one. Explicit {@link JPostmanResponse} framework tests for the same
+ * namespace, folder, and request name remain separate tests and are skipped by
+ * the folder loop. An explicit Response that is not a framework test and
+ * defines a concrete {@code verify} value is executed by the runner first,
+ * including its dependencies and cache body, then filtered from the normal
+ * folder loop.
  * </p>
  */
 @Target(METHOD)
@@ -153,11 +157,13 @@ public @interface JPostmanRunner {
 	 * Enables the new request/response runner lifecycle callback mode.
 	 *
 	 * <p>
-	 * The default {@code false} invokes blank-request {@code @JPostmanRequest}
-	 * dependencies once for each selected collection request after that request is
-	 * prepared, then invokes the runner method body after the response. Set this to
-	 * {@code true} to keep dependencies as one-time runner setup and enable the
-	 * before-request/response lifecycle used by
+	 * The default {@code false} invokes the runner method body once after all
+	 * selected collection requests reach runner completion, including aggregate
+	 * HTTP/verification failures. Blank-request {@code @JPostmanRequest}
+	 * dependencies still apply per selected request. Set this to {@code true} to
+	 * keep dependencies as one-time runner setup and invoke the runner body after
+	 * each attempted HTTP request (including completed failed responses), with the
+	 * before-request phase additionally enabled for fluent runner rules used by
 	 * {@code jpostman.runner().start(...)}, {@code jpostman.runner().request(...)},
 	 * or {@code jpostman.runner().response(...)} and when the fluent runner chain
 	 * should control the method body for the before/after phases.

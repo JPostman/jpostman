@@ -20,7 +20,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private enum FailOutput {
-		REQUEST, RESPONSE, INFO, ALL
+		ERROR, REQUEST, RESPONSE, INFO, ALL
 	}
 
 	private boolean summaryPrinted;
@@ -59,7 +59,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * declared by {@code @JPostman.ReportContext}.
 	 *
 	 * @param details {@code true} to include compact execution details
-	 * @param values  one action plus optional request/response/info/all values
+	 * @param values  one action plus optional error/request/response/info/all
+	 *                values
 	 * @return this report
 	 */
 	public JPostmanReport configure(boolean details, String[] values) {
@@ -72,7 +73,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * {@code @JPostman.ReportContext}. This overload keeps the current execution
 	 * details setting unchanged.
 	 *
-	 * @param values one action plus optional request/response/info/all values
+	 * @param values one action plus optional error/request/response/info/all values
 	 * @return this report
 	 */
 	public JPostmanReport configure(String... values) {
@@ -100,7 +101,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 					FailOutput output = output(option);
 					if (output == null) {
 						throw invalid(values,
-								"Allowed values: ignore, skipAll, terminate, request, response, info, all.");
+								"Allowed values: ignore, skipAll, terminate, error, request, response, info, all.");
 					}
 					outputs.add(output);
 				}
@@ -137,6 +138,8 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 
 	private FailOutput output(String value) {
 		switch (value) {
+		case "error":
+			return FailOutput.ERROR;
 		case "request":
 			return FailOutput.REQUEST;
 		case "response":
@@ -158,6 +161,10 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	/** Returns true after fail="skipAll" has observed its first failure. */
 	public boolean skipRemaining() {
 		return skipRemaining;
+	}
+
+	boolean failureError() {
+		return failOutput.contains(FailOutput.ERROR);
 	}
 
 	boolean failureRequest() {
@@ -271,6 +278,15 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 */
 	private void removeCompletedDependenciesWhenOwnerExecuted(JPostmanInfo info) {
 		if (info == null || !isTopLevel(info) || info.statusCode() == null) {
+			return;
+		}
+		/*
+		 * A runtime @JPostman.Call and an executed @JPostman.Response dependency are
+		 * two real Java/JPostman executions. Keep both report rows. Collapsing the
+		 * dependency here hid the cached response method and made the Call appear to
+		 * own the dependency request metadata.
+		 */
+		if ("@JPostmanCall".equals(value(info.annotation))) {
 			return;
 		}
 		String owner = topMethod(info);
@@ -585,7 +601,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 				continue;
 			}
 
-			boolean includeError = true;
+			boolean includeError = !failureError();
 			boolean includeRequest = !failureRequest();
 			boolean includeResponse = !failureResponse();
 			if (!includeError && !includeRequest && !includeResponse) {
@@ -626,6 +642,9 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	}
 
 	private void appendFailureDetails(StringBuilder output, JPostmanInfo value) {
+		if (failureError()) {
+			appendError(output, value, failureDetails.get(executionKey(value)), true);
+		}
 		if (failureInfo()) {
 			appendBlock(output, value == null ? "" : value.log(false));
 		}
@@ -832,7 +851,7 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 	 * indented line so a zero-duration row explains why no status code exists.
 	 */
 	private String executionDetailsLine(JPostmanInfo info, Throwable failure) {
-		StringBuilder out = new StringBuilder(topMethod(info)).append(":  ");
+		StringBuilder out = new StringBuilder(displayMethod(info)).append(":  ");
 		boolean skippedExecution = isSkipped(info);
 		if (skippedExecution) {
 			// verify=1 runs the HTTP request and only then converts the completed
@@ -917,6 +936,13 @@ public final class JPostmanReport implements io.jpostman.annotations.JPostman.Re
 		}
 		return "JPostman runner folder was not found: \"" + folder + "\" (namespace=" + namespace + ", folder=" + folder
 				+ ")";
+	}
+
+	private String displayMethod(JPostmanInfo info) {
+		if (isExecutedResponseDependency(info)) {
+			return value(info.method);
+		}
+		return topMethod(info);
 	}
 
 	private String topMethod(JPostmanInfo info) {

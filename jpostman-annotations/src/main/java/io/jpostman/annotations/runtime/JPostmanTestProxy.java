@@ -9,6 +9,7 @@ import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,6 +33,8 @@ final class JPostmanTestProxy implements InvocationHandler {
 	private static final String CACHE_ID_ALIAS_PREFIX = "__jpostman_cache_id__";
 	private static final ThreadLocal<List<CacheDependency>> CACHE_DEPENDENCIES = new ThreadLocal<>();
 	private static final Map<Object, ValueSources> VALUE_SOURCES = Collections.synchronizedMap(new WeakHashMap<>());
+	private static final Map<Object, RuntimeValueScope> RUNTIME_VALUE_SCOPES = Collections
+			.synchronizedMap(new IdentityHashMap<>());
 
 	static final class CacheDependency {
 		final String reference;
@@ -132,23 +135,140 @@ final class JPostmanTestProxy implements InvocationHandler {
 		VALUE_SOURCES.put(target, copy);
 	}
 
+	/**
+	 * Returns a snapshot of plain values registered through the annotation facade.
+	 */
+	static Map<String, Object> plainValues(Object target) {
+		return persistentValues(target, false);
+	}
+
+	/**
+	 * Returns a snapshot of secret values registered through the annotation facade.
+	 */
+	static Map<String, Object> secretValues(Object target) {
+		return persistentValues(target, true);
+	}
+
+	private static Map<String, Object> persistentValues(Object target, boolean secret) {
+		if (target == null) {
+			return Collections.emptyMap();
+		}
+
+		ValueSources sources;
+		synchronized (VALUE_SOURCES) {
+			sources = VALUE_SOURCES.get(target);
+		}
+		if (sources == null) {
+			return Collections.emptyMap();
+		}
+
+		synchronized (sources) {
+			return new LinkedHashMap<>(secret ? sources.secret : sources.plain);
+		}
+	}
+
+	/** Returns class-runtime plain values owned by the supplied test instance. */
+	static Map<String, Object> runtimePlainValues(Object owner) {
+		return runtimeValues(owner, false);
+	}
+
+	/** Returns class-runtime secret values owned by the supplied test instance. */
+	static Map<String, Object> runtimeSecretValues(Object owner) {
+		return runtimeValues(owner, true);
+	}
+
+	/** Mirrors class-runtime values into a newly prepared framework context. */
+	static void registerRuntimeValues(Object target, Map<String, ?> plain, Map<String, ?> secret) {
+		if (target == null) {
+			return;
+		}
+		ValueSources sources = valueSources(target);
+		synchronized (sources) {
+			if (plain != null) {
+				plain.forEach((key, value) -> {
+					if (key != null) {
+						sources.plain.put(key, value);
+					}
+				});
+			}
+			if (secret != null) {
+				secret.forEach((key, value) -> {
+					if (key != null) {
+						sources.secret.put(key, value);
+					}
+				});
+			}
+		}
+	}
+
+	/** Clears class-runtime plain/secret values after a test class completes. */
+	static void clearRuntimeValues(Object owner) {
+		if (owner == null) {
+			return;
+		}
+		synchronized (RUNTIME_VALUE_SCOPES) {
+			RUNTIME_VALUE_SCOPES.remove(owner);
+		}
+	}
+
+	private static Map<String, Object> runtimeValues(Object owner, boolean secret) {
+		if (owner == null) {
+			return Collections.emptyMap();
+		}
+		RuntimeValueScope scope;
+		synchronized (RUNTIME_VALUE_SCOPES) {
+			scope = RUNTIME_VALUE_SCOPES.get(owner);
+		}
+		if (scope == null) {
+			return Collections.emptyMap();
+		}
+		synchronized (scope) {
+			return new LinkedHashMap<>(secret ? scope.secret : scope.plain);
+		}
+	}
+
+	private static RuntimeValueScope runtimeScope(Object owner) {
+		if (owner == null) {
+			return null;
+		}
+		synchronized (RUNTIME_VALUE_SCOPES) {
+			return RUNTIME_VALUE_SCOPES.computeIfAbsent(owner, ignored -> new RuntimeValueScope());
+		}
+	}
+
+	private static RuntimeValueScope existingRuntimeScope(Object owner) {
+		if (owner == null) {
+			return null;
+		}
+		synchronized (RUNTIME_VALUE_SCOPES) {
+			return RUNTIME_VALUE_SCOPES.get(owner);
+		}
+	}
+
 	private final Object target;
 	private final Supplier<?> activeContextSupplier;
 	private final Supplier<? extends JPostman.Info> responseInfoSupplier;
+	private final Object runtimeOwner;
 
 	private JPostmanTestProxy(Object target) {
-		this(target, null, null);
+		this(target, null, null, null);
 	}
 
 	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier) {
-		this(target, activeContextSupplier, null);
+		this(target, activeContextSupplier, null, null);
 	}
 
 	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier,
 			Supplier<? extends JPostman.Info> responseInfoSupplier) {
+		this(target, activeContextSupplier, responseInfoSupplier, null);
+	}
+
+	private JPostmanTestProxy(Object target, Supplier<?> activeContextSupplier,
+			Supplier<? extends JPostman.Info> responseInfoSupplier, Object runtimeOwner) {
 		this.target = target;
 		this.activeContextSupplier = activeContextSupplier;
 		this.responseInfoSupplier = responseInfoSupplier;
+		this.runtimeOwner = runtimeOwner;
 	}
 
 	static JPostman.Test wrap(Object target) {
@@ -162,11 +282,16 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier) {
-		return wrap(target, activeContextSupplier, null);
+		return wrap(target, activeContextSupplier, null, null);
 	}
 
 	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier,
 			Supplier<? extends JPostman.Info> responseInfoSupplier) {
+		return wrap(target, activeContextSupplier, responseInfoSupplier, null);
+	}
+
+	static JPostman.Test wrap(Object target, Supplier<?> activeContextSupplier,
+			Supplier<? extends JPostman.Info> responseInfoSupplier, Object runtimeOwner) {
 		if (target == null) {
 			return null;
 		}
@@ -179,23 +304,25 @@ final class JPostmanTestProxy implements InvocationHandler {
 				Supplier<? extends JPostman.Info> responseInfo = responseInfoSupplier == null
 						? existing.responseInfoSupplier
 						: responseInfoSupplier;
-				if (responseInfo == existing.responseInfoSupplier && active == existing.activeContextSupplier) {
+				Object owner = runtimeOwner == null ? existing.runtimeOwner : runtimeOwner;
+				if (responseInfo == existing.responseInfoSupplier && active == existing.activeContextSupplier
+						&& owner == existing.runtimeOwner) {
 					return (JPostman.Test) target;
 				}
-				return proxy(existing.target, active, responseInfo);
+				return proxy(existing.target, active, responseInfo, owner);
 			}
 		}
-		if (target instanceof JPostman.Test && responseInfoSupplier == null) {
+		if (target instanceof JPostman.Test && responseInfoSupplier == null && runtimeOwner == null) {
 			return (JPostman.Test) target;
 		}
-		return proxy(target, activeContextSupplier, responseInfoSupplier);
+		return proxy(target, activeContextSupplier, responseInfoSupplier, runtimeOwner);
 	}
 
 	private static JPostman.Test proxy(Object target, Supplier<?> activeContextSupplier,
-			Supplier<? extends JPostman.Info> responseInfoSupplier) {
+			Supplier<? extends JPostman.Info> responseInfoSupplier, Object runtimeOwner) {
 		return (JPostman.Test) Proxy.newProxyInstance(JPostman.Test.class.getClassLoader(),
 				new Class<?>[] { JPostman.Test.class },
-				new JPostmanTestProxy(target, activeContextSupplier, responseInfoSupplier));
+				new JPostmanTestProxy(target, activeContextSupplier, responseInfoSupplier, runtimeOwner));
 	}
 
 	static Object unwrap(Object value) {
@@ -295,7 +422,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 		}
 		if ("ctx".equals(name) && method.getParameterCount() == 0) {
 			Object active = activeContextSupplier == null ? null : activeContextSupplier.get();
-			return active == null ? proxy : wrap(active, activeContextSupplier);
+			return active == null ? proxy : wrap(active, activeContextSupplier, null, runtimeOwner);
 		}
 		if ("response".equals(name) && method.getParameterCount() == 1
 				&& method.getParameterTypes()[0] == BiConsumer.class) {
@@ -331,7 +458,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 		}
 
 		if (isGetRead(method, name, args)) {
-			Object value = resolveGet(target, (String) args[0]);
+			Object value = resolveGet(target, (String) args[0], runtimeOwner);
 
 			if (method.getParameterCount() == 2) {
 				value = JPostmanCacheValueConverter.convert(value, (Class<?>) args[1]);
@@ -363,14 +490,14 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		Method targetMethod = findTargetMethod(invocationTarget, name, args);
 		Object result = invokeTarget(targetMethod, invocationTarget, args);
-		recordValueMutation(invocationTarget, method, name, args);
+		recordValueMutation(invocationTarget, method, name, args, runtimeOwner);
 		if ("copy".equals(name) && method.getParameterCount() == 0 && result != null) {
 			copyValueSources(invocationTarget, result);
 		}
 		if (("request".equals(name) || "response".equals(name)) && result != null) {
 			result = JPostmanOutputProxy.wrap(result, method.getReturnType());
 		}
-		return adaptContextReturn(proxy, method, result, activeContextSupplier);
+		return adaptContextReturn(proxy, method, result, activeContextSupplier, runtimeOwner);
 	}
 
 	private static boolean isGetRead(Method method, String name, Object[] args) {
@@ -392,10 +519,22 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return parameterCount == 2 && args.length >= 2 && args[1] instanceof Class<?>;
 	}
 
-	private static Object resolveGet(Object target, String key) throws Throwable {
+	private static Object resolveGet(Object target, String key, Object runtimeOwner) throws Throwable {
 		String expression = key == null ? "" : key.trim();
 		if (expression.isBlank()) {
 			return null;
+		}
+
+		RuntimeValueScope runtimeScope = existingRuntimeScope(runtimeOwner);
+		if (runtimeScope != null) {
+			synchronized (runtimeScope) {
+				if (runtimeScope.secret.containsKey(expression)) {
+					return runtimeScope.secret.get(expression);
+				}
+				if (runtimeScope.plain.containsKey(expression)) {
+					return runtimeScope.plain.get(expression);
+				}
+			}
 		}
 
 		ValueSources sources = valueSources(target);
@@ -440,7 +579,8 @@ final class JPostmanTestProxy implements InvocationHandler {
 		return invokeTarget(getMethod, target, new Object[] { expression });
 	}
 
-	private static void recordValueMutation(Object target, Method method, String name, Object[] args) {
+	private static void recordValueMutation(Object target, Method method, String name, Object[] args,
+			Object runtimeOwner) {
 		if (target == null || method == null) {
 			return;
 		}
@@ -454,6 +594,14 @@ final class JPostmanTestProxy implements InvocationHandler {
 				Map<String, Object> destination = "secret".equals(name) ? sources.secret : sources.plain;
 				destination.putAll(values);
 			}
+
+			RuntimeValueScope runtimeScope = runtimeScope(runtimeOwner);
+			if (runtimeScope != null) {
+				synchronized (runtimeScope) {
+					Map<String, Object> destination = "secret".equals(name) ? runtimeScope.secret : runtimeScope.plain;
+					destination.putAll(values);
+				}
+			}
 			return;
 		}
 		if ("unsecret".equals(name)) {
@@ -463,6 +611,17 @@ final class JPostmanTestProxy implements InvocationHandler {
 				for (String key : names) {
 					if (sources.secret.containsKey(key)) {
 						sources.plain.put(key, sources.secret.remove(key));
+					}
+				}
+			}
+
+			RuntimeValueScope runtimeScope = existingRuntimeScope(runtimeOwner);
+			if (runtimeScope != null) {
+				synchronized (runtimeScope) {
+					for (String key : names) {
+						if (runtimeScope.secret.containsKey(key)) {
+							runtimeScope.plain.put(key, runtimeScope.secret.remove(key));
+						}
 					}
 				}
 			}
@@ -544,6 +703,11 @@ final class JPostmanTestProxy implements InvocationHandler {
 		synchronized (VALUE_SOURCES) {
 			return VALUE_SOURCES.computeIfAbsent(target, ignored -> new ValueSources());
 		}
+	}
+
+	private static final class RuntimeValueScope {
+		private final Map<String, Object> plain = new LinkedHashMap<>();
+		private final Map<String, Object> secret = new LinkedHashMap<>();
 	}
 
 	private static final class ValueSources {
@@ -1031,7 +1195,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	private static Object adaptContextReturn(Object proxy, Method method, Object result,
-			Supplier<?> activeContextSupplier) {
+			Supplier<?> activeContextSupplier, Object runtimeOwner) {
 		Class<?> returnType = method.getReturnType();
 		String name = method.getName();
 
@@ -1059,7 +1223,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return wrapSoftAssertions(result);
 		}
 		if (returnType == JPostman.Test.class || returnsTypeVariable(method, "C")) {
-			return result == null ? proxy : wrap(result);
+			return result == null ? proxy : wrap(result, null, null, runtimeOwner);
 		}
 		if (result != null && returnType.isInstance(result)) {
 			return result;

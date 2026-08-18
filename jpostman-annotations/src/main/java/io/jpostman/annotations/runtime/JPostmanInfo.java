@@ -851,6 +851,25 @@ public final class JPostmanInfo implements io.jpostman.annotations.JPostman.Info
 	}
 
 	/**
+	 * Creates an exact-location child that inherits the current request values as a
+	 * snapshot instead of sharing the parent's mutable request maps.
+	 *
+	 * <p>
+	 * Response dependencies use this scope because their own Request helpers must
+	 * be able to customize the dependency request without leaking
+	 * body/query/header/path mutations into later Runner requests. The method chain
+	 * and diagnostics remain shared so dependency reporting keeps the same
+	 * execution ancestry.
+	 * </p>
+	 */
+	JPostmanInfo childExactRequestScope(String method, String[] tags, String executor, String cache, String namespace,
+			String folder, String request) {
+		return new JPostmanInfo(mergeTags(this.tags, tags), value(executor), value(cache), method, value(namespace),
+				value(folder), value(request), methods, copy(body), copy(query), copy(headers), copy(path), copy(auth),
+				copy(params), created, context, diagnosticState).debug(this.debug);
+	}
+
+	/**
 	 * Inherits namespace, folder, and request values from another info object only
 	 * when this info object does not already define them.
 	 *

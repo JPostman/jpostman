@@ -102,6 +102,24 @@ public class JPostmanVerifySkipRegressionTest {
 	}
 
 	@Test
+	void failedRunnerRequestDebugDoesNotReplayLastRequestAtParentCompletion() {
+		List<String> output = new ArrayList<>();
+		TestNgReport report;
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			report = runFixture(RunnerFailureDebugFixture.class);
+		}
+
+		String text = String.join("", output).replace("\r\n", "\n");
+		assertEquals(0, report.passed.size());
+		assertEquals(1, report.failed.size());
+		assertEquals(0, report.skipped.size());
+		assertEquals(3, occurrences(text, "********** SecureRequest: **********"), text);
+		assertEquals(1, occurrences(text, "[POST  ] Folder request one"), text);
+		assertEquals(1, occurrences(text, "[POST  ] Folder request two"), text);
+		assertEquals(1, occurrences(text, "[POST  ] Folder request three"), text);
+	}
+
+	@Test
 	void requestAndResponseDebugUseSecureSectionHeaders() {
 		List<String> output = new ArrayList<>();
 		TestNgReport report;
@@ -305,6 +323,21 @@ public class JPostmanVerifySkipRegressionTest {
 		}
 
 		@JPostman.Runner(folder = "Product", verify = 1)
+		@org.testng.annotations.Test
+		public void runner() {
+		}
+	}
+
+	public static final class RunnerFailureDebugFixture {
+		@JPostman.Context(config = "", collection = "classpath:annotation-test-runner-per-request-collection.json", debug = "request")
+		private JPostman.Runtime<JPostman.Test> runtime;
+
+		@JPostman.Executor
+		public ApiExecutor executor(TestNgContext ctx, JPostman.Info info) {
+			return unauthorizedExecutor();
+		}
+
+		@JPostman.Runner(folder = "Product")
 		@org.testng.annotations.Test
 		public void runner() {
 		}

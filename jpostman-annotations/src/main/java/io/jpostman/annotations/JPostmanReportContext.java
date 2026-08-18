@@ -42,9 +42,11 @@ public @interface JPostmanReportContext {
 	 * <ul>
 	 * <li>{@code ignore} - continue after the failure without adding automatic
 	 * failure details to the report. This is the default.</li>
-	 * <li>{@code skipAll} - skip all remaining JPostman-managed tests.</li>
+	 * <li>{@code skipAll} - after the first failure, skip and report all remaining
+	 * JPostman-managed tests.</li>
 	 * <li>{@code terminate} - print the report summary and failure details, then
 	 * terminate the process.</li>
+	 * <li>{@code error} - include the cleaned failure error and stack trace.</li>
 	 * <li>{@code request} - include the prepared request.</li>
 	 * <li>{@code response} - include the received response.</li>
 	 * <li>{@code info} - include runtime annotation information.</li>
@@ -56,8 +58,8 @@ public @interface JPostmanReportContext {
 	 * output value is configured. It starts with the current short report line and
 	 * then appends the selected diagnostics. Examples: {@code fail = "request"},
 	 * {@code fail = { "request", "response" }},
-	 * {@code fail = { "skipAll", "all" }}, or
-	 * {@code fail = { "terminate", "request" }}.
+	 * {@code fail = { "response", "error" }}, {@code fail = { "skipAll", "all" }},
+	 * or {@code fail = { "terminate", "request" }}.
 	 * </p>
 	 *
 	 * @return failure action and optional diagnostics

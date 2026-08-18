@@ -72,12 +72,8 @@ class JPostmanReportDiagnosticRegressionTest {
 		assertThrows(IllegalArgumentException.class, () -> report.configure("verbose"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("ignore", "skipAll"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("all", "request"));
-		IllegalArgumentException removedError = assertThrows(IllegalArgumentException.class,
-				() -> report.configure("error"));
-		assertTrue(
-				removedError.getMessage()
-						.contains("Allowed values: ignore, skipAll, terminate, request, response, info, all."),
-				removedError.getMessage());
+		report.configure("error");
+		report.configure("response", "error");
 	}
 
 	@Test

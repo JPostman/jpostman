@@ -68,23 +68,27 @@ public final class JPostmanAnnotationEngine {
 			return;
 		}
 
-		Class<?> current = testInstance.getClass();
-		while (current != null && current != Object.class) {
-			for (Field field : current.getDeclaredFields()) {
-				field.setAccessible(true);
-				if (!JPostmanAnnotations.hasReportContext(field)) {
-					continue;
-				}
-				try {
-					Object value = field.get(testInstance);
-					if (value instanceof JPostmanReport) {
-						((JPostmanReport) value).summary();
+		try {
+			Class<?> current = testInstance.getClass();
+			while (current != null && current != Object.class) {
+				for (Field field : current.getDeclaredFields()) {
+					field.setAccessible(true);
+					if (!JPostmanAnnotations.hasReportContext(field)) {
+						continue;
 					}
-				} catch (IllegalAccessException e) {
-					throw new IllegalStateException(e);
+					try {
+						Object value = field.get(testInstance);
+						if (value instanceof JPostmanReport) {
+							((JPostmanReport) value).summary();
+						}
+					} catch (IllegalAccessException e) {
+						throw new IllegalStateException(e);
+					}
 				}
+				current = current.getSuperclass();
 			}
-			current = current.getSuperclass();
+		} finally {
+			JPostmanTestProxy.clearRuntimeValues(testInstance);
 		}
 	}
 
@@ -184,14 +188,44 @@ public final class JPostmanAnnotationEngine {
 	}
 
 	/**
+	 * Executes a standalone JUnit-facing {@code @JPostman.Response} even when the
+	 * Java method returns a value and therefore cannot be scheduled as a native
+	 * JUnit {@code @Test} method.
+	 *
+	 * @param testInstance active JUnit test instance
+	 * @param testMethod   standalone response method
+	 * @throws Exception when response execution fails
+	 */
+	public static void runJUnitExternalResponse(Object testInstance, Method testMethod) throws Exception {
+		beginVerificationOutcome();
+		beginAssertionCleanup(testInstance, testMethod);
+		try {
+			new JPostmanAnnotationRunner<>(new JUnitPostmanFramework()).runExternalResponse(testInstance, testMethod);
+			verifyRequestAssertions(testInstance, testMethod);
+		} catch (Throwable e) {
+			JPostmanDebugFile.failure(testInstance, debugInfo(testMethod), "debug", "", e);
+			Throwable root = JPostmanStackTraceCleaner.rootCause(e);
+			if (JPostmanStackTraceCleaner.isJUnitSkip(root)) {
+				throw asException(cleanThrowable(testInstance, testMethod, root));
+			}
+			throw cleanFailure(testInstance, testMethod, e);
+		} finally {
+			endAssertionCleanup();
+			clearVerificationOutcome();
+		}
+	}
+
+	/**
 	 * Runs JPostman annotation support for a JUnit test method and optionally
 	 * invokes a callback around each top-level @JPostmanRunner request.
 	 *
 	 * @param testInstance               JUnit test instance
 	 * @param testMethod                 current JUnit test method
-	 * @param afterRunnerRequestCallback callback invoked before and after each
-	 *                                   runner request, or null when no per-request
-	 *                                   callback is needed
+	 * @param afterRunnerRequestCallback callback used by runner lifecycle handling:
+	 *                                   lifecycle=true invokes it after each
+	 *                                   attempted request; lifecycle=false invokes
+	 *                                   it once when the whole runner reaches
+	 *                                   completion
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runJUnit(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)
@@ -350,9 +384,11 @@ public final class JPostmanAnnotationEngine {
 	 *
 	 * @param testInstance               TestNG test instance
 	 * @param testMethod                 current TestNG test method
-	 * @param afterRunnerRequestCallback callback invoked before and after each
-	 *                                   runner request, or null when no per-request
-	 *                                   callback is needed
+	 * @param afterRunnerRequestCallback callback used by runner lifecycle handling:
+	 *                                   lifecycle=true invokes it after each
+	 *                                   attempted request; lifecycle=false invokes
+	 *                                   it once when the whole runner reaches
+	 *                                   completion
 	 * @throws Exception when annotation execution fails
 	 */
 	public static void runTestNg(Object testInstance, Method testMethod, Runnable afterRunnerRequestCallback)

@@ -53,6 +53,19 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	/**
+	 * Marks the final aggregate failure produced after a runner has already
+	 * executed/reported its concrete requests. The outer annotation catch must not
+	 * render the last request context again under the parent runner info.
+	 */
+	private static final class RunnerAggregateFailure extends AssertionError {
+		private static final long serialVersionUID = 1L;
+
+		RunnerAggregateFailure(String message) {
+			super(message);
+		}
+	}
+
+	/**
 	 * Creates a runner for the supplied framework bridge.
 	 *
 	 * @param framework framework bridge used to perform context operations
@@ -95,6 +108,90 @@ public final class JPostmanAnnotationRunner<C> {
 		if (!prepared.isEmpty()) {
 			C current = prepared.contains("") ? prepared.context("") : prepared.firstContext();
 			framework.setCurrent(current);
+		}
+	}
+
+	/**
+	 * Executes a standalone/external {@code @JPostman.Response} method as a full
+	 * JPostman response execution, including invoking its Java method body and
+	 * caching the returned value (or full response for {@code void}).
+	 *
+	 * <p>
+	 * This is used by the JUnit bridge for response methods that cannot be
+	 * scheduled by JUnit itself, such as cache selectors returning String, Integer,
+	 * Object, etc.
+	 * </p>
+	 *
+	 * @param testInstance test instance that owns the response method
+	 * @param testMethod   external response method
+	 * @throws Exception when response execution or cache extraction fails
+	 */
+	public void runExternalResponse(Object testInstance, Method testMethod) throws Exception {
+		JPostmanResponse annotation = JPostmanAnnotations.response(testMethod);
+		if (annotation == null) {
+			return;
+		}
+
+		// Reuse the normal top-level response path for request preparation, dependency
+		// execution, HTTP execution, verification, diagnostics, and report recording.
+		// IMPORTANT: run the Java response body immediately after that execution, while
+		// the completed HTTP response is still installed in the injected Runtime/Test
+		// context. Re-preparing the contexts first drops the active secure response and
+		// makes runtime.test().path(...) fail with "Secure response is not set" even
+		// though the request itself completed successfully.
+		run(testInstance, testMethod);
+
+		JPostmanReport report = report(testInstance);
+		JPostmanInfo info = report == null ? null : report.execution(testMethod.getName());
+		if (info == null) {
+			info = info(testMethod.getName(), null, annotation, null, null);
+			inheritResponseLocationFromDependencies(testInstance, annotation, info);
+			applyDefaultExecutorNamespace(testInstance, info);
+			info.method(testMethod.getName());
+		}
+
+		Object value;
+		try {
+			// The common external-response form has no parameters and reads the completed
+			// response through the injected runtime, for example:
+			// return runtime.test().path("accessToken");
+			value = invokeAnnotated(testInstance, testMethod, null, info);
+		} catch (Exception | Error error) {
+			failed(report, info, null, error);
+			throw error;
+		}
+
+		/*
+		 * Cache into the exact prepared context that still owns the completed HTTP
+		 * response. Re-preparing here creates a fresh request/response context (cache
+		 * is copied, response state intentionally is not), which makes a void Response
+		 * fail while snapshotting its full response with "Secure response is not set" /
+		 * "Unable to snapshot JPostman response". The next top-level method will create
+		 * its own fresh context and carry this cache forward normally.
+		 */
+		PreparedContexts<C> prepared = contextRunner.activeContexts(testInstance);
+		if (prepared == null) {
+			throw new IllegalStateException(
+					"JPostman external Response completed without an active prepared context: " + testMethod.getName());
+		}
+
+		if (info.context == null) {
+			info = info.context(prepared.resolve(info.namespace).contextAnnotation);
+		}
+
+		try {
+			String cache = cacheKey(testMethod, annotation.cache(), annotation.id());
+			cacheResponseDependencyResult(prepared, testMethod, info, cache, value);
+			prepared.info(info);
+			add(report, info);
+		} catch (Exception | Error error) {
+			C latest = latestContext(prepared, info.namespace, prepared.context(info.namespace));
+			failed(report, info, latest, error);
+			throw error;
+		} finally {
+			contextRunner.injectTestContexts(testInstance, prepared);
+			contextRunner.injectLoadedContexts(testInstance, prepared);
+			contextRunner.injectAssertContexts(testInstance, prepared);
 		}
 	}
 
@@ -213,14 +310,13 @@ public final class JPostmanAnnotationRunner<C> {
 						prepareRunnerScope(testInstance, prepared, runnerAnnotation, info);
 						String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, runnerAnnotation,
 								info);
-						String[] setupDependencies = runnerAnnotation.lifecycle()
-								? dependencies(runnerAnnotation.dependsOn())
-								: runnerSetupDependencies(testInstance, runnerAnnotation, info);
+						String[] setupDependencies = runnerSetupDependencies(testInstance, runnerAnnotation, info);
 						runDependencies(testInstance, prepared, setupDependencies,
 								info.withTags(runnerAnnotation.tags()), stack);
-						executeRunner(testInstance, prepared, runnerAnnotation, info, stack, true,
+						executeRunner(testInstance, prepared, runnerAnnotation, info, stack,
+								runnerAnnotation.lifecycle(),
 								runnerAnnotation.lifecycle() && runnerUsesBeforeRequestRules(testMethod),
-								runnerAnnotation.lifecycle() ? new String[0] : perRequestDependencies);
+								perRequestDependencies);
 					}
 				} finally {
 					endRunnerVerifyScope();
@@ -230,19 +326,35 @@ public final class JPostmanAnnotationRunner<C> {
 			String localDebug = annotationDebug(requestAnnotation, responseAnnotation, callAnnotation,
 					runnerAnnotation);
 			C latest = latestContext(prepared, info.namespace, current.context);
-			if (!isFrameworkSkip(e)) {
+			boolean concreteRunnerResult = runnerAnnotation != null && report != null
+					&& report.hasRunnerRequest(info.method);
+			boolean aggregateRunnerFailure = runnerAnnotation != null && e instanceof RunnerAggregateFailure;
+			boolean completedRunnerResult = concreteRunnerResult || aggregateRunnerFailure;
+
+			/*
+			 * A top-level runner aggregate failure already emitted request/response debug
+			 * for each concrete runner request. The parent runner info has no request name,
+			 * while latest still points at the final request context. Printing failure
+			 * diagnostics again here therefore makes the last HTTP request look as if it
+			 * executed twice.
+			 *
+			 * Do not infer this only from the mutable report. During TestNG hook execution
+			 * the report may not expose the runner request records at this exact outer
+			 * catch point. RunnerAggregateFailure is emitted only by executeRunner after
+			 * concrete request processing has finished, so it is the reliable signal that
+			 * request diagnostics have already been produced.
+			 */
+			if (!isFrameworkSkip(e) && !completedRunnerResult) {
 				debugOutputAfterFailure(testInstance, latest, info, localDebug);
 			}
 			String internalDiagnostic = internalDiagnosticLog(latest);
-			boolean concreteRunnerResult = runnerAnnotation != null && report != null
-					&& report.hasRunnerRequest(info.method);
 			if (isFrameworkSkip(e)) {
-				if (!concreteRunnerResult) {
+				if (!completedRunnerResult) {
 					skipped(report, info);
 				}
 				JPostmanDebugFile.skipped(testInstance, info, localDebug, internalDiagnostic, e);
 			} else {
-				if (!concreteRunnerResult) {
+				if (!completedRunnerResult) {
 					failed(report, info, latest, e);
 				}
 				JPostmanDebugFile.failure(testInstance, info, localDebug, internalDiagnostic, e);
@@ -280,12 +392,12 @@ public final class JPostmanAnnotationRunner<C> {
 		try {
 			return methodCallsRunnerRules(testMethod, bytecode);
 		} catch (RuntimeException ignored) {
-			String text = new String(bytecode, java.nio.charset.StandardCharsets.ISO_8859_1);
-			if (!text.contains("io/jpostman/annotations/runtime/JPostmanRuntime$RunnerRules")) {
-				return false;
-			}
-			return text.contains("start") || text.contains("response") || text.contains("has") || text.contains("any")
-					|| text.contains("otherwise") || text.contains("end") || text.contains("then");
+			/*
+			 * Do not guess from raw class-file text. A diagnostic body may contain words
+			 * such as "request" without calling RunnerRules.request(...), which would
+			 * incorrectly execute the Java body twice per request.
+			 */
+			return false;
 		}
 	}
 
@@ -326,17 +438,13 @@ public final class JPostmanAnnotationRunner<C> {
 		if (ref == null || ref.owner == null || ref.name == null) {
 			return false;
 		}
-		if ("io/jpostman/annotations/runtime/JPostmanRuntime$RunnerCondition".equals(ref.owner)) {
-			return "then".equals(ref.name);
-		}
 		if (!"io/jpostman/annotations/runtime/JPostmanRuntime$RunnerRules".equals(ref.owner)) {
 			return false;
 		}
 		if ("request".equals(ref.name)) {
 			return ref.descriptor != null && !ref.descriptor.startsWith("()");
 		}
-		return "start".equals(ref.name) || "response".equals(ref.name) || "has".equals(ref.name)
-				|| "any".equals(ref.name) || "otherwise".equals(ref.name) || "end".equals(ref.name);
+		return "start".equals(ref.name);
 	}
 
 	private String methodDescriptor(Method method) {
@@ -997,10 +1105,10 @@ public final class JPostmanAnnotationRunner<C> {
 
 	/**
 	 * Returns blank-request {@code @JPostman.Request} dependencies that should be
-	 * invoked once for every selected runner request when lifecycle mode is
-	 * disabled. The active runner request supplies the missing request name, while
-	 * the helper may still provide namespace/folder scope and request
-	 * customizations.
+	 * invoked once for every selected runner request. Runner lifecycle controls
+	 * only the Java runner-body callback timing; it must not change request-helper
+	 * scope. The active runner request supplies the missing request name, while the
+	 * helper may still provide namespace/folder scope and request customizations.
 	 */
 	private String[] runnerPerRequestDependencies(Object testInstance, JPostmanRunner annotation, JPostmanInfo info) {
 		return runnerDependencies(testInstance, annotation, info, true);
@@ -1098,8 +1206,8 @@ public final class JPostmanAnnotationRunner<C> {
 		 * unrelated explicit parent location.
 		 */
 		JPostmanInfo info = parentInfo
-				.childExact(dependencyMethod.getName(), "", annotation.executor(), cache, annotation.namespace(),
-						folder(annotation.folder()), annotation.request())
+				.childExactRequestScope(dependencyMethod.getName(), new String[0], annotation.executor(), cache,
+						annotation.namespace(), folder(annotation.folder()), annotation.request())
 				.annotation("@JPostmanResponse").id(annotationId(annotation.id())).debug(annotation.debug());
 		/*
 		 * A blank dependency namespace still uses the selected/default void
@@ -1184,19 +1292,20 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 		beginRunnerVerifyScope(annotation.verify());
 		try {
+			String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, annotation, runnerInfo);
+			String[] setupDependencies = runnerSetupDependencies(testInstance, annotation, runnerInfo);
 			if (annotation.lifecycle()) {
-				runDependencies(testInstance, resolver, dependencies(annotation.dependsOn()),
-						runnerInfo.withTags(annotation.tags()), stack);
+				runDependencies(testInstance, resolver, setupDependencies, runnerInfo.withTags(annotation.tags()),
+						stack);
 				executeRunner(testInstance, resolver, annotation, runnerInfo, stack, true,
-						runnerUsesBeforeRequestRules(dependencyMethod), new String[0],
+						runnerUsesBeforeRequestRules(dependencyMethod), perRequestDependencies,
 						(ctx, callbackInfo) -> invokeAnnotated(testInstance, dependencyMethod, ctx, callbackInfo));
 				return;
 			}
 
 			runCachedDependency(testInstance, resolver, dependencyMethod, runnerInfo, "", () -> {
-				String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, annotation, runnerInfo);
-				runDependencies(testInstance, resolver, runnerSetupDependencies(testInstance, annotation, runnerInfo),
-						runnerInfo.withTags(annotation.tags()), stack);
+				runDependencies(testInstance, resolver, setupDependencies, runnerInfo.withTags(annotation.tags()),
+						stack);
 				executeRunner(testInstance, resolver, annotation, runnerInfo, stack, false, false,
 						perRequestDependencies);
 			});
@@ -1290,13 +1399,11 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		String[] perRequestDependencies = runnerPerRequestDependencies(testInstance, reusableAnnotation, runnerInfo);
-		String[] setupDependencies = reusableAnnotation.lifecycle() ? dependencies(reusableAnnotation.dependsOn())
-				: runnerSetupDependencies(testInstance, reusableAnnotation, runnerInfo);
+		String[] setupDependencies = runnerSetupDependencies(testInstance, reusableAnnotation, runnerInfo);
 		runDependencies(testInstance, resolver, setupDependencies, runnerInfo.withTags(reusableAnnotation.tags()),
 				stack);
 		executeRunner(testInstance, resolver, reusableAnnotation, runnerInfo, stack, true,
-				reusableAnnotation.lifecycle() && runnerUsesBeforeRequestRules(reusableRunner),
-				reusableAnnotation.lifecycle() ? new String[0] : perRequestDependencies,
+				reusableAnnotation.lifecycle() && runnerUsesBeforeRequestRules(reusableRunner), perRequestDependencies,
 				reusableRunnerBodyCallback(testInstance, reusableRunner, launcherMethod, launcherAnnotation));
 	}
 
@@ -1555,6 +1662,7 @@ public final class JPostmanAnnotationRunner<C> {
 			loadEnvironment(result, preparedContext.loaded.getEnvironment());
 		}
 		framework.copyCache(cacheSource, result);
+		framework.copyRuntimeValues(cacheSource, result);
 		return result;
 	}
 
@@ -1619,6 +1727,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private C requestWithCache(C context, Request request, JPostmanInfo info) {
 		C result = framework.request(context, request, info);
 		framework.copyCache(context, result);
+		framework.copyRuntimeValues(context, result);
 		return result;
 	}
 
@@ -1628,6 +1737,7 @@ public final class JPostmanAnnotationRunner<C> {
 			C previous = result;
 			result = framework.filter(result, filter);
 			framework.copyCache(previous, result);
+			framework.copyRuntimeValues(previous, result);
 		}
 		return result;
 	}
@@ -1638,6 +1748,7 @@ public final class JPostmanAnnotationRunner<C> {
 			C previous = result;
 			result = framework.filterResponse(result, filter);
 			framework.copyCache(previous, result);
+			framework.copyRuntimeValues(previous, result);
 		}
 		return result;
 	}
@@ -1648,11 +1759,13 @@ public final class JPostmanAnnotationRunner<C> {
 			C previous = result;
 			result = framework.loadRules(result, rule);
 			framework.copyCache(previous, result);
+			framework.copyRuntimeValues(previous, result);
 		}
 		if (filter != null && filter.length > 0) {
 			C previous = result;
 			result = framework.filter(result, filter);
 			framework.copyCache(previous, result);
+			framework.copyRuntimeValues(previous, result);
 		}
 		return result;
 	}
@@ -1727,6 +1840,7 @@ public final class JPostmanAnnotationRunner<C> {
 			// check runs against the completed manual-call response.
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
 			debugOutput(testInstance, ctx, info, annotation.debug());
+			passed(report(testInstance), info);
 			return ctx;
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
@@ -1781,6 +1895,26 @@ public final class JPostmanAnnotationRunner<C> {
 		List<String> executableRequestNames = runnerExecutableRequestNames(testInstance, info, requestNames, includes,
 				excludes, skipped, requestDependencyMethods);
 
+		/*
+		 * A non-framework @JPostman.Response with an explicit verification value is an
+		 * executable setup response for this runner. ReStage uses this for cached
+		 * selector methods that return a value: JUnit requires @Test methods to be
+		 * void, and TestNG ignores return-value tests by default, so the Response is
+		 * deliberately not a framework @Test. Execute it once here, including its
+		 * Request/Response dependencies and cache body, before the remaining folder
+		 * requests. Responses that keep verify=-1 or verify=0 retain the historical
+		 * runner behavior and are only filtered from the folder execution.
+		 */
+		try {
+			executeVerifiedExternalRunnerResponses(testInstance, resolver, info, stack, requestNames, includes,
+					excludes, failures);
+		} catch (Exception | Error e) {
+			if (report != null && report.skipRemaining()) {
+				skipRemainingRunnerRequests(report, info, executableRequestNames, 0);
+			}
+			throw e;
+		}
+
 		if (notifyAfterRequest) {
 			JPostmanRuntimeRunner.begin(executableRequestNames, annotation.lifecycle());
 		}
@@ -1802,6 +1936,7 @@ public final class JPostmanAnnotationRunner<C> {
 				framework.setCurrent(ctx);
 
 				executed++;
+				Throwable hardRunnerBodyFailure = null;
 				try {
 					if (perRequestDependencies != null && perRequestDependencies.length > 0) {
 						runDependencies(testInstance, resolver, perRequestDependencies,
@@ -1820,16 +1955,73 @@ public final class JPostmanAnnotationRunner<C> {
 					resolver.update(info.namespace, ctx);
 					framework.setCurrent(ctx);
 
-					executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
-					notifyAfterRunnerRequest(testInstance, notifyAfterRequest, requestIndex, requestName,
-							latestContext(resolver, requestInfo.namespace, ctx), requestInfo, runnerBodyCallback);
+					Throwable responseFailure = null;
+					try {
+						executeRunnerResponse(testInstance, resolver, ctx, annotation, requestInfo, stack);
+					} catch (Exception | Error e) {
+						responseFailure = e;
+					}
+
+					/*
+					 * lifecycle=true is a response callback contract. A completed HTTP request must
+					 * invoke the runner body even when status/assert verification failed.
+					 * Previously executeRunnerResponse(...) threw before this callback, which is
+					 * why a 401/403 could make a simple runtime.info() body disappear entirely.
+					 */
+					if (responseFailure == null || requestInfo.statusCode() != null) {
+						try {
+							notifyAfterRunnerRequest(testInstance, notifyAfterRequest, requestIndex, requestName,
+									latestContext(resolver, requestInfo.namespace, ctx), requestInfo,
+									runnerBodyCallback);
+						} catch (Exception | Error callbackFailure) {
+							if (!JPostmanRuntimeRunner.isSoftFailure(callbackFailure)) {
+								/*
+								 * A hard Java runner-body assertion is not an HTTP verification failure. It
+								 * must retain normal hard/fail-fast semantics even though the request already
+								 * has a concrete response status.
+								 */
+								hardRunnerBodyFailure = callbackFailure;
+								if (responseFailure != null && responseFailure != callbackFailure) {
+									callbackFailure.addSuppressed(responseFailure);
+								}
+								throw callbackFailure;
+							}
+							if (responseFailure != null) {
+								responseFailure.addSuppressed(callbackFailure);
+							} else {
+								throw callbackFailure;
+							}
+						}
+					}
+					if (responseFailure != null) {
+						rethrowProceedFailure(responseFailure);
+					}
 				} catch (Exception | Error e) {
 					C latest = latestContext(resolver, requestInfo.namespace, ctx);
 					failed(report, requestInfo, latest, e);
-					if (!JPostmanRuntimeRunner.isSoftFailure(e)) {
+
+					if (hardRunnerBodyFailure != null) {
+						/* Hard runner-body assertions retain normal fail-fast semantics. */
+						rethrowProceedFailure(e);
+					}
+
+					/*
+					 * Request-level failures with a concrete HTTP response are collected so the
+					 * runner can continue through the rest of the folder. fail="terminate" exits
+					 * from JPostmanReport.failed(). fail="skipAll" is different: the request that
+					 * actually failed remains FAILED, while every later request in this runner is
+					 * recorded as SKIPPED without being executed. Configuration/pre-execution
+					 * failures still fail fast because there is no completed request to report.
+					 */
+					if (requestInfo.statusCode() == null && !JPostmanRuntimeRunner.isSoftFailure(e)) {
 						throw e;
 					}
 					failures.add(locationError(testInstance, requestInfo, e));
+
+					if (report != null && report.skipRemaining()) {
+						skipRemainingRunnerRequests(report, info, executableRequestNames, requestIndex + 1);
+						break;
+					}
 				}
 			}
 		} finally {
@@ -1839,19 +2031,182 @@ public final class JPostmanAnnotationRunner<C> {
 		}
 
 		if (executed == 0) {
+			if (!failures.isEmpty()) {
+				AssertionError runnerFailure = combinedRunnerError(testInstance, failures);
+				invokeRunnerCompletionBody(testInstance, annotation, notifyAfterRequest, resolver, info,
+						runnerBodyCallback, runnerFailure);
+				throw runnerFailure;
+			}
 			if (allRunnerRequestsHandledByExplicitAnnotations(requestNames, skipped)) {
 				// The runner is still a successful top-level test even when every request in
 				// its scope is owned by an explicit @JPostmanResponse method. No concrete
 				// runner-request records exist in this case, so record the parent runner once.
 				passed(report, info);
+				invokeRunnerCompletionBody(testInstance, annotation, notifyAfterRequest, resolver, info,
+						runnerBodyCallback, null);
 				return;
 			}
 			throw runnerNothingExecutedError(info, requestNames, skipped);
 		}
 
 		if (!failures.isEmpty()) {
-			throw combinedRunnerError(testInstance, failures);
+			AssertionError runnerFailure = combinedRunnerError(testInstance, failures);
+			invokeRunnerCompletionBody(testInstance, annotation, notifyAfterRequest, resolver, info, runnerBodyCallback,
+					runnerFailure);
+			throw runnerFailure;
 		}
+
+		invokeRunnerCompletionBody(testInstance, annotation, notifyAfterRequest, resolver, info, runnerBodyCallback,
+				null);
+	}
+
+	/**
+	 * lifecycle=false is a whole-runner callback. Invoke the framework test body
+	 * exactly once after the runner reaches its normal completion point, including
+	 * the aggregate-failure completion path. Configuration/preparation failures
+	 * that abort executeRunner before request processing still bypass this
+	 * callback.
+	 *
+	 * <p>
+	 * When the runner already has a failure, that failure remains primary. A body
+	 * failure is attached as suppressed so diagnostics in the final callback can
+	 * never replace the HTTP/verification failure that caused the runner to fail.
+	 * Reusable runner dependency launchers that already own per-request callbacks
+	 * keep their existing callback path and do not receive an extra completion
+	 * callback.
+	 * </p>
+	 */
+	private void invokeRunnerCompletionBody(Object testInstance, JPostmanRunner annotation,
+			boolean requestCallbacksEnabled, PreparedContexts<C> resolver, JPostmanInfo runnerInfo,
+			RunnerBodyCallback<C> runnerBodyCallback, Throwable runnerFailure) throws Exception {
+		if (annotation == null || annotation.lifecycle() || requestCallbacksEnabled || runnerBodyCallback == null) {
+			return;
+		}
+
+		JPostmanInfo completionInfo = resolver.info();
+		if (completionInfo == null) {
+			completionInfo = runnerInfo;
+		}
+		C completionContext = latestContext(resolver, completionInfo.namespace,
+				resolver.context(completionInfo.namespace));
+
+		try {
+			runnerBodyCallback.run(completionContext, completionInfo);
+		} catch (Exception | Error bodyFailure) {
+			if (runnerFailure != null) {
+				runnerFailure.addSuppressed(bodyFailure);
+				return;
+			}
+			if (bodyFailure instanceof Exception) {
+				throw (Exception) bodyFailure;
+			}
+			throw (Error) bodyFailure;
+		}
+	}
+
+	private void skipRemainingRunnerRequests(JPostmanReport report, JPostmanInfo runnerInfo,
+			List<String> executableRequestNames, int startIndex) {
+		if (report == null || runnerInfo == null || executableRequestNames == null) {
+			return;
+		}
+		for (int index = Math.max(0, startIndex); index < executableRequestNames.size(); index++) {
+			String requestName = executableRequestNames.get(index);
+			JPostmanInfo skippedInfo = runnerInfo.runnerRequest(requestName).annotation("@JPostmanRunner");
+			skipped(report, skippedInfo);
+		}
+	}
+
+	private void executeVerifiedExternalRunnerResponses(Object testInstance, PreparedContexts<C> resolver,
+			JPostmanInfo runnerInfo, List<String> stack, List<String> requestNames, Set<String> includes,
+			Set<String> excludes, List<Throwable> failures) throws Exception {
+		Set<Method> handled = new LinkedHashSet<>();
+		List<Method> responseMethods = requestDiscovery.responseMethods(testInstance.getClass());
+
+		/*
+		 * Iterate in collection order, not reflection order. A generated cache Response
+		 * may leave folder/request blank and inherit them from its @JPostman.Request
+		 * dependency, so resolve the effective location before deciding whether it
+		 * belongs to this runner.
+		 */
+		for (String requestName : requestNames) {
+			if (!includes.isEmpty() && !includes.contains(requestName)) {
+				continue;
+			}
+			if (excludes.contains(requestName)) {
+				continue;
+			}
+
+			for (Method method : responseMethods) {
+				if (handled.contains(method)) {
+					continue;
+				}
+				JPostmanResponse response = JPostmanAnnotations.response(method);
+				if (response == null || response.verify() == -1 || response.verify() == 0
+						|| hasFrameworkTestAnnotation(method)) {
+					continue;
+				}
+
+				JPostmanInfo effective = info(method.getName(), null, response, null, null);
+				inheritResponseLocationFromDependencies(testInstance, response, effective);
+				applyDefaultExecutorNamespace(testInstance, effective);
+				if (!sameRunnerLocation(effective, runnerInfo, requestName)) {
+					continue;
+				}
+
+				handled.add(method);
+				try {
+					method.setAccessible(true);
+					runResponseDependency(testInstance, resolver, method, response, runnerInfo, stack);
+				} catch (Exception | Error e) {
+					JPostmanReport report = report(testInstance);
+					if (report != null && report.skipRemaining()) {
+						throw e;
+					}
+
+					JPostmanInfo responseInfo = report == null ? null : report.execution(method.getName());
+					boolean completedRequest = responseInfo != null && responseInfo.statusCode() != null;
+					if (!completedRequest) {
+						try {
+							C active = resolver.activeContext();
+							completedRequest = active != null && framework.responseStatusCode(active) != null;
+						} catch (RuntimeException | LinkageError ignored) {
+							// The original execution failure remains authoritative.
+						}
+					}
+
+					if (!completedRequest && !JPostmanRuntimeRunner.isSoftFailure(e)) {
+						throw e;
+					}
+					failures.add(locationError(testInstance, responseInfo == null ? effective : responseInfo, e));
+				} finally {
+					resolver.info(runnerInfo);
+					C runnerContext = resolver.resolve(runnerInfo.namespace).context;
+					framework.setCurrent(runnerContext);
+				}
+			}
+		}
+	}
+
+	private boolean sameRunnerLocation(JPostmanInfo responseInfo, JPostmanInfo runnerInfo, String requestName) {
+		if (responseInfo == null || runnerInfo == null) {
+			return false;
+		}
+		return value(responseInfo.namespace).trim().equals(value(runnerInfo.namespace).trim())
+				&& value(responseInfo.folder).trim().equals(value(runnerInfo.folder).trim())
+				&& value(responseInfo.request).trim().equals(value(requestName).trim());
+	}
+
+	private boolean hasFrameworkTestAnnotation(Method method) {
+		if (method == null) {
+			return false;
+		}
+		for (java.lang.annotation.Annotation annotation : method.getDeclaredAnnotations()) {
+			String name = annotation.annotationType().getName();
+			if ("org.junit.jupiter.api.Test".equals(name) || "org.testng.annotations.Test".equals(name)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private List<String> runnerExecutableRequestNames(Object testInstance, JPostmanInfo info, List<String> requestNames,
@@ -2289,7 +2644,9 @@ public final class JPostmanAnnotationRunner<C> {
 				if (action != null) {
 					action.accept(active, info);
 				}
+				C responseSource = active;
 				active = framework.response(active, apiExecutor);
+				framework.copyRuntimeValues(responseSource, active);
 				captureResponseStatus(active, info);
 				if (afterResponse != null) {
 					active = afterResponse.apply(active);
@@ -2329,6 +2686,7 @@ public final class JPostmanAnnotationRunner<C> {
 		C latest = latestContext(resolver, info.namespace, active);
 		try {
 			C completed = framework.response(latest, () -> mapped.apiResponse());
+			framework.copyRuntimeValues(latest, completed);
 			captureResponseStatus(completed, info);
 			completeProceedResponse(resolver, proceed, info, completed);
 			return completed;
@@ -2925,7 +3283,7 @@ public final class JPostmanAnnotationRunner<C> {
 			}
 		}
 
-		AssertionError error = new AssertionError(message.toString() + JPostmanErrors.ENDL);
+		AssertionError error = new RunnerAggregateFailure(message.toString() + JPostmanErrors.ENDL);
 		for (Throwable failure : failures) {
 			if (failure != null && failure.getStackTrace() != null && failure.getStackTrace().length > 0) {
 				error.setStackTrace(failure.getStackTrace());
@@ -3746,12 +4104,12 @@ public final class JPostmanAnnotationRunner<C> {
 			return invoke(testInstance, method);
 		}
 		if (types.length == 1 && isContextParameter(types[0])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx));
+			return invoke(testInstance, method, contextArg(types[0], ctx, null, testInstance));
 		}
 		if (types.length == 1 && isInfoParameter(types[0])) {
 			return invoke(testInstance, method, info);
 		}
-		return invoke(testInstance, method, contextArg(types[0], ctx), info);
+		return invoke(testInstance, method, contextArg(types[0], ctx, null, testInstance), info);
 	}
 
 	private void verifyExecutorResult(Object result, Method executor, JPostmanInfo info) {
@@ -4138,12 +4496,10 @@ public final class JPostmanAnnotationRunner<C> {
 				&& (framework.contextType().isAssignableFrom(type) || JPostman.Test.class.isAssignableFrom(type));
 	}
 
-	private Object contextArg(Class<?> type, C ctx) {
-		return contextArg(type, ctx, null);
-	}
-
-	private Object contextArg(Class<?> type, C ctx, Supplier<?> activeContextSupplier) {
-		return JPostman.Test.class.isAssignableFrom(type) ? JPostmanTestProxy.wrap(ctx, activeContextSupplier) : ctx;
+	private Object contextArg(Class<?> type, C ctx, Supplier<?> activeContextSupplier, Object runtimeOwner) {
+		return JPostman.Test.class.isAssignableFrom(type)
+				? JPostmanTestProxy.wrap(ctx, activeContextSupplier, null, runtimeOwner)
+				: ctx;
 	}
 
 	private boolean isInfoParameter(Class<?> type) {
@@ -4188,7 +4544,7 @@ public final class JPostmanAnnotationRunner<C> {
 		// JPostman.Test is proxied with activeContextSupplier so print(true) can use
 		// the latest request prepared from the current JPostmanInfo values.
 		if (types.length == 1 && isContextParameter(types[0])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier));
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier, testInstance));
 		}
 
 		// Supports a helper that receives only annotation execution information:
@@ -4200,20 +4556,21 @@ public final class JPostmanAnnotationRunner<C> {
 		// Supports context plus annotation execution information:
 		// void helper(TestNgContext test, JPostman.Info info)
 		if (types.length == 2 && isContextParameter(types[0]) && isInfoParameter(types[1])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier), info);
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier, testInstance), info);
 		}
 
 		// Supports context plus the current annotated Java method name:
 		// void helper(TestNgContext test, String method)
 		if (types.length == 2 && isContextParameter(types[0]) && String.class.isAssignableFrom(types[1])) {
-			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier), info.method);
+			return invoke(testInstance, method, contextArg(types[0], ctx, activeContextSupplier, testInstance),
+					info.method);
 		}
 
 		// Supports all three injected values: context, method name, and request name:
 		// void helper(TestNgContext test, String method, String request)
 		if (types.length == 3 && isContextParameter(types[0]) && String.class.isAssignableFrom(types[1])
 				&& String.class.isAssignableFrom(types[2])) {
-			Object contextArg = contextArg(types[0], ctx, activeContextSupplier);
+			Object contextArg = contextArg(types[0], ctx, activeContextSupplier, testInstance);
 			return invoke(testInstance, method, contextArg, info.method, info.request);
 		}
 

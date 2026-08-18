@@ -72,12 +72,8 @@ class JPostmanReportDetailsRegressionTest {
 		assertThrows(IllegalArgumentException.class, () -> report.configure("verbose"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("ignore", "skipAll"));
 		assertThrows(IllegalArgumentException.class, () -> report.configure("all", "request"));
-		IllegalArgumentException removedError = assertThrows(IllegalArgumentException.class,
-				() -> report.configure("error"));
-		assertTrue(
-				removedError.getMessage()
-						.contains("Allowed values: ignore, skipAll, terminate, request, response, info, all."),
-				removedError.getMessage());
+		report.configure("error");
+		report.configure("response", "error");
 	}
 
 	@Test
@@ -301,6 +297,39 @@ class JPostmanReportDetailsRegressionTest {
 		assertEquals(1, occurrences(output, "getCurrentAuthenticatedUser:"), output);
 		assertFalse(output.contains("(synthetic"), output);
 		assertFalse(output.contains("ConnectException"), output);
+	}
+
+	@Test
+	void callAndExecutedResponseDependencyAreReportedAsSeparateExecutions() {
+		JPostmanReport report = new JPostmanReport().configure(true, new String[] { "ignore" });
+		JPostmanInfo call = new JPostmanInfo(new String[0], "", "getCurrentAuthenticatedUser", "restage", "Auth",
+				"Get current authenticated user");
+		call.annotation = "@JPostmanCall";
+		call.method("getCurrentAuthenticatedUser");
+
+		JPostmanInfo dependency = call.childExact("getAccessToken", "restage", "Auth",
+				"Login user and get access/refresh tokens");
+		dependency.annotation = "@JPostmanResponse";
+		dependency.method("getAccessToken");
+		dependency.appendMethod("HttpClientExecutor(#auth)");
+		dependency.statusCode(200);
+
+		call.appendMethod("HttpClientExecutor");
+		call.statusCode(200);
+
+		report.passed(dependency);
+		report.passed(call);
+
+		assertEquals(2, report.total());
+		String output = capture(report::summary).get(0);
+		assertTrue(output.contains("getAccessToken:  statusCode=200"), output);
+		assertTrue(
+				output.contains(
+						"{namespace = restage, folder = Auth, request = Login user and get access/refresh tokens}"),
+				output);
+		assertTrue(output.contains("getCurrentAuthenticatedUser:  statusCode=200"), output);
+		assertTrue(output.contains("{namespace = restage, folder = Auth, request = Get current authenticated user}"),
+				output);
 	}
 
 	@Test

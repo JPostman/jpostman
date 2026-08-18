@@ -2,6 +2,7 @@ package io.jpostman.annotations.runtime;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +24,21 @@ final class JPostmanRequestDiscovery {
 			addName(names, request.getName());
 		}
 		return names;
+	}
+
+	List<Method> responseMethods(Class<?> type) {
+		List<Method> result = new ArrayList<>();
+		Class<?> current = type;
+		while (current != null && current != Object.class) {
+			for (Method method : current.getDeclaredMethods()) {
+				if (JPostmanAnnotations.response(method) != null) {
+					result.add(method);
+				}
+			}
+			current = current.getSuperclass();
+		}
+		result.sort(Comparator.comparing(Method::getName));
+		return result;
 	}
 
 	boolean hasExplicitResponse(Class<?> type, String namespace, String folder, String requestName) {
