@@ -105,13 +105,28 @@ final class JPostmanAssertionRunner<C> {
 			return false;
 		}
 
-		Object asserts = assertionTarget(ctx, soft, log);
+		Object hardAssertions = null;
+		Object softAssertions = null;
 		for (Map.Entry<String, String> entry : resolved.entrySet()) {
-			applyAssertionRule(asserts, entry.getKey(), entry.getValue());
+			boolean ruleSoft = soft || isSoftAssertionRule(entry.getKey());
+			String ruleKey = assertionRuleKey(entry.getKey());
+			Object target;
+			if (ruleSoft) {
+				if (softAssertions == null) {
+					softAssertions = assertionTarget(ctx, true, log);
+				}
+				target = softAssertions;
+			} else {
+				if (hardAssertions == null) {
+					hardAssertions = assertionTarget(ctx, false, log);
+				}
+				target = hardAssertions;
+			}
+			applyAssertionRule(target, ruleKey, entry.getValue());
 		}
 
-		if (soft) {
-			invokeOptional(asserts, "assertAll");
+		if (softAssertions != null) {
+			invokeOptional(softAssertions, "assertAll");
 		}
 		return true;
 	}
@@ -315,7 +330,7 @@ final class JPostmanAssertionRunner<C> {
 	}
 
 	private boolean isRepeatableRule(String key) {
-		switch (key) {
+		switch (assertionRuleKey(key)) {
 		case "exists":
 		case "notExists":
 		case "pathNotNull":
@@ -326,6 +341,15 @@ final class JPostmanAssertionRunner<C> {
 		default:
 			return false;
 		}
+	}
+
+	private static boolean isSoftAssertionRule(String key) {
+		return key != null && key.trim().startsWith("?");
+	}
+
+	private static String assertionRuleKey(String key) {
+		String value = key == null ? "" : key.trim();
+		return value.startsWith("?") ? value.substring(1).trim() : value;
 	}
 
 	private Object assertionTarget(C ctx, boolean soft, boolean log) throws Exception {

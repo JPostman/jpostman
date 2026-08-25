@@ -778,6 +778,28 @@ public class JPostmanAnnotationCoverageTest {
 	}
 
 	/**
+	 * Verifies that assertion INI entries prefixed with ? use the soft collector
+	 * while unprefixed entries remain hard.
+	 */
+	@Test
+	public void assertionRunnerSupportsPerRuleSoftPrefix() throws Exception {
+		JUnitPostmanFramework framework = new JUnitPostmanFramework();
+		JUnitContext context = framework.create();
+		framework.request(context, collectionWithTwoRequests().getRequest("Get current auth user"));
+		framework.response(context, okExecutor("{\"id\":1}"));
+
+		Map<String, Map<String, String>> rules = JPostmanAssertionRunner.loadAssertionRules(AssertionFixture.class,
+				List.of("classpath:annotation-test-soft-assertions.ini"));
+
+		assertEquals("/missingSoftValue", rules.get("mixed").get("?pathNotNull"));
+		AssertionError error = assertThrows(AssertionError.class, () -> new JPostmanAssertionRunner<>(framework)
+				.apply(context, rules, new String[] { "mixed" }, "Get current auth user", false, false));
+		assertTrue(
+				error.getMessage().contains("missingSoftValue") || error.getMessage().contains("alsoMissingSoftValue"),
+				error.getMessage());
+	}
+
+	/**
 	 * Verifies assertion runner error branches for missing, invalid, circular, and
 	 * unsupported rules.
 	 */

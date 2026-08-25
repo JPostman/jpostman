@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.3.4
+
+### Added
+
+- Added per-rule Soft mode in assertion INI files. Prefix an assertion action with `?` to make only that assertion soft, for example `?pathNotNull=/username`.
+
+### Changed
+
+- Assertion INI rules without a prefix remain Hard and stop immediately on failure. Soft (`?`) rules collect failures and report them together after the selected assertion sections finish. Hard and Soft rules can be mixed in the same section.
+
 ## 4.3.3
 
 ### Added
