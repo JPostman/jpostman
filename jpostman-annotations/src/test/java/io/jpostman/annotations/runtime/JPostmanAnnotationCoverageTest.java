@@ -2830,7 +2830,7 @@ public class JPostmanAnnotationCoverageTest {
 		/**
 		 * Dependency request method. The return value is cached under accessToken.
 		 */
-		@JPostmanRequest(request = "Login user and get tokens", rule = "login", cache = "accessToken")
+		@JPostmanRequest(request = "Login user and get tokens", rules = "login", cache = "accessToken")
 		String login() {
 			loginCount++;
 			return "token-123";
@@ -2839,7 +2839,7 @@ public class JPostmanAnnotationCoverageTest {
 		/**
 		 * Response flow that depends on login and uses the named auth executor.
 		 */
-		@JPostmanResponse(request = "Get current auth user", rule = "user", dependsOn = {
+		@JPostmanResponse(request = "Get current auth user", rules = "user", dependsOn = {
 				"login" }, executor = "#auth", verify = 200)
 		void getCurrentAuthUser() {
 		}
@@ -2859,7 +2859,7 @@ public class JPostmanAnnotationCoverageTest {
 		}
 
 		/** Request-only method used to cover direct @JPostmanRequest handling. */
-		@JPostmanRequest(request = "Login user and get tokens", rule = "login")
+		@JPostmanRequest(request = "Login user and get tokens", rules = "login")
 		void prepareLoginRequest() {
 		}
 	}

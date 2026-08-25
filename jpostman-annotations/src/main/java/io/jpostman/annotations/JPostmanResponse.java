@@ -77,11 +77,11 @@ public @interface JPostmanResponse {
 	String request() default "";
 
 	/**
-	 * Optional secure rule section for response filtering and masking.
+	 * Optional secure rule sections for response filtering and masking.
 	 *
-	 * @return secure rule section name
+	 * @return secure rule section names
 	 */
-	String rule() default "";
+	String[] rules() default {};
 
 	/**
 	 * Optional response fields to keep before printing or verifying.

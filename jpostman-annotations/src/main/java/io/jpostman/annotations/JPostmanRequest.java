@@ -99,11 +99,11 @@ public @interface JPostmanRequest {
 	String request() default "";
 
 	/**
-	 * Secure rule section to load before preparing the request.
+	 * Secure rule sections to load before preparing the request.
 	 *
-	 * @return secure rule section name
+	 * @return secure rule section names
 	 */
-	String rule() default "";
+	String[] rules() default {};
 
 	/**
 	 * Dependency method names or annotation ids to run before this request helper.

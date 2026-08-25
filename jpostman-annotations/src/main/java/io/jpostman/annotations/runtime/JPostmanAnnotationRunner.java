@@ -823,7 +823,7 @@ public final class JPostmanAnnotationRunner<C> {
 		validateLocalDebug(annotation.debug(), info);
 
 		if (isReusableResponseDependency(testInstance, annotation, info)) {
-			C ctx = applyRuleAndFilter(prepared.context(info.namespace), annotation.rule());
+			C ctx = applyRuleAndFilter(prepared.context(info.namespace), annotation.rules());
 			prepared.update(info.namespace, ctx);
 			framework.setCurrent(ctx);
 
@@ -1328,7 +1328,7 @@ public final class JPostmanAnnotationRunner<C> {
 		if (annotation == null || dependencies(annotation.dependsOn()).length != 1) {
 			return false;
 		}
-		return isBlank(annotation.namespace()) && isBlank(folder(annotation.folder())) && isBlank(annotation.rule())
+		return isBlank(annotation.namespace()) && isBlank(folder(annotation.folder())) && isEmpty(annotation.rules())
 				&& isBlank(annotation.executor()) && isBlank(annotation.data()) && isEmpty(annotation.include())
 				&& isEmpty(annotation.exclude()) && isEmpty(annotation.filter()) && isEmpty(annotation.asserts())
 				&& annotation.verify() == -1;
@@ -1689,7 +1689,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private C prepareRequest(C context, Collection collection, JPostmanRequest annotation, JPostmanInfo info,
 			String namespace, String folder, String requestName) {
-		C result = applyRuleAndFilter(context, annotation.rule());
+		C result = applyRuleAndFilter(context, annotation.rules());
 		if (requestName == null || requestName.isBlank()) {
 			return result;
 		}
@@ -1702,8 +1702,8 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private C prepareRequest(C context, Collection collection, JPostmanResponse annotation, JPostmanInfo info,
 			boolean includeFilter) {
-		C result = includeFilter ? applyRuleAndFilter(context, annotation.rule(), annotation.filter())
-				: applyRuleAndFilter(context, annotation.rule());
+		C result = includeFilter ? applyRuleAndFilter(context, annotation.rules(), annotation.filter())
+				: applyRuleAndFilter(context, annotation.rules());
 		if (info.request == null || info.request.isBlank()) {
 			return result;
 		}
@@ -1711,7 +1711,7 @@ public final class JPostmanAnnotationRunner<C> {
 	}
 
 	private C prepareRequest(C context, Collection collection, JPostmanCall annotation, JPostmanInfo info) {
-		C result = applyRuleAndFilter(context, annotation.rule(), annotation.filter());
+		C result = applyRuleAndFilter(context, annotation.rules(), annotation.filter());
 		if (info.request == null || info.request.isBlank()) {
 			return result;
 		}
@@ -1720,7 +1720,7 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private C prepareRequest(C context, Collection collection, JPostmanRunner annotation, JPostmanInfo info,
 			String requestName) {
-		C result = applyRuleAndFilter(context, annotation.rule(), annotation.filter());
+		C result = applyRuleAndFilter(context, annotation.rules(), annotation.filter());
 		return requestWithCache(result, request(collection, info.namespace, info.folder, requestName), info);
 	}
 
@@ -1753,11 +1753,11 @@ public final class JPostmanAnnotationRunner<C> {
 		return result;
 	}
 
-	private C applyRuleAndFilter(C context, String rule, String... filter) {
+	private C applyRuleAndFilter(C context, String[] rules, String... filter) {
 		C result = context;
-		if (rule != null && !rule.isBlank()) {
+		if (!isEmpty(rules)) {
 			C previous = result;
-			result = framework.loadRules(result, rule);
+			result = framework.loadRules(result, rules);
 			framework.copyCache(previous, result);
 			framework.copyRuntimeValues(previous, result);
 		}
@@ -1786,6 +1786,7 @@ public final class JPostmanAnnotationRunner<C> {
 			JPostmanInfo info, BiConsumer<C, JPostmanInfo> action) throws Exception {
 
 		validateLocalDebug(annotation.debug(), info);
+		rejectVerifyAndAsserts(annotation, info);
 		inheritCallLocationFromDependencies(testInstance, annotation, info);
 		validateCallRequestName(info);
 		PreparedContext<C> prepared = resolver.resolve(info.namespace);
@@ -1836,8 +1837,9 @@ public final class JPostmanAnnotationRunner<C> {
 					completed -> applyFilter(completed, annotation.filter()));
 			resolver.info(info);
 			// @JPostman.Call is prepared before the test body, but its response exists
-			// only after runtime.call(...) executes. Verify here so the annotation status
-			// check runs against the completed manual-call response.
+			// only after runtime.call(...) executes. Apply assertion sections and status
+			// verification against the completed manual-call response.
+			applyAssertions(testInstance, resolver, ctx, info, annotation.asserts(), annotation.debug());
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
 			debugOutput(testInstance, ctx, info, annotation.debug());
 			passed(report(testInstance), info);
@@ -2882,6 +2884,14 @@ public final class JPostmanAnnotationRunner<C> {
 		if (annotation != null && shouldVerify(annotation.verify()) && hasAssertions(annotation.asserts())) {
 			throw JPostmanErrors.usage(info, "Invalid JPostman verification configuration.",
 					"@JPostmanRunner cannot use verify and asserts together.",
+					"Use verify for status-code verification, or use asserts for assertion sections.");
+		}
+	}
+
+	private void rejectVerifyAndAsserts(JPostmanCall annotation, JPostmanInfo info) {
+		if (annotation != null && shouldVerify(annotation.verify()) && hasAssertions(annotation.asserts())) {
+			throw JPostmanErrors.usage(info, "Invalid JPostman verification configuration.",
+					"@JPostmanCall cannot use verify and asserts together.",
 					"Use verify for status-code verification, or use asserts for assertion sections.");
 		}
 	}

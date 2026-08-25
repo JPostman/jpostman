@@ -43,11 +43,19 @@ public @interface JPostmanCall {
 	/** @return collection request name */
 	String request() default "";
 
-	/** @return rules section name */
-	String rule() default "";
+	/** @return rules section names */
+	String[] rules() default {};
 
 	/** @return fields to keep in the context */
 	String[] filter() default {};
+
+	/**
+	 * Assertion section names to apply to the completed call response.
+	 *
+	 * @return assertion sections, or empty array to use request-name/default
+	 *         resolution
+	 */
+	String[] asserts() default {};
 
 	/** @return dependency method names or "#id" references */
 	String[] dependsOn() default {};

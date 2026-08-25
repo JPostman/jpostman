@@ -64,11 +64,11 @@ public @interface JPostmanRunner {
 	String[] folder() default "";
 
 	/**
-	 * Optional secure rule section for response filtering and masking.
+	 * Optional secure rule sections for response filtering and masking.
 	 *
-	 * @return secure rule section
+	 * @return secure rule sections
 	 */
-	String rule() default "";
+	String[] rules() default {};
 
 	/**
 	 * Optional response fields to keep before printing or verifying.
@@ -84,7 +84,7 @@ public @interface JPostmanRunner {
 	 * For runner launcher methods, a single runner dependency such as
 	 * {@code dependsOn = "#testRunner"} can reuse the referenced runner body with
 	 * this annotation's tags when this runner does not define its own folder,
-	 * include/exclude, executor, rule, filter, data, asserts, verify, or lifecycle
+	 * include/exclude, executor, rules, filter, data, asserts, verify, or lifecycle
 	 * settings.
 	 * </p>
 	 *

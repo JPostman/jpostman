@@ -70,8 +70,8 @@ public final class JUnitPostmanFramework implements JPostmanFramework<JUnitConte
 
 	/** {@inheritDoc} */
 	@Override
-	public JUnitContext loadRules(JUnitContext context, String rule) {
-		return context.loadRules(rule);
+	public JUnitContext loadRules(JUnitContext context, String... rules) {
+		return context.loadRules(rules);
 	}
 
 	/** {@inheritDoc} */

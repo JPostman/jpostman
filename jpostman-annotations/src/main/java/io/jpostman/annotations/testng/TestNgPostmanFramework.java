@@ -72,8 +72,8 @@ public final class TestNgPostmanFramework implements JPostmanFramework<TestNgCon
 
 	/** {@inheritDoc} */
 	@Override
-	public TestNgContext loadRules(TestNgContext context, String rule) {
-		return context.loadRules(rule);
+	public TestNgContext loadRules(TestNgContext context, String... rules) {
+		return context.loadRules(rules);
 	}
 
 	/** {@inheritDoc} */

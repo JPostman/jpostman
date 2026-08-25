@@ -433,11 +433,11 @@ public final class JPostman {
 		String request() default "";
 
 		/**
-		 * Rules section name.
+		 * Rules section names.
 		 *
-		 * @return rule name
+		 * @return rule names
 		 */
-		String rule() default "";
+		String[] rules() default {};
 
 		/**
 		 * Fields to keep in the context.
@@ -552,11 +552,11 @@ public final class JPostman {
 		String request() default "";
 
 		/**
-		 * Rules section name.
+		 * Rules section names.
 		 *
-		 * @return rule name
+		 * @return rule names
 		 */
-		String rule() default "";
+		String[] rules() default {};
 
 		/**
 		 * Fields to keep in the context.
@@ -696,11 +696,11 @@ public final class JPostman {
 		String request() default "";
 
 		/**
-		 * Rules section name.
+		 * Rules section names.
 		 *
-		 * @return rule name
+		 * @return rule names
 		 */
-		String rule() default "";
+		String[] rules() default {};
 
 		/**
 		 * Fields to keep in the context.
@@ -759,6 +759,14 @@ public final class JPostman {
 		 * @return data section
 		 */
 		String data() default "";
+
+		/**
+		 * Assertion section names to apply to the completed call response.
+		 *
+		 * @return assertion sections, or empty array to use request-name/default
+		 *         resolution
+		 */
+		String[] asserts() default {};
 
 		/**
 		 * @return {@code true} to run this call even when context skipAll is enabled
@@ -830,11 +838,11 @@ public final class JPostman {
 		String[] exclude() default {};
 
 		/**
-		 * Rules section name.
+		 * Rules section names.
 		 *
-		 * @return rule name
+		 * @return rule names
 		 */
-		String rule() default "";
+		String[] rules() default {};
 
 		/**
 		 * Fields to keep in the context.
@@ -850,7 +858,7 @@ public final class JPostman {
 		 * For runner launcher methods, a single runner dependency such as
 		 * {@code dependsOn = "#testRunner"} can reuse the referenced runner body with
 		 * this annotation's tags when this runner does not define its own folder,
-		 * include/exclude, executor, rule, filter, data, asserts, verify, or lifecycle
+		 * include/exclude, executor, rules, filter, data, asserts, verify, or lifecycle
 		 * settings.
 		 * </p>
 		 *

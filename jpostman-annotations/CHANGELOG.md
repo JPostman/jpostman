@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.3.3
+
+### Added
+
+- Added `asserts()` to compact `@JPostman.Call` and standalone `@JPostmanCall`, so manual calls can apply assertion sections after the response is available.
+
+### Changed
+
+- Changed Runner, Request, Response, and Call secure-rule selection from scalar `rule()` to `String[] rules() default {}` in both compact and standalone annotations.
+- Multiple secure rule sections are applied in annotation order before request execution/filtering.
+- Updated annotation syntax from `rule = "users"` to `rules = "users"`; multiple sections use `rules = {"default", "users"}`.
+
 ## 4.3.1
 
 ### Changed

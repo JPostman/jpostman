@@ -107,10 +107,10 @@ public interface JPostmanFramework<C> {
 	 * Applies a named secure rule section to the context.
 	 *
 	 * @param context framework context
-	 * @param rule    rule section name
+	 * @param rules   rule section names
 	 * @return context with the rule applied
 	 */
-	C loadRules(C context, String rule);
+	C loadRules(C context, String... rules);
 
 	/**
 	 * Applies response field filtering to the context.
