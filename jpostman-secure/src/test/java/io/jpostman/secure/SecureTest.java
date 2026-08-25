@@ -446,6 +446,61 @@ public class SecureTest {
 	}
 
 	@Test
+	public void secureApiResponseRedactsStructuredValuesByExactKey() {
+		ApiResponse response = response(200,
+				"{\"hair\":{\"color\":\"Brown\",\"type\":\"Curly\"},\"roles\":[\"admin\",\"tester\"],\"age\":29,\"name\":\"Emily\"}");
+
+		String pretty = SecureResponse.from(response).redact("hair", "roles", "age").pretty();
+
+		assertTrue(pretty.contains("\"hair\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"roles\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"age\": \"********\""), pretty);
+		assertTrue(pretty.contains("\"name\": \"Emily\""), pretty);
+		assertFalse(pretty.contains("Brown"), pretty);
+		assertFalse(pretty.contains("admin"), pretty);
+	}
+
+	@Test
+	public void redactRegexMasksStructuredValuesByKey() {
+		ApiResponse response = response(200,
+				"{\"address\":{\"city\":\"Phoenix\"},\"company\":{\"address\":{\"city\":\"San Francisco\"}},\"email\":\"e@example.com\"}");
+
+		String pretty = SecureContext.create().redactRegex("address").from(response).pretty();
+
+		assertTrue(pretty.contains("\"address\": \"********\""), pretty);
+		assertFalse(pretty.contains("Phoenix"), pretty);
+		assertFalse(pretty.contains("San Francisco"), pretty);
+		assertTrue(pretty.contains("\"email\": \"e@example.com\""), pretty);
+	}
+
+	@Test
+	public void redactRegexRejectsJsonPathSyntax() {
+		try {
+			SecureContext.create().redactRegex("/address");
+			fail("redactRegex should reject JSON path syntax");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains("redactRegex matches field keys only"), e.getMessage());
+		}
+	}
+
+	@Test
+	public void headerRulesUseNamesOrRegexButNotJsonPaths() {
+		ApiResponse response = response(200, "{\"status\":\"ok\"}", Map.of("Set-Cookie", List.of("session=secret"),
+				"X-Trace-Id", List.of("trace-secret"), "Server", List.of("cloudflare")));
+
+		String log = SecureContext.create().headers("Set-Cookie", "regex:^x-.*").headersFilter("Server", "regex:^x-.*")
+				.from(response).log(true);
+
+		assertFalse(log.contains("Set-Cookie"), log);
+		assertTrue(log.contains("X-Trace-Id                          = ********"), log);
+		assertTrue(log.contains("Server"), log);
+		assertTrue(log.contains("[cloudflare]"), log);
+
+		log = SecureContext.create().headers("/X-Trace-Id").headersFilter("X-Trace-Id").from(response).log(true);
+		assertTrue(log.contains("X-Trace-Id                          = [trace-secret]"), log);
+	}
+
+	@Test
 	public void secureApiResponseRedactsRegexJsonPathRules() {
 		ApiResponse response = response(200,
 				"{\"products\":[{\"id\":1,\"reviews\":[{\"comment\":\"bad\",\"reviewerEmail\":\"a@test.com\"}]},"

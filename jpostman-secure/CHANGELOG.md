@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.3.1
+
+### Fixed
+
+- Fixed exact key redaction so rules such as redact=hair mask the entire matched JSON value, including objects, arrays, numbers, booleans, and strings.
+- Fixed redactRegex=... to operate on JSON keys only instead of treating patterns that start with / as JSON path expressions.
+- Added a clear validation error for path-style redactRegex rules such as redactRegex=/address; use redact=/address or another redact path rule for JSON paths.
+- Preserved existing redact=regex:/... support for regex-based JSON path matching.
+- Added regression coverage for structured-value redaction, key-only redactRegex, path-rule validation, and exact/regex header masking behavior.
+
 ## 4.3.0
 
 ### Changed

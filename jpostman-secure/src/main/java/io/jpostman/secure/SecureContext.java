@@ -386,6 +386,9 @@ public final class SecureContext {
 	/**
 	 * Adds a redaction rule for keys that match the given regular expression.
 	 * <p>
+	 * This method matches field keys only. JSON path rules belong to
+	 * {@link #redact(String...)} and should use slash-based path syntax there.
+	 * <p>
 	 * This is useful when multiple fields should be protected by the same key
 	 * pattern. For example, {@code (?i).*phone.*} can match keys such as
 	 * {@code phone}, {@code backupPhone}, and {@code otherPhone}.
@@ -401,6 +404,9 @@ public final class SecureContext {
 	/**
 	 * Adds a redaction rule for keys that match the given regular expression and
 	 * applies the given value expression to the matched values.
+	 * <p>
+	 * This method matches field keys only. JSON path rules belong to
+	 * {@link #redact(String...)}.
 	 * <p>
 	 * The value expression can be a slice expression, such as {@code [:3]} or
 	 * {@code [-4:]}, or a regex value expression, such as

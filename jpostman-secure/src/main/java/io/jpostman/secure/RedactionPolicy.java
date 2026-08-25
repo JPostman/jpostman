@@ -262,10 +262,12 @@ public final class RedactionPolicy {
 	 *
 	 * @param keyRegex regular expression used to match field keys
 	 * @return new redaction policy
+	 * @throws IllegalArgumentException if the expression uses slash-based JSON path
+	 *                                  syntax
 	 */
 	public RedactionPolicy addRegexRule(String keyRegex) {
 		Builder builder = toBuilder();
-		builder.protectRegexRule(keyRegex);
+		builder.protectKeyRegexRule(keyRegex);
 		RedactionPolicy result = builder.build();
 		result.headers.addAll(headers);
 		return result;
@@ -277,10 +279,12 @@ public final class RedactionPolicy {
 	 * @param keyRegex        regular expression used to match field keys
 	 * @param valueExpression slice or regex expression applied to matched values
 	 * @return new redaction policy
+	 * @throws IllegalArgumentException if the expression uses slash-based JSON path
+	 *                                  syntax
 	 */
 	public RedactionPolicy addRegexRule(String keyRegex, String valueExpression) {
 		Builder builder = toBuilder();
-		builder.protectRegexRule(keyRegex, valueExpression);
+		builder.protectKeyRegexRule(keyRegex, valueExpression);
 		RedactionPolicy result = builder.build();
 		result.headers.addAll(headers);
 		return result;
@@ -480,19 +484,29 @@ public final class RedactionPolicy {
 			return this;
 		}
 
-		private Builder protectRegexRule(String pattern, String valueExpression) {
-			if (pattern == null || pattern.isBlank()) {
-				throw new IllegalArgumentException("regex rule cannot be blank");
-			}
-			if (valueExpression == null || valueExpression.isBlank()) {
-				return protectRegexRule(pattern);
-			}
-			if (pattern.startsWith("/")) {
-				throw new IllegalArgumentException("regex value expressions are supported only for field keys");
-			}
+		private Builder protectKeyRegexRule(String pattern) {
+			validateKeyRegexRule(pattern);
+			protectedKeyPatterns.add(Pattern.compile(pattern));
+			return this;
+		}
 
+		private Builder protectKeyRegexRule(String pattern, String valueExpression) {
+			validateKeyRegexRule(pattern);
+			if (valueExpression == null || valueExpression.isBlank()) {
+				return protectKeyRegexRule(pattern);
+			}
 			protectedKeyPatternSlices.put(Pattern.compile(pattern), parsedSlice(valueExpression.trim()));
 			return this;
+		}
+
+		private static void validateKeyRegexRule(String pattern) {
+			if (pattern == null || pattern.isBlank()) {
+				throw new IllegalArgumentException("regex key rule cannot be blank");
+			}
+			if (pattern.startsWith("/")) {
+				throw new IllegalArgumentException(
+						"redactRegex matches field keys only; remove the leading '/' or use redact=/path for JSON paths");
+			}
 		}
 
 		private void removeRegexRule(String pattern) {

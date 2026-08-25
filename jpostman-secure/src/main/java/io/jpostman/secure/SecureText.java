@@ -154,6 +154,15 @@ public final class SecureText {
 	}
 
 	private static String redactJsonFieldsByKey(String text, RedactionPolicy policy) {
+		String structured = redactJsonDocumentByKey(text, policy);
+		if (structured != null) {
+			return structured;
+		}
+
+		// Fallback for JSON-like fragments embedded in non-JSON text. This preserves
+		// the historical behavior for quoted string values while complete JSON
+		// documents are handled structurally above so objects and arrays can be
+		// replaced as a whole.
 		Pattern pattern = Pattern.compile("(\\\"([^\\\"]+)\\\"\\s*:\\s*\\\")(.*?)(\\\")");
 		Matcher matcher = pattern.matcher(text);
 		StringBuffer output = new StringBuffer();
@@ -171,6 +180,78 @@ public final class SecureText {
 		}
 		matcher.appendTail(output);
 		return output.toString();
+	}
+
+	private static String redactJsonDocumentByKey(String text, RedactionPolicy policy) {
+		if (text == null || text.isEmpty()) {
+			return text;
+		}
+
+		int start = 0;
+		while (start < text.length() && Character.isWhitespace(text.charAt(start))) {
+			start++;
+		}
+		int end = text.length();
+		while (end > start && Character.isWhitespace(text.charAt(end - 1))) {
+			end--;
+		}
+
+		if (start >= end) {
+			return text;
+		}
+
+		char first = text.charAt(start);
+		if (first != '{' && first != '[') {
+			return null;
+		}
+
+		try {
+			JsonElement element = JsonParser.parseString(text.substring(start, end));
+			if (!element.isJsonObject() && !element.isJsonArray()) {
+				return null;
+			}
+			if (!redactJsonKeys(element, policy)) {
+				return text;
+			}
+			return text.substring(0, start) + GSON.toJson(element) + text.substring(end);
+		} catch (RuntimeException e) {
+			return null;
+		}
+	}
+
+	private static boolean redactJsonKeys(JsonElement element, RedactionPolicy policy) {
+		if (element == null || element.isJsonNull()) {
+			return false;
+		}
+
+		boolean changed = false;
+
+		if (element.isJsonObject()) {
+			JsonObject object = element.getAsJsonObject();
+			for (String key : List.copyOf(object.keySet())) {
+				JsonElement child = object.get(key);
+				if (policy.isProtectedKey(key)) {
+					SliceExpressionFactory slice = policy.sliceExpressionFor(key);
+					if (slice != null && child != null && child.isJsonPrimitive()) {
+						object.add(key, new JsonPrimitive(slice.mask(child.getAsString(), policy.mask())));
+					} else {
+						object.add(key, new JsonPrimitive(policy.mask()));
+					}
+					changed = true;
+					continue;
+				}
+				changed |= redactJsonKeys(child, policy);
+			}
+			return changed;
+		}
+
+		if (element.isJsonArray()) {
+			for (JsonElement child : element.getAsJsonArray()) {
+				changed |= redactJsonKeys(child, policy);
+			}
+		}
+
+		return changed;
 	}
 
 	private static String redactJsonPaths(String text, RedactionPolicy policy) {
