@@ -151,6 +151,89 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 		}
 	}
 
+	@Test
+	public void getReadsUncachedResponseByIdAndRefWithoutPlainWrites() {
+		Object owner = new Object();
+		FakeContext context = new FakeContext();
+		JPostman.Test test = JPostmanTestProxy.wrap(context, null, null, owner);
+		try {
+			Map<String, Object> body = new LinkedHashMap<>();
+			body.put("accountId", "account-1");
+			JPostmanTestProxy.recordResponse(owner, "#Ref", new SnapshotInput(body));
+			body.put("accountId", "mutated");
+			for (String expression : List.of("#Ref/accountId", "#Ref:/accountId", "Ref:/accountId", "#Ref:accountId")) {
+				assertEquals("account-1", test.get(expression));
+			}
+			assertTrue(context.configured.isEmpty());
+			assertTrue(context.values.isEmpty());
+			assertThrows(IllegalStateException.class, () -> test.cache("Ref:/accountId"));
+			assertThrows(IllegalStateException.class, () -> test.get("Ref:/missing"));
+			JPostman.Test other = JPostmanTestProxy.wrap(new FakeContext(), null, null, new Object());
+			assertThrows(IllegalStateException.class, () -> other.get("Ref:/accountId"));
+			JPostmanTestProxy.recordResponse(owner, "Ref", new SnapshotInput(Map.of("accountId", "account-2")));
+			assertEquals("account-2", test.get("Ref:/accountId"));
+			JPostmanTestProxy.clearResponse(owner, "#Ref");
+			assertThrows(IllegalStateException.class, () -> test.get("Ref:/accountId"));
+		} finally {
+			JPostmanTestProxy.clearRuntimeValues(owner);
+		}
+	}
+
+	@Test
+	public void responseReferenceChecksAnnotationCacheAndExplicitValuesFirst() {
+		Object owner = new Object();
+		FakeContext context = new FakeContext();
+		String key = "Ref:/accountId";
+		JPostman.Test test = JPostmanTestProxy.wrap(context, null, null, owner);
+		try {
+			JPostmanTestProxy.recordResponse(owner, "Ref", new SnapshotInput(Map.of("accountId", "captured")));
+			JPostmanTestProxy.registerEnvironmentValues(context, Map.of(key, "env"));
+			assertEquals("env", test.get(key));
+			context.cache(JPostmanTestProxy.cacheAliasKey("Ref"), "CUSTOM_CACHE");
+			context.cache("CUSTOM_CACHE", new FakeResponse(Map.of("accountId", "cached")));
+			assertEquals("cached", test.get(key));
+			assertEquals("cached", test.cache(key));
+			assertEquals("cached", test.cache("#Ref/accountId"));
+			context.cache(key, "exact-cache");
+			assertEquals("exact-cache", test.get(key));
+			test.plain(key, "plain");
+			assertEquals("plain", test.get(key));
+			test.secret(key, "secret");
+			assertEquals("secret", test.get(key));
+		} finally {
+			JPostmanTestProxy.clearRuntimeValues(owner);
+		}
+	}
+
+	@Test
+	public void scalarCacheDoesNotHideFullResponseFallback() {
+		Object owner = new Object();
+		FakeContext context = new FakeContext();
+		JPostman.Test test = JPostmanTestProxy.wrap(context, null, null, owner);
+		try {
+			context.cache(JPostmanTestProxy.cacheAliasKey("Ref"), "TOKEN");
+			context.cache("TOKEN", "scalar-access-token");
+			JPostmanTestProxy.recordResponse(owner, "Ref", new SnapshotInput(Map.of("refreshToken", "refresh")));
+			assertEquals("refresh", test.get("#Ref/refreshToken"));
+			JPostmanTestProxy.clearRuntimeValues(owner);
+			assertThrows(IllegalStateException.class, () -> test.get("#Ref/refreshToken"));
+		} finally {
+			JPostmanTestProxy.clearRuntimeValues(owner);
+		}
+	}
+
+	public static final class SnapshotInput {
+		private final Object root;
+
+		public SnapshotInput(Object root) {
+			this.root = root;
+		}
+
+		public Object path(String path) {
+			return root;
+		}
+	}
+
 	private static final class FakeContext {
 		private final Map<String, Object> values = new LinkedHashMap<>();
 		private final Map<String, Object> configured = new LinkedHashMap<>();

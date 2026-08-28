@@ -1,5 +1,19 @@
 # Changelog
 
+## 4.3.5
+
+### Added
+
+- Added implicit response-reference lookup through `JPostman.Test.get(...)`, allowing values such as `test.get(GET_AUTH + "/refreshToken")` without explicit `plain()` calls or a configured annotation cache.
+- Added reference-path forms `#Ref/path`, `#Ref:/path`, and `Ref:/path`, while retaining `#Ref:path`.
+- Added detached response snapshots for completed Response and Call executions, scoped to the current test-class runtime and cleared during class teardown.
+- Added explanatory errors when a referenced response is unavailable or its requested path is missing. Declare `dependsOn` to execute the producer first; value lookup does not execute requests automatically.
+
+### Changed
+
+- Extended `cache(...)` to accept the new reference-path forms and resolve annotation IDs through their configured cache names. `cache(...)` still requires a cached value and does not use the implicit response store.
+- Extended `get(...)` with captured-response fallback after existing secret, plain, cache, and environment lookup. Explicit values retain priority; implicit response reads do not create or overwrite plain, secret, or environment variables.
+
 ## 4.3.4
 
 ### Added

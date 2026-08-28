@@ -926,6 +926,7 @@ public final class JPostmanAnnotationRunner<C> {
 		verifyResponse(testInstance, latest, info, annotation.verify(), annotation.debug());
 		debugOutput(testInstance, latest, info, annotation.debug());
 		passed(report(testInstance), info);
+		JPostmanTestProxy.recordResponse(testInstance, info.id, latest);
 	}
 
 	/**
@@ -1785,6 +1786,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private C executeRuntimeCall(Object testInstance, PreparedContexts<C> resolver, JPostmanCall annotation,
 			JPostmanInfo info, BiConsumer<C, JPostmanInfo> action) throws Exception {
 
+		JPostmanTestProxy.clearResponse(testInstance, info.id);
 		validateLocalDebug(annotation.debug(), info);
 		rejectVerifyAndAsserts(annotation, info);
 		inheritCallLocationFromDependencies(testInstance, annotation, info);
@@ -1843,6 +1845,7 @@ public final class JPostmanAnnotationRunner<C> {
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
 			debugOutput(testInstance, ctx, info, annotation.debug());
 			passed(report(testInstance), info);
+			JPostmanTestProxy.recordResponse(testInstance, info.id, ctx);
 			return ctx;
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
@@ -2481,6 +2484,7 @@ public final class JPostmanAnnotationRunner<C> {
 	private void executeResponse(Object testInstance, PreparedContexts<C> resolver, C ctx, JPostmanResponse annotation,
 			JPostmanInfo info, List<String> stack) throws Exception {
 
+		JPostmanTestProxy.clearResponse(testInstance, info.id);
 		validateLocalDebug(annotation.debug(), info);
 		rejectVerifyAndAsserts(annotation, info);
 
@@ -2514,6 +2518,7 @@ public final class JPostmanAnnotationRunner<C> {
 			verifyResponse(testInstance, ctx, info, annotation.verify(), annotation.debug());
 			debugOutput(testInstance, ctx, info, annotation.debug());
 			passed(report, info);
+			JPostmanTestProxy.recordResponse(testInstance, info.id, ctx);
 		} catch (Exception | Error e) {
 			C latest = latestContext(resolver, info.namespace, ctx);
 			debugOutputAfterFailure(testInstance, latest, info, annotation.debug());

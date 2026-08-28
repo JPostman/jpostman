@@ -1839,6 +1839,10 @@ public final class JPostman {
 		 * <li>Cache value using the same expression rules as
 		 * {@link #cache(String)}.</li>
 		 * <li>Original Postman environment value.</li>
+		 * <li>For {@code #id/path}, {@code #id:/path}, or {@code id:/path}, the
+		 * detached response of a completed Response or Call in this test-class runtime.
+		 * Declare {@code dependsOn} to execute the producer first. No
+		 * plain/secret/environment values are created by this fallback.</li>
 		 * </ol>
 		 *
 		 * <p>
@@ -1861,6 +1865,8 @@ public final class JPostman {
 		 * // In a dependent Request or Call callback:
 		 * String token = test.get("refreshToken");
 		 * String explicit = test.get("#login:accessToken");
+		 * String responseField = test.get("#login/refreshToken");
+		 * String accountId = test.get("Ref:/accountId");
 		 * Long attempts = test.get("attempts", Long.class);
 		 * </pre>
 		 *

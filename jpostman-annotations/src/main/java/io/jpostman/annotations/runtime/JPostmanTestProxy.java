@@ -565,7 +565,9 @@ final class JPostmanTestProxy implements InvocationHandler {
 			return current.value;
 		}
 
-		Object cached = resolveCacheExpression(target, expression);
+		boolean responseReference = responseReferenceParts(expression) != null;
+		Object cached = responseReference ? responseReferenceCache(target, expression)
+				: resolveCacheExpression(target, expression);
 		if (cached != null) {
 			return cached;
 		}
@@ -576,7 +578,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 
 		/* Preserve values supplied by non-annotation integrations. */
 		Method getMethod = findTargetMethod(target, "get", new Object[] { expression });
-		return invokeTarget(getMethod, target, new Object[] { expression });
+		Object explicit = invokeTarget(getMethod, target, new Object[] { expression });
+		if (explicit != null || !responseReference)
+			return explicit;
+		return responseReferenceValue(runtimeOwner, expression);
 	}
 
 	private static void recordValueMutation(Object target, Method method, String name, Object[] args,
@@ -708,6 +713,108 @@ final class JPostmanTestProxy implements InvocationHandler {
 	private static final class RuntimeValueScope {
 		private final Map<String, Object> plain = new LinkedHashMap<>();
 		private final Map<String, Object> secret = new LinkedHashMap<>();
+		private final Map<String, JPostman.Test> responses = new LinkedHashMap<>();
+	}
+
+	/** Discard an older response before this producer executes again. */
+	static void clearResponse(Object owner, String reference) {
+		RuntimeValueScope scope = existingRuntimeScope(owner);
+		if (scope != null) {
+			synchronized (scope) {
+				scope.responses.remove(responseId(reference));
+			}
+		}
+	}
+
+	/** Store response state separately from user plain/secret/cache values. */
+	static void recordResponse(Object owner, String reference, Object context) {
+		String id = responseId(reference);
+		if (owner == null || id.isBlank())
+			return;
+		clearResponse(owner, reference);
+		JPostman.Test snapshot;
+		try {
+			snapshot = JPostmanResponseSnapshot.create(context);
+		} catch (IllegalStateException unavailable) {
+			// Empty/non-readable responses must not break existing execution.
+			return;
+		}
+		if (snapshot == null)
+			return;
+		RuntimeValueScope scope = runtimeScope(owner);
+		synchronized (scope) {
+			scope.responses.put(id, snapshot);
+		}
+	}
+
+	private static String responseId(String reference) {
+		String id = reference == null ? "" : reference.trim();
+		while (id.startsWith("#"))
+			id = id.substring(1);
+		return id;
+	}
+
+	private static Object responseReferenceCache(Object target, String expression) throws Throwable {
+		Object exact = readCache(target, expression);
+		if (exact != null)
+			return exact;
+		String[] parts = responseReferenceParts(expression);
+		String id = parts[0];
+		Object alias = readCache(target, cacheAliasKey(id));
+		Object cached = readCache(target, alias == null ? id : String.valueOf(alias));
+		if (cached == null)
+			return null;
+		String path = parts[1];
+		if (path.isBlank())
+			return cached;
+		// Scalar annotation returns are not full response bodies.
+		Object targetValue = unwrap(cached);
+		try {
+			findTargetMethod(targetValue, "path", new Object[] { path });
+		} catch (NoSuchMethodException scalar) {
+			return null;
+		}
+		return pathValue(cached, path);
+	}
+
+	private static Object responseReferenceValue(Object owner, String expression) throws Throwable {
+		String[] parts = responseReferenceParts(expression);
+		String id = parts[0];
+		RuntimeValueScope scope = existingRuntimeScope(owner);
+		JPostman.Test snapshot = null;
+		if (scope != null) {
+			synchronized (scope) {
+				snapshot = scope.responses.get(id);
+			}
+		}
+		if (snapshot == null)
+			throw new IllegalStateException(
+					"Response for #" + id + " is unavailable. Declare dependsOn and execute that dependency first.");
+		String path = parts[1];
+		Object value = snapshot.path(path);
+		if (value == null)
+			throw new IllegalStateException("Response path not found: " + expression);
+		return value;
+	}
+
+	private static String[] responseReferenceParts(String expression) {
+		int separator = expression.indexOf(':');
+		if (separator < 0) {
+			if (!expression.startsWith("#"))
+				return null;
+			separator = expression.indexOf('/');
+		} else if (!expression.startsWith("#") && !expression.substring(separator + 1).startsWith("/")) {
+			return null;
+		}
+		if (separator <= 0)
+			return null;
+		String id = responseId(expression.substring(0, separator));
+		if (id.isBlank())
+			return null;
+		String path = expression.substring(separator + 1);
+		while (path.startsWith("/"))
+			path = path.substring(1);
+		return new String[] { id, path };
 	}
 
 	private static final class ValueSources {
@@ -760,10 +867,10 @@ final class JPostmanTestProxy implements InvocationHandler {
 			throw new IllegalArgumentException("JPostman cache expression is required.");
 		}
 
-		if (value.startsWith("#")) {
-			int separator = value.indexOf(':');
-			String reference = separator >= 0 ? value.substring(0, separator).trim() : value;
-			String path = separator >= 0 ? value.substring(separator + 1).trim() : "";
+		String[] referenceParts = responseReferenceParts(value);
+		if (value.startsWith("#") || referenceParts != null) {
+			String reference = referenceParts == null ? value : "#" + referenceParts[0];
+			String path = referenceParts == null ? "" : referenceParts[1];
 			String cacheKey = cacheKeyByAnnotationId(target, reference);
 			Object cached = readCache(target, cacheKey);
 			if (cached == null) {
