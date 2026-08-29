@@ -1858,6 +1858,11 @@ public final class JPostman {
 		 * replacing a secret with a plain value.
 		 * </p>
 		 *
+		 * <p>
+		 * A complete Postman environment token such as {@code {{username}}} is an alias
+		 * for {@code username}. Both forms use the same precedence above.
+		 * </p>
+		 *
 		 * <pre>
 		 * // In a parent Response callback:
 		 * test.secret("refreshToken", test.<String>path("refreshToken"));

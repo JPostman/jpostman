@@ -520,7 +520,7 @@ final class JPostmanTestProxy implements InvocationHandler {
 	}
 
 	private static Object resolveGet(Object target, String key, Object runtimeOwner) throws Throwable {
-		String expression = key == null ? "" : key.trim();
+		String expression = normalizeGetKey(key);
 		if (expression.isBlank()) {
 			return null;
 		}
@@ -582,6 +582,17 @@ final class JPostmanTestProxy implements InvocationHandler {
 		if (explicit != null || !responseReference)
 			return explicit;
 		return responseReferenceValue(runtimeOwner, expression);
+	}
+
+	private static String normalizeGetKey(String key) {
+		String expression = key == null ? "" : key.trim();
+		if (expression.length() >= 4 && expression.startsWith("{{") && expression.endsWith("}}")) {
+			String environmentKey = expression.substring(2, expression.length() - 2).trim();
+			if (!environmentKey.isEmpty() && environmentKey.indexOf('{') < 0 && environmentKey.indexOf('}') < 0) {
+				return environmentKey;
+			}
+		}
+		return expression;
 	}
 
 	private static void recordValueMutation(Object target, Method method, String name, Object[] args,

@@ -51,6 +51,24 @@ public class JPostmanTestProxyCacheExpressionRegressionTest {
 	}
 
 	@Test
+	public void getNormalizesEnvironmentTokenAndKeepsSecretPlainPrecedence() {
+		FakeContext context = new FakeContext();
+		JPostmanTestProxy.registerEnvironmentValues(context, Map.of("username", "emilys"));
+		JPostman.Test test = JPostmanTestProxy.wrap(context);
+
+		assertEquals("emilys", test.get("username"));
+		assertEquals("emilys", test.get("{{username}}"));
+
+		test.plain("username", test.get("{{username}}"));
+		assertEquals("emilys", test.get("username"));
+		assertEquals("emilys", test.get("{{username}}"));
+
+		test.secret("username", "protected-user");
+		assertEquals("protected-user", test.get("username"));
+		assertEquals("protected-user", test.get("{{username}}"));
+	}
+
+	@Test
 	public void getSupportsGenericInferenceAndExplicitConversion() {
 		FakeContext context = new FakeContext();
 		context.cache("name", "JPostman");
