@@ -3797,14 +3797,22 @@ public final class JPostmanAnnotationRunner<C> {
 
 	private void validateAnnotationIds(Object testInstance) {
 		Map<String, List<Method>> ids = new LinkedHashMap<>();
+		Map<String, List<Method>> dependencyIds = new LinkedHashMap<>();
+		Map<String, List<Method>> methodsByName = new LinkedHashMap<>();
 
 		Class<?> current = testInstance.getClass();
 		while (current != null && current != Object.class) {
 			for (Method method : current.getDeclaredMethods()) {
+				if (validAnnotatedMethod(method)) {
+					methodsByName.computeIfAbsent(method.getName(), key -> new ArrayList<>()).add(method);
+				}
 				collectAnnotationId(ids, method, requestId(method));
 				collectAnnotationId(ids, method, responseId(method));
 				collectAnnotationId(ids, method, runnerId(method));
 				collectAnnotationId(ids, method, executorId(method));
+				collectAnnotationId(dependencyIds, method, requestId(method));
+				collectAnnotationId(dependencyIds, method, responseId(method));
+				collectAnnotationId(dependencyIds, method, runnerId(method));
 			}
 			current = current.getSuperclass();
 		}
@@ -3819,6 +3827,49 @@ public final class JPostmanAnnotationRunner<C> {
 		if (!duplicateIds.isEmpty()) {
 			throw annotationIdValidationError(duplicateIds);
 		}
+
+		Map<String, List<Method>> conflictingIds = new LinkedHashMap<>();
+		for (Map.Entry<String, List<Method>> entry : dependencyIds.entrySet()) {
+			List<Method> namedMethods = methodsByName.get(entry.getKey());
+			List<Method> differentMethods = new ArrayList<>();
+			if (namedMethods != null) {
+				for (Method method : namedMethods) {
+					if (!entry.getValue().contains(method)) {
+						differentMethods.add(method);
+					}
+				}
+			}
+			if (!differentMethods.isEmpty()) {
+				List<Method> conflict = new ArrayList<>(entry.getValue());
+				conflict.addAll(differentMethods);
+				conflictingIds.put(entry.getKey(), conflict);
+			}
+		}
+		if (!conflictingIds.isEmpty()) {
+			throw annotationIdMethodConflictError(conflictingIds);
+		}
+	}
+
+	private AssertionError annotationIdMethodConflictError(Map<String, List<Method>> conflicts) {
+		StringBuilder message = new StringBuilder();
+		message.append("Invalid JPostman annotation usage.").append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL)
+				.append("JPostman annotation ids must not conflict with Java method names.").append(JPostmanErrors.ENDL)
+				.append("An unprefixed dependsOn value resolves a method first, then an annotation id when no method exists.")
+				.append(JPostmanErrors.ENDL).append("Rename the annotation id or the conflicting Java method.")
+				.append(JPostmanErrors.ENDL).append(JPostmanErrors.ENDL).append("Conflicts:")
+				.append(JPostmanErrors.ENDL);
+		List<Method> invalid = new ArrayList<>();
+		for (Map.Entry<String, List<Method>> entry : conflicts.entrySet()) {
+			message.append("- id=\"").append(entry.getKey()).append("\" conflicts with method ").append(entry.getKey())
+					.append("()").append(JPostmanErrors.ENDL);
+			for (Method method : entry.getValue()) {
+				message.append("  - ").append(signature(method)).append(JPostmanErrors.ENDL);
+				invalid.add(method);
+			}
+		}
+		AssertionError error = new AssertionError(message.toString());
+		error.setStackTrace(invalid.stream().distinct().map(this::testFrame).toArray(StackTraceElement[]::new));
+		return error;
 	}
 
 	private boolean onlyExecutorIds(List<Method> methods) {
@@ -4375,9 +4426,7 @@ public final class JPostmanAnnotationRunner<C> {
 		} catch (AssertionError e) {
 			Method idMethod = findDependencyMethodById(type, value);
 			if (idMethod != null) {
-				throw JPostmanErrors.usage(info, "Dependency method not found: " + dependencyName,
-						"Found JPostman annotation id \"" + value + "\" on " + signature(idMethod) + ".",
-						"Use dependsOn = \"" + idReference(value) + "\" to depend by id.");
+				return idMethod;
 			}
 			throw e;
 		}

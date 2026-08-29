@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.3.6
+
+### Added
+
+- Added unprefixed annotation-ID fallback for `dependsOn`. A value such as `dependsOn = "myId"` first resolves a compatible Java method named `myId`; when no such method exists, it resolves the `@JPostman.Request`, `@JPostman.Response`, or `@JPostman.Runner` with `id = "myId"`.
+- Added startup validation that rejects annotation IDs which conflict with dependency-callable Java method names. The error identifies the conflicting ID and method and asks the user to rename one of them.
+- Added regression coverage for unprefixed ID fallback and ID/method-name conflict detection.
+
+### Changed
+
+- Retained explicit `#id` dependency references, such as `dependsOn = "#myId"`, as the recommended unambiguous form.
+
 ## 4.3.5
 
 ### Added

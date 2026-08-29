@@ -29,7 +29,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		runTestNg(fixture, "newMouseProduct");
 
 		assertEquals(0, fixture.methodNameLoginCalls,
-				"dependsOn = \"#login\" must resolve the annotation id, not a method named login.");
+				"dependsOn = \"#login\" must resolve the annotation id without calling unrelated methods.");
 		assertEquals(1, fixture.tokenMethodCalls);
 		assertEquals(1, fixture.authRequestCalls);
 		assertEquals(1, fixture.newProductCalls);
@@ -42,7 +42,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		HashPrefixedIdConstantFixture fixture = new HashPrefixedIdConstantFixture();
 
 		JPostmanAnnotationEngine.setupTestNg(fixture);
-		runTestNg(fixture, "profile");
+		runTestNg(fixture, "loadProfile");
 
 		assertEquals(1, fixture.tokenCalls);
 		assertEquals(1, fixture.profileCalls);
@@ -62,15 +62,26 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 	}
 
 	@Test
-	public void dependencyIdRequiresHashPrefix() throws Exception {
+	public void unprefixedDependencyFallsBackToAnnotationIdWhenNoMethodConflicts() throws Exception {
 		IdRequiresHashFixture fixture = new IdRequiresHashFixture();
 		JPostmanAnnotationEngine.setupTestNg(fixture);
 
-		AssertionError error = assertThrows(AssertionError.class, () -> runTestNg(fixture, "newMouseProduct"));
+		runTestNg(fixture, "newMouseProduct");
+
+		assertEquals(1, fixture.tokenCalls);
+	}
+
+	@Test
+	public void annotationIdMustNotConflictWithDependencyMethodName() {
+		AnnotationIdMethodConflictFixture fixture = new AnnotationIdMethodConflictFixture();
+
+		AssertionError error = assertThrows(AssertionError.class, () -> JPostmanAnnotationEngine.setupTestNg(fixture));
 		String message = error.getMessage();
-		assertTrue(message.contains("Dependency method not found: login"), "Actual message: " + message);
-		assertTrue(message.contains("Found JPostman annotation id \"login\""), "Actual message: " + message);
-		assertTrue(message.contains("dependsOn = \"#login\""), "Actual message: " + message);
+		assertTrue(message.contains("annotation ids must not conflict with Java method names"),
+				"Actual message: " + message);
+		assertTrue(message.contains("id=\"myId\" conflicts with method myId()"), "Actual message: " + message);
+		assertTrue(message.contains("Rename the annotation id or the conflicting Java method"),
+				"Actual message: " + message);
 	}
 
 	@Test
@@ -130,9 +141,9 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 		private int productExecutorCalls;
 
 		@JPostman.Request
-		public void login(TestNgContext ctx, JPostmanInfo info) {
+		public void loginByMethod(TestNgContext ctx, JPostmanInfo info) {
 			methodNameLoginCalls++;
-			throw new AssertionError("Method named login should not be called when dependsOn uses #login.");
+			throw new AssertionError("Unrelated method should not be called when dependsOn uses #login.");
 		}
 
 		@JPostman.Response(id = "login", request = "Login user and get tokens", cache = "token")
@@ -210,7 +221,7 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 
 		@JPostman.Response(request = "Get current auth user", dependsOn = PROFILE, verify = 200)
 		@org.testng.annotations.Test
-		public void profile() {
+		public void loadProfile() {
 		}
 
 		@JPostman.Executor
@@ -259,15 +270,37 @@ public class JPostmanAnnotationDependencyIdRegressionTest {
 
 		@JPostman.Context(verifyStatusCode = 200)
 		private JPostman.Runtime<JPostman.Test> jpostman;
+		private int tokenCalls;
 
 		@JPostman.Response(id = "login", request = "Login user and get tokens", cache = "token")
 		public String getToken(TestNgContext ctx, JPostmanInfo info) {
+			tokenCalls++;
 			return ctx.path("accessToken");
 		}
 
 		@JPostman.Response(dependsOn = "login", verify = 200)
 		@org.testng.annotations.Test
 		public void newMouseProduct() {
+		}
+
+		@JPostman.Executor
+		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
+			return okExecutor("{\"accessToken\":\"token-123\"}");
+		}
+	}
+
+	@JPostman.TestNG
+	private static final class AnnotationIdMethodConflictFixture {
+
+		@JPostman.Context(verifyStatusCode = 200)
+		private JPostman.Runtime<JPostman.Test> jpostman;
+
+		@JPostman.Response(id = "myId", request = "Login user and get tokens")
+		public void producer() {
+		}
+
+		@SuppressWarnings("unused")
+		public void myId() {
 		}
 	}
 
