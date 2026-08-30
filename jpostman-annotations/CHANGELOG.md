@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.3.7
+
+### Added
+
+- Added support for complete Postman environment tokens in `JPostman.Test.get(...)`. Calls such as `test.get("{{username}}")` now resolve the same variable as `test.get("username")`.
+- Added regression coverage for environment-token normalization, immediate plain-value reuse, and secret-value precedence.
+
+### Changed
+
+- Changed `JPostman.Test.get(...)` to normalize a complete `{{name}}` token before resolving its value.
+- Both plain names and `{{name}}` tokens now use the same lookup precedence: secret, plain, cache, environment, then detached response fallback.
+- Values saved through `test.plain(...)` or `test.secret(...)` remain immediately available through either lookup form within the current annotated method and subsequent dependent methods.
+
 ## 4.3.6
 
 ### Added
