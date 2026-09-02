@@ -25,7 +25,12 @@
           "name": "Folder request one",
           "request": {
             "method": "POST",
-            "url": "https://example.com/product-one"
+            "url": {
+              "raw": "https://example.com/products/{{productId}}?token={{token}}",
+              "host": ["example", "com"],
+              "path": ["products", "{{productId}}"],
+              "query": [{"key": "token", "value": "{{token}}"}]
+            }
           }
         },
         {

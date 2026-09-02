@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.3.8
+
+### Added
+
+- Added wrapped-placeholder replacement for request path, query, header, and JSON body values. A wrapped key such as `{{token}}` updates only an existing matching placeholder; when no matching placeholder exists, it is ignored.
+- Added literal URL path-segment support through `info.path(...)` and `info.spath(...)`. Plain values are appended in order, and slash-delimited values are split into individual path segments.
+- Added support for mixing multiple wrapped path placeholder/value pairs and literal path segments in one call.
+- Added regression coverage for placeholder replacement, missing-placeholder handling, new and updated query/header/body keys, two plain path arguments, multiple path segments, and mixed placeholder/segment calls.
+
 ## 4.3.7
 
 ### Added

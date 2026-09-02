@@ -198,10 +198,11 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		JPostmanInfo info = new JPostmanInfo("request", "", "", "Update product");
 
 		// Secure set operations target existing request values.
-		info.sbody("title", "updated-title").sheaders("X-Token", "updated-header").spath("limit", "50");
+		info.sbody("title", "updated-title").sheaders("X-Token", "updated-header").spath("{{limit}}", "50");
 
 		// Secure add operations create values that do not exist in the request.
-		info.sbody("refreshToken", "refresh-secret").sheaders("MY_SECRET", "new-header").spath("todo", "new-url-param");
+		info.sbody("refreshToken", "refresh-secret").sheaders("MY_SECRET", "new-header").squery("todo",
+				"new-url-param");
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -365,6 +366,19 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 	}
 
 	@Test
+	public void unresolvedBuilderCopyDoesNotConsumeOriginalTemplate() throws Exception {
+		Request original = requestWithPathQueryAndHeaderPlaceholders();
+		original.builder().build();
+
+		JPostmanInfo info = new JPostmanInfo("request", "helper", "", "Read item");
+		info.path("{{chainId}}", "chain-1001", "{{itemId}}", "item-1001");
+		info.query("{{token}}", "runner-token");
+
+		Request resolved = JPostmanFramework.applyRequestValues(original, info);
+		assertTrue(resolved.toUrl().contains("/chain/chain-1001/items/item-1001?token=runner-token"), resolved.toUrl());
+	}
+
+	@Test
 	public void runtimePrintFalseKeepsEveryUnresolvedPowerDailyPlaceholder() throws Exception {
 		Request unresolved = requestWithPowerDailyUnresolvedBody();
 		JPostmanInfo info = new JPostmanInfo("executor", "defaultExecutor", "My Folder", "My Request");
@@ -435,7 +449,7 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
 
 		info.body("title", "Wireless Mouse", "price", 25).headers("X-Token", "header-token").query("limit", 50)
-				.path("id", 101);
+				.path("{{id}}", 101);
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -453,7 +467,7 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		JPostmanInfo info = new JPostmanInfo("response", "", "", "Create product");
 
 		info.sbody("title", "Wireless Mouse", "price", 25).sheaders("X-Token", "header-token").squery("limit", 50)
-				.spath("id", 101).sauth("oauth2", "secret-token");
+				.spath("{{id}}", 101).sauth("oauth2", "secret-token");
 
 		Request updated = JPostmanFramework.applyRequestValues(request, info);
 
@@ -501,6 +515,106 @@ public class JPostmanAnnotationRequestValueModeRegressionTest {
 		assertEquals("header-token", updated.getHeader().get("X-Token"));
 		assertEquals("50", updated.getUrl().get("limit"));
 		assertTrue(updated.log().contains("/products/101?limit=50"), updated.log());
+	}
+
+	@Test
+	public void placeholdersResolveAndPlainKeysUpdateOrAddAcrossAllRequestComponents() throws Exception {
+		Request request = requestWithPathQueryAndHeaderPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Read item");
+
+		info.path("{{chainId}}", "chain-1001", "{{itemId}}", "item-1001", "TEST_PATH")
+				.query("{{token}}", "secret-token", "mode", "updated-mode", "TEST_QUERY", "chain-1001")
+				.headers("{{headerToken}}", "header-value", "X-Existing", "updated-header", "X-Added", "added-header")
+				.body("{{bodyValue}}", "resolved-body", "existingBody", "updated-body", "newBody", "added-body");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+
+		assertTrue(updated.toUrl().startsWith("https://example.com/chain/chain-1001/items/item-1001/TEST_PATH?"),
+				updated.toUrl());
+		assertEquals("secret-token", updated.getUrl().get("token"));
+		assertEquals("updated-mode", updated.getUrl().get("mode"));
+		assertEquals("chain-1001", updated.getUrl().get("TEST_QUERY"));
+		assertEquals("header-value", updated.getHeader().get("X-Token"));
+		assertEquals("updated-header", updated.getHeader().get("X-Existing"));
+		assertEquals("added-header", updated.getHeader().get("X-Added"));
+		JsonObject body = updated.getBody().getParsed().getAsJsonObject();
+		assertEquals("resolved-body", body.get("placeholderBody").getAsString());
+		assertEquals("updated-body", body.get("existingBody").getAsString());
+		assertEquals("added-body", body.get("newBody").getAsString());
+		assertEquals("keep-me", body.get("unchangedBody").getAsString());
+		assertEquals(Arrays.asList("TEST_PATH"), info.pathSegments);
+	}
+
+	@Test
+	public void environmentBaseUrlAndComponentUrlPlaceholdersResolveInOneBuildPass() throws Exception {
+		Request request = requestWithEnvironmentAndUrlComponentPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Consume chain dependencies");
+
+		info.params("BASE_URL", "http://127.0.0.1:8091");
+		info.path("{{chainId}}", "chain-1001", "{{itemId}}", "item-1001");
+		info.query("{{token}}", "refresh-token");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+		assertEquals("http://127.0.0.1:8091/chain/chain-1001/items/item-1001?token=refresh-token", updated.toUrl());
+	}
+
+	@Test
+	public void multipleAndSlashDelimitedPlainPathValuesAppendInOrder() throws Exception {
+		Request request = requestWithPathQueryAndHeaderPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Read item");
+
+		info.path("{{chainId}}", "chain-1001").path("{{itemId}}", "item-1001").path("path1", "path2", "path3")
+				.path("/path4/path5/");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+		assertTrue(updated.toUrl().contains("/chain/chain-1001/items/item-1001/path1/path2/path3/path4/path5"),
+				updated.toUrl());
+	}
+
+	@Test
+	public void missingWrappedPlaceholdersAreIgnoredAndNeverAdded() throws Exception {
+		Request request = requestWithPathQueryAndHeaderPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Read item");
+
+		info.path("{{missingPath}}", "ignored").query("{{missingQuery}}", "ignored")
+				.headers("{{missingHeader}}", "ignored").body("{{missingBody}}", "ignored");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+		assertFalse(updated.toUrl().contains("missing"), updated.toUrl());
+		assertEquals(null, updated.getHeader().get("missingHeader"));
+		assertFalse(updated.getBody().getParsed().getAsJsonObject().has("missingBody"));
+	}
+
+	@Test
+	public void twoPlainPathArgumentsAreTwoSegmentsNotAKeyValuePair() throws Exception {
+		Request request = requestWithPathQueryAndHeaderPlaceholders();
+		JPostmanInfo info = new JPostmanInfo("request", "", "", "Read item");
+
+		info.path("{{chainId}}", "chain-1001").path("{{itemId}}", "item-1001").path("path1", "path2");
+
+		Request updated = JPostmanFramework.applyRequestValues(request, info);
+		assertTrue(updated.toUrl().contains("/chain/chain-1001/items/item-1001/path1/path2"), updated.toUrl());
+		assertTrue(info.path.isEmpty() || info.path.keySet().stream().allMatch(key -> key.startsWith("{{")));
+		assertEquals(Arrays.asList("path1", "path2"), info.pathSegments);
+	}
+
+	private static Request requestWithPathQueryAndHeaderPlaceholders() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Read item\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"https://example.com/chain/{{chainId}}/items/{{itemId}}?token={{token}}&mode={{mode}}\","
+				+ "\"host\":[\"example\",\"com\"],\"path\":[\"chain\",\"{{chainId}}\",\"items\",\"{{itemId}}\"],"
+				+ "\"query\":[{\"key\":\"token\",\"value\":\"{{token}}\"},{\"key\":\"mode\",\"value\":\"{{mode}}\"}]},"
+				+ "\"header\":[{\"key\":\"X-Token\",\"value\":\"{{headerToken}}\"},{\"key\":\"X-Existing\",\"value\":\"original-header\"}],"
+				+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"placeholderBody\\\":\\\"{{bodyValue}}\\\",\\\"existingBody\\\":\\\"original-body\\\",\\\"unchangedBody\\\":\\\"keep-me\\\"}\","
+				+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Read item");
+	}
+
+	private static Request requestWithEnvironmentAndUrlComponentPlaceholders() throws Exception {
+		String json = "{\"item\":[{\"name\":\"Consume chain dependencies\",\"request\":{\"method\":\"POST\","
+				+ "\"url\":{\"raw\":\"{{BASE_URL}}/chain/{{chainId}}/items/{{itemId}}?token={{token}}\","
+				+ "\"host\":[\"{{BASE_URL}}\"],\"path\":[\"chain\",\"{{chainId}}\",\"items\",\"{{itemId}}\"],"
+				+ "\"query\":[{\"key\":\"token\",\"value\":\"{{token}}\"}]}}}]}";
+		return Collection.load(JsonParser.parseString(json).getAsJsonObject()).getRequest("Consume chain dependencies");
 	}
 
 	private static Request loginRequestWithEnvironmentPlaceholders() throws Exception {

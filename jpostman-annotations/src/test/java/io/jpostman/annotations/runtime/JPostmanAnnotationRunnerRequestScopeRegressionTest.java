@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import io.jpostman.ApiExecutor;
 import io.jpostman.ApiResponse;
 import io.jpostman.annotations.JPostman;
+import io.jpostman.annotations.JPostmanOutputs;
 import io.jpostman.testng.TestNgContext;
 
 /**
@@ -76,6 +77,26 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		assertEquals(List.of("helper:Folder request one", "executor:Folder request one", "helper:Folder request two",
 				"executor:Folder request two", "helper:Folder request three", "executor:Folder request three",
 				"body:Folder request three"), fixture.events);
+		assertEquals("https://example.com/products/42?token=runner-token", fixture.executedUrls.get(0));
+	}
+
+	@Test
+	public void wrappedValuesSurviveNestedRunnerBeforeBlankRequestHelperBody() throws Exception {
+		PerRequestRunnerFixture fixture = new PerRequestRunnerFixture();
+		List<String> output = new ArrayList<>();
+
+		JPostmanAnnotationEngine.setupTestNg(fixture);
+		Method method = PerRequestRunnerFixture.class.getDeclaredMethod("runProductFolderAfterSetupRunner");
+		try (JPostmanOutputs.Scope ignored = JPostmanOutputs.use(output::add)) {
+			JPostmanAnnotationEngine.runTestNg(fixture, method);
+		}
+
+		assertEquals("https://example.com/product-two", fixture.executedUrls.get(0));
+		assertEquals("https://example.com/products/42?token=runner-token", fixture.executedUrls.get(1));
+		assertEquals("https://example.com/products/{{productId}}?token={{token}}", fixture.helperSourceUrl);
+		assertTrue(fixture.helperResolvedLog.contains("/products/42?token=runner-token"), fixture.helperResolvedLog);
+		assertTrue(output.stream().anyMatch(value -> value.contains("/products/42?token=runner-token")),
+				String.join("\n", output));
 	}
 
 	@Test
@@ -216,13 +237,31 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		private JPostman.Runtime<TestNgContext> jpostman;
 
 		private final List<String> events = new ArrayList<>();
+		private final List<String> executedUrls = new ArrayList<>();
+		private String helperSourceUrl;
+		private String helperResolvedLog;
 		private int lifecycleHelperCalls;
 		private String lifecycleHelperRequest;
 
 		@JPostman.Request(id = "productScope", namespace = "product", folder = "Product")
 		public void customizeProductRequest(TestNgContext ctx, JPostman.Info compactInfo) {
 			assertNotNull(ctx.request(), "The selected folder request must be injected before the helper runs.");
+			compactInfo.path("{{productId}}", 42);
+			compactInfo.query("{{token}}", "runner-token");
 			events.add("helper:" + compactInfo.attr().request);
+		}
+
+		@JPostman.Runner(id = "setupRunner", namespace = "product", folder = "Product", include = "Folder request two", verify = 0)
+		public void setupRunner() {
+		}
+
+		@JPostman.Request(id = "chainedProductScope", namespace = "product", folder = "Product", dependsOn = "#setupRunner")
+		public void customizeProductRequestAfterRunner(JPostman.Test test, JPostman.Info compactInfo) {
+			compactInfo.path("{{productId}}", 42);
+			compactInfo.query("{{token}}", "runner-token");
+			helperSourceUrl = compactInfo.attr().sourceRequest().toUrl();
+			helperResolvedLog = test.log();
+			test.print();
 		}
 
 		@JPostman.Request(id = "rootScope", namespace = "product")
@@ -244,6 +283,11 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		public void runProductFolder() {
 		}
 
+		@JPostman.Runner(namespace = "product", folder = "Product", include = "Folder request one", dependsOn = "#chainedProductScope", verify = 0)
+		@org.testng.annotations.Test
+		public void runProductFolderAfterSetupRunner() {
+		}
+
 		@JPostman.Runner(dependsOn = "#rootScope", verify = 0)
 		@org.testng.annotations.Test
 		public void runRoot() {
@@ -263,6 +307,7 @@ public class JPostmanAnnotationRunnerRequestScopeRegressionTest {
 		public ApiExecutor defaultExecutor(TestNgContext ctx, JPostmanInfo info) {
 			String request = info.request;
 			return () -> {
+				executedUrls.add(ctx.request().request().toUrl());
 				events.add("executor:" + request);
 				return new ApiResponse(200, "{\"id\":1}", "{\"id\":1}".getBytes(), Map.of());
 			};

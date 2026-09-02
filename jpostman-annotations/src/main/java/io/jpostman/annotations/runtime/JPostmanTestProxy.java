@@ -438,22 +438,40 @@ final class JPostmanTestProxy implements InvocationHandler {
 			}
 			return proxy;
 		}
-		if ("print".equals(name) && JPostmanOutputs.isInstalled()) {
-			boolean resolve = args != null && args.length == 1 && Boolean.TRUE.equals(args[0]);
-			Object printTarget = target;
+		if (("print".equals(name) || "log".equals(name)) && method.getParameterCount() <= 1) {
+			// The no-argument facade methods are documented as print(true)/log(true).
+			// Dynamic proxies receive those default-interface calls directly, so an empty
+			// argument array must mean resolve=true rather than false.
+			boolean resolve = method.getParameterCount() == 0
+					|| (args != null && args.length == 1 && Boolean.TRUE.equals(args[0]));
+			Object requestTarget = target;
 
 			// Resolve the latest annotation-prepared context only for print(true).
 			// print(false) must continue to use the original proxy target.
 			if (resolve && activeContextSupplier != null) {
 				Object active = activeContextSupplier.get();
 				if (active != null) {
-					printTarget = active;
+					requestTarget = active;
 				}
 			}
 
-			Method logMethod = findTargetMethod(printTarget, "log", args);
-			Object text = invokeTarget(logMethod, printTarget, args);
-			JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
+			Object[] resolveArgs = new Object[] { resolve };
+			if ("log".equals(name)) {
+				Method logMethod = findTargetMethod(requestTarget, "log", resolveArgs);
+				Object text = invokeTarget(logMethod, requestTarget, resolveArgs);
+				return text == null ? "" : String.valueOf(text);
+			}
+
+			if (JPostmanOutputs.isInstalled()) {
+				Method logMethod = findTargetMethod(requestTarget, "log", resolveArgs);
+				Object text = invokeTarget(logMethod, requestTarget, resolveArgs);
+				JPostmanOutputs.write(text == null ? "" : String.valueOf(text));
+			} else {
+				// Preserve the framework's normal SLF4J print behavior when no custom sink is
+				// installed, but invoke it on the resolved active context selected above.
+				Method printMethod = findTargetMethod(requestTarget, "print", resolveArgs);
+				invokeTarget(printMethod, requestTarget, resolveArgs);
+			}
 			return null;
 		}
 

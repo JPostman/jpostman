@@ -1589,17 +1589,22 @@ public final class JPostman {
 		JPostmanInfo sheaders(Map<String, ?> values);
 
 		/**
-		 * Adds path values.
+		 * Each wrapped value and the value immediately after it resolve one existing
+		 * path placeholder. All other values are appended as literal path segments. For
+		 * example, {@code path("{{id}}", 10, "details", "history")} resolves
+		 * {@code {{id}}} and appends two segments. Wrapped names that do not exist in
+		 * the request are ignored.
 		 *
-		 * @param values key/value entries
+		 * @param values wrapped placeholder/value pairs and/or literal path segments
 		 * @return updated info
 		 */
 		JPostmanInfo path(Object... values);
 
 		/**
-		 * Adds secure path values.
+		 * Resolves one secure wrapped placeholder/value pair or appends secure path
+		 * segments using the same argument rules as {@link #path(Object...)}.
 		 *
-		 * @param values key/value entries
+		 * @param values wrapped placeholder/value pairs and/or literal path segments
 		 * @return updated info
 		 */
 		JPostmanInfo spath(Object... values);

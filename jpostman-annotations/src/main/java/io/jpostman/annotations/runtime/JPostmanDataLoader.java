@@ -249,7 +249,7 @@ public final class JPostmanDataLoader {
 			info.sheaders(name, value);
 			break;
 		case "path":
-			info.path(name, value);
+			info.path("{{" + name + "}}", value);
 			break;
 		case "spath":
 			info.spath(name, value);

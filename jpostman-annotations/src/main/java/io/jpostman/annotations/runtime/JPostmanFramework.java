@@ -312,26 +312,36 @@ public interface JPostmanFramework<C> {
 		 * uniformly.
 		 */
 		Map<String, Object> globalParams = mergedParams(inheritedParams, info.params);
-		applyResolve(builder.url(), requestTokenParams, globalParams);
-		applyResolve(builder.headers(), requestTokenParams, globalParams);
-		applyResolve(builder.body(), requestTokenParams, globalParams);
+		Request.RequestBuilder.ParamStep urlStep = builder.url();
+		Request.RequestBuilder.ParamStep headerStep = builder.headers();
+		Request.RequestBuilder.ParamStep bodyStep = builder.body();
+		java.util.LinkedHashMap<String, Object> urlResolved = collectResolved(requestTokenParams, globalParams);
+		java.util.LinkedHashMap<String, Object> headerResolved = collectResolved(requestTokenParams, globalParams);
+		java.util.LinkedHashMap<String, Object> bodyResolved = collectResolved(requestTokenParams, globalParams);
 
 		// Component-specific values target the visible field name first. When an
 		// existing field contains a differently named {{placeholder}}, resolve that
 		// placeholder instead of queuing a structural set against an unresolved body.
-		applySetOrAdd(builder.url(), urlQueryParams, info.query,
+		applySetOrAdd(urlStep, urlQueryParams, info.query,
 				key -> request.getUrl() != null && request.getUrl().get(key) != null,
-				key -> componentPlaceholder(request.getUrl() == null ? null : request.getUrl().get(key)), true);
-		applySetOrAdd(builder.headers(), headerParams, info.headers,
+				key -> componentPlaceholder(request.getUrl() == null ? null : request.getUrl().get(key)), true,
+				urlResolved);
+		applySetOrAdd(headerStep, headerParams, info.headers,
 				key -> request.getHeader() != null && request.getHeader().get(key) != null,
-				key -> componentPlaceholder(request.getHeader() == null ? null : request.getHeader().get(key)), true);
-		applySetOrAdd(builder.body(), bodyParams, info.body, key -> bodyContainsKey(request, key),
-				key -> bodyFieldPlaceholder(request, key), true);
-		applySetOrAdd(builder.url(), requestTokenParams, info.path, key -> pathFieldPlaceholder(request, key) != null,
-				key -> pathFieldPlaceholder(request, key), true);
+				key -> componentPlaceholder(request.getHeader() == null ? null : request.getHeader().get(key)), true,
+				headerResolved);
+		applySetOrAdd(bodyStep, bodyParams, info.body, key -> bodyContainsKey(request, key),
+				key -> bodyFieldPlaceholder(request, key), true, bodyResolved);
+		applySetOrAdd(urlStep, requestTokenParams, info.path, key -> pathFieldPlaceholder(request, key) != null,
+				key -> pathFieldPlaceholder(request, key), true, urlResolved);
+		applyResolved(urlStep, urlResolved);
+		applyResolved(headerStep, headerResolved);
+		applyResolved(bodyStep, bodyResolved);
 		applyAuth(request, builder, mergedParams(globalParams, info.auth));
 
-		return builder.build();
+		Request updated = builder.build();
+		appendPathSegments(updated, info.pathSegments);
+		return updated;
 	}
 
 	private static Map<String, String> configuredRequestParams(Request request) {
@@ -358,11 +368,49 @@ public interface JPostmanFramework<C> {
 			}
 		}
 		if (request.getUrl() != null && request.getUrl().getParams() != null) {
+			collectPlaceholders(request.getUrl().getOriginal(), result);
+			collectPlaceholders(request.getUrl().getRaw(), result);
 			for (String value : request.getUrl().getParams().values()) {
 				collectPlaceholders(value, result);
 			}
 		}
 		return result;
+	}
+
+	private static void appendPathSegments(Request request, java.util.List<Object> values) {
+		if (request == null || request.getUrl() == null || values == null || values.isEmpty()) {
+			return;
+		}
+		StringBuilder suffix = new StringBuilder();
+		values.forEach(value -> {
+			if (value != null) {
+				String segment = String.valueOf(executableValue(value)).trim().replace('\\', '/');
+
+				for (String part : segment.split("/+")) {
+					if (!part.isBlank()) {
+						suffix.append('/').append(part);
+					}
+				}
+			}
+		});
+		if (suffix.length() == 0) {
+			return;
+		}
+		String raw = request.getUrl().getRaw();
+		int query = raw.indexOf('?');
+		String path = query < 0 ? raw : raw.substring(0, query);
+		String queryString = query < 0 ? "" : raw.substring(query);
+		while (path.endsWith("/")) {
+			path = path.substring(0, path.length() - 1);
+		}
+		try {
+			java.lang.reflect.Field rawField = request.getUrl().getClass().getDeclaredField("raw");
+			rawField.setAccessible(true);
+			rawField.set(request.getUrl(), path + suffix + queryString);
+		} catch (ReflectiveOperationException exception) {
+			throw new IllegalStateException("The active jpostman-core version cannot append request path segments.",
+					exception);
+		}
 	}
 
 	private static void collectPlaceholders(String template, Map<String, String> target) {
@@ -379,34 +427,36 @@ public interface JPostmanFramework<C> {
 		}
 	}
 
-	private static void applyResolve(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
+	private static java.util.LinkedHashMap<String, Object> collectResolved(Map<String, String> configuredParams,
 			Map<String, Object> values) {
-		if (step == null || values == null || values.isEmpty() || configuredParams == null
-				|| configuredParams.isEmpty()) {
-			return;
-		}
-
 		java.util.LinkedHashMap<String, Object> resolved = new java.util.LinkedHashMap<>();
+		if (values == null || values.isEmpty() || configuredParams == null || configuredParams.isEmpty()) {
+			return resolved;
+		}
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String key = placeholderKey(entry.getKey());
 			if (!key.isBlank() && configuredParams.containsKey(key)) {
 				resolved.put(key, executableValue(entry.getValue()));
 			}
 		}
-		if (!resolved.isEmpty()) {
+		return resolved;
+	}
+
+	private static void applyResolved(Request.RequestBuilder.ParamStep step, Map<String, Object> resolved) {
+		if (step != null && resolved != null && !resolved.isEmpty()) {
 			step.end(resolved);
 		}
 	}
 
 	private static void applySetOrAdd(Request.RequestBuilder.ParamStep step, Map<String, String> configuredParams,
 			Map<String, Object> values, java.util.function.Predicate<String> fieldExists,
-			java.util.function.Function<String, String> fieldPlaceholder, boolean addMissingPlainKeys) {
+			java.util.function.Function<String, String> fieldPlaceholder, boolean addMissingPlainKeys,
+			java.util.LinkedHashMap<String, Object> resolved) {
 		if (step == null || values == null || values.isEmpty()) {
 			return;
 		}
 
 		Map<String, String> params = configuredParams == null ? Map.of() : configuredParams;
-		java.util.LinkedHashMap<String, Object> resolved = new java.util.LinkedHashMap<>();
 		for (Map.Entry<String, Object> entry : values.entrySet()) {
 			String originalKey = entry.getKey();
 			if (originalKey == null || originalKey.isBlank()) {
@@ -447,9 +497,6 @@ public interface JPostmanFramework<C> {
 					step.add(key, value);
 				}
 			}
-		}
-		if (!resolved.isEmpty()) {
-			step.end(resolved);
 		}
 	}
 

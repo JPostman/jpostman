@@ -1544,6 +1544,10 @@ public final class JPostmanAnnotationRunner<C> {
 			ctx = prepareRequest(resolver.context(contextNamespace), resolver.collection(contextNamespace), annotation,
 					dependencyInfo, contextNamespace, contextFolder, contextRequest);
 			resolver.update(contextNamespace, ctx);
+			// Nested dependencies replace the resolver's current info while they run.
+			// Restore this request helper before injecting JPostman.Test so runtime
+			// log/print/get operations observe the helper values being added below.
+			resolver.info(dependencyInfo);
 			framework.setCurrent(ctx);
 
 			try {
